@@ -4,28 +4,32 @@
 
 Goal: retire high-risk assumptions without creating production orchestration structure.
 
-Current foundation:
+Completed foundation:
 
 - Go module and `akagent` executable.
 - UUIDv7 task-ID generation.
 - TOON output boundary and structured errors.
 - Direct local worker inspection.
 - Explicit source-managed self-update.
+- Conforming TOON 4.1 output with a constrained supported subset and official fixtures.
+- Worker-local JSON state with typed envelopes, atomic replacement, locking, and recovery.
+- Local credential manifest discovery and metadata-only readiness checks.
 - Unit tests, vet, and CI.
 
-Remaining work:
+Completion evidence:
 
-- [#2](https://github.com/akofink/akagent-cli/issues/2): pin and validate the TOON specification and library.
-- [#3](https://github.com/akofink/akagent-cli/issues/3): define manifest and event schemas and implement persistence primitives.
-- [#4](https://github.com/akofink/akagent-cli/issues/4): define credential schemas and implement local readiness commands.
-- Define repository-policy schemas after the parallel foundation wave.
-- Decide the durable storage encoding.
-- Add token measurements and failure tests.
-- Evaluate a rate-limited background update check only after explicit updates prove reliable.
+- Child issues [#2](https://github.com/akofink/akagent-cli/issues/2), [#3](https://github.com/akofink/akagent-cli/issues/3), and [#4](https://github.com/akofink/akagent-cli/issues/4) are merged.
+- The durable store encoding is JSON; TOON 4.1 is pinned for agent-facing output and interchange.
+- Conformance, token measurement, failure, race, recovery, and redaction tests are present in `main`.
+
+The next task is [#8](https://github.com/akofink/akagent-cli/issues/8), which refines the first local task-lifecycle implementation from these APIs.
 
 ## Phase 1: local task lifecycle
 
 Goal: replace error-prone manual orchestration while preserving ordinary tmux use.
+
+Entry issue: [#8 Implement local task lifecycle commands](https://github.com/akofink/akagent-cli/issues/8).
+The issue is deliberately concrete about repository policy, durable task records, tmux observations, credential capabilities, idempotency, recovery, and protocol output.
 
 Deliverables:
 
