@@ -21,7 +21,7 @@ akagent worker inspect
 ```
 
 Stdout uses TOON because coding agents are the primary machine consumers.
-The initial encoder dependency is under evaluation against the current TOON specification and is not yet a durable storage decision.
+The TOON output contract is pinned to specification version 4.1 with a validated encoder and official conformance fixtures; see [`docs/toon.md`](docs/toon.md).
 
 ## Development
 
