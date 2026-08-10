@@ -168,7 +168,7 @@ It never deletes resources merely because they appear stale.
 Agent-consumed stdout uses conforming TOON by default.
 Internal logic uses typed records and encodes TOON at the boundary.
 
-The implementation pins an exact supported TOON specification version and validates output against a conforming implementation or official tests.
+The implementation pins an exact supported TOON specification version and a constrained output subset; see [`docs/toon.md`](toon.md) for the pinned version, supported forms, known deviations, encoder decision, and token measurements. Output is validated by the official conformance fixtures under `internal/output/testdata/conformance/`.
 Protocol compatibility is defined by `akagent` schemas and semantics, not by TOON alone.
 
 Token-efficiency rules:
