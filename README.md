@@ -15,6 +15,7 @@ Implemented commands:
 
 ```text
 akagent
+akagent credential <list|inspect|doctor>
 akagent id generate
 akagent update [--source <path>]
 akagent worker inspect
@@ -22,6 +23,47 @@ akagent worker inspect
 
 Stdout uses TOON because coding agents are the primary machine consumers.
 The TOON output contract is pinned to specification version 4.1 with a validated encoder and official conformance fixtures; see [`docs/toon.md`](docs/toon.md).
+
+## Credentials
+
+`akagent` discovers local credentials from a versioned, non-secret manifest at `~/.config/akagent/credentials.toon`.
+The manifest holds only source references and policy, never secret values; `akagent` never reads or prints the underlying secrets.
+
+```toon
+version: 1
+credentials[3]{id,type,source,required_for}:
+  git-ssh,ssh_key,file:~/.local/share/akagent/credentials/git_ed25519,git
+  github,api_token,env:GITHUB_TOKEN,github
+  llm,api_token,env:OPENAI_API_KEY,
+```
+
+Each row names a credential `id`, a non-secret `type`, a `source` reference, and a `required_for` capability.
+A trailing empty `required_for` marks an optional credential, which only warns when its source is unavailable.
+The supported manifest schema version is `1`; newer versions and duplicate IDs are rejected.
+TOON-quoted fields may contain commas, whitespace, quotes, and escaped characters.
+Missing or misconfigured required credentials block readiness.
+
+Supported source kinds are `file:<path>` and `env:<VAR>`.
+A leading `~/` in a `file:` path expands to the current user's home directory.
+`file:` sources are validated by metadata only (existence, ownership, and mode) and are never opened for reading.
+Credential files must be exactly mode `0600` in an exactly mode `0700` directory owned by the current user; symlinks and unsafe special permission bits are rejected.
+On platforms without Unix ownership and mode semantics, file readiness is reported as `unsupported` rather than inferred from synthesized permission bits.
+`env:` sources are checked for presence without persisting or printing their values.
+
+Commands:
+
+```text
+akagent credential list
+akagent credential inspect <id>
+akagent credential doctor
+```
+
+`list` reports each credential identity, status, and source kind.
+`inspect <id>` shows one credential's non-secret detail.
+`doctor` runs all readiness checks and exits nonzero when a required credential is not ready.
+Set `AKAGENT_CREDENTIALS` to use a non-default manifest path.
+
+See [`docs/credentials.md`](docs/credentials.md) for the full credential model.
 
 ## Development
 
