@@ -16,6 +16,7 @@ Implemented commands:
 ```text
 akagent
 akagent id generate
+akagent update [--source <path>]
 akagent worker inspect
 ```
 
@@ -29,6 +30,33 @@ go test ./...
 go vet ./...
 go run ./cmd/akagent
 ```
+
+## Installation and updates
+
+The current installation model uses a local source checkout and a user-local binary:
+
+```bash
+git clone https://github.com/akofink/akagent-cli ~/dev/repos/akagent-cli
+cd ~/dev/repos/akagent-cli
+go build -o ~/.local/bin/akagent ./cmd/akagent
+```
+
+Machine setup should perform the same build through a temporary file and atomic rename rather than writing directly over the installed binary.
+
+Update an installed binary with:
+
+```bash
+akagent update
+```
+
+The updater expects a clean `~/dev/repos/akagent-cli` checkout on `main`, locks the installed binary, fetches `origin`, and fast-forwards to `origin/main`.
+It builds from a temporary detached worktree at that exact commit, then atomically replaces the installed executable.
+Use `AKAGENT_SOURCE_DIR` or `--source <path>` for a non-default checkout.
+
+Source-managed self-update currently supports macOS and Linux.
+
+Automatic update on every invocation is intentionally deferred because ordinary commands should not unexpectedly require network access, mutate source, or add startup latency.
+A later rate-limited background check can call the same explicit updater if measured use justifies it.
 
 ## Direction
 

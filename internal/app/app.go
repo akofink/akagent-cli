@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/akofink/akagent-cli/internal/output"
+	updatecmd "github.com/akofink/akagent-cli/internal/update"
 	"github.com/google/uuid"
 )
 
@@ -34,6 +35,10 @@ type workerView struct {
 	Worker worker `json:"worker"`
 }
 
+type updateView struct {
+	Update updatecmd.Result `json:"update"`
+}
+
 type worker struct {
 	ID              string   `json:"id"`
 	ProtocolVersion int      `json:"protocol_version"`
@@ -51,6 +56,7 @@ func Run(args []string, stdout io.Writer) int {
 			Usage: "akagent <command>",
 			Commands: []string{
 				"id generate",
+				"update [--source <path>]",
 				"worker inspect",
 			},
 		})
@@ -69,9 +75,40 @@ func Run(args []string, stdout io.Writer) int {
 		if len(args) == 2 && args[1] == "inspect" {
 			return write(stdout, workerView{Worker: inspectWorker(exec.LookPath)})
 		}
+	case "update":
+		sourceDir, valid := updateSource(args)
+		if !valid {
+			return writeError(stdout, "usage", "Usage: akagent update [--source <path>]", false, "Run `akagent update --source ~/dev/repos/akagent-cli`")
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			return writeError(stdout, "internal", "Failed to resolve the installed akagent binary", false, "Reinstall akagent through machine setup")
+		}
+		result, updateErr := updatecmd.Run(sourceDir, executable)
+		if updateErr != nil {
+			return writeError(stdout, updateErr.Category, updateErr.Message, updateErr.Retryable, updateErr.Recovery)
+		}
+		return write(stdout, updateView{Update: result})
 	}
 
 	return writeError(stdout, "usage", fmt.Sprintf("Unknown command: %s", formatArgs(args)), false, "Run `akagent --help`")
+}
+
+func updateSource(args []string) (string, bool) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
+	}
+	if len(args) == 1 {
+		if configured := os.Getenv("AKAGENT_SOURCE_DIR"); configured != "" {
+			return configured, true
+		}
+		return filepath.Join(homeDir, "dev", "repos", "akagent-cli"), true
+	}
+	if len(args) == 3 && args[1] == "--source" && args[2] != "" {
+		return args[2], true
+	}
+	return "", false
 }
 
 func inspectWorker(lookPath func(string) (string, error)) worker {
@@ -108,6 +145,7 @@ func home() homeView {
 		Tasks:       []string{},
 		Help: []string{
 			"Run `akagent id generate` to create a task ID",
+			"Run `akagent update` to update from the local source checkout",
 			"Run `akagent worker inspect` to inspect the local worker",
 		},
 	}

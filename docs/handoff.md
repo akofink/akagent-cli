@@ -21,6 +21,7 @@ Build a local-first agent orchestration protocol that preserves tmux and Git wor
 - TOON output through a narrow output package.
 - Structured usage errors and shell exit codes.
 - Unit tests, vet, and GitHub Actions CI.
+- Source-managed `akagent update` with clean-main validation, fast-forward-only Git updates, and atomic binary replacement.
 
 ## Design evidence from the remote-workstation prototype
 

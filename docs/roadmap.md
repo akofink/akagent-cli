@@ -10,6 +10,7 @@ Current foundation:
 - UUIDv7 task-ID generation.
 - TOON output boundary and structured errors.
 - Direct local worker inspection.
+- Explicit source-managed self-update.
 - Unit tests, vet, and CI.
 
 Remaining work:
@@ -18,6 +19,7 @@ Remaining work:
 - Define manifest, event, repository-policy, and credential schemas.
 - Decide the durable storage encoding.
 - Add token measurements and failure tests.
+- Evaluate a rate-limited background update check only after explicit updates prove reliable.
 
 ## Phase 1: local task lifecycle
 

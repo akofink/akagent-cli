@@ -70,9 +70,20 @@ func TestHelp(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"usage: akagent <command>", "commands[2]: id generate,worker inspect"} {
+	for _, expected := range []string{"usage: akagent <command>", `commands[3]: id generate,"update [--source <path>]",worker inspect`} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
+	}
+}
+
+func TestUpdateRejectsUnknownArguments(t *testing.T) {
+	var stdout bytes.Buffer
+
+	if exitCode := Run([]string{"update", "--unknown"}, &stdout); exitCode != 2 {
+		t.Fatalf("Run() exit code = %d, want 2", exitCode)
+	}
+	if !strings.Contains(stdout.String(), "Usage: akagent update [--source <path>]") {
+		t.Fatalf("Run() output = %q, want update usage", stdout.String())
 	}
 }
