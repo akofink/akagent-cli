@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -66,17 +67,29 @@ func Run(args []string, stdout io.Writer) int {
 		}
 	case "worker":
 		if len(args) == 2 && args[1] == "inspect" {
-			return write(stdout, workerView{Worker: worker{
-				ID:              "local",
-				ProtocolVersion: 1,
-				Architecture:    runtime.GOARCH,
-				OperatingSystem: runtime.GOOS,
-				Features:        []string{"tmux", "git-worktree"},
-			}})
+			return write(stdout, workerView{Worker: inspectWorker(exec.LookPath)})
 		}
 	}
 
 	return writeError(stdout, "usage", fmt.Sprintf("Unknown command: %s", formatArgs(args)), false, "Run `akagent --help`")
+}
+
+func inspectWorker(lookPath func(string) (string, error)) worker {
+	features := make([]string, 0, 2)
+	if _, err := lookPath("tmux"); err == nil {
+		features = append(features, "tmux")
+	}
+	if _, err := lookPath("git"); err == nil {
+		features = append(features, "git-worktree")
+	}
+
+	return worker{
+		ID:              "local",
+		ProtocolVersion: 1,
+		Architecture:    runtime.GOARCH,
+		OperatingSystem: runtime.GOOS,
+		Features:        features,
+	}
 }
 
 func home() homeView {

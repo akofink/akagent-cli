@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -27,10 +28,24 @@ func TestWorkerInspect(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"worker:", "id: local", "protocol_version: 1", "features[2]: tmux,git-worktree"} {
+	for _, expected := range []string{"worker:", "id: local", "protocol_version: 1", "operating_system:"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
+	}
+}
+
+func TestInspectWorkerDetectsAvailableFeatures(t *testing.T) {
+	lookPath := func(name string) (string, error) {
+		if name == "git" {
+			return "/usr/bin/git", nil
+		}
+		return "", errors.New("not found")
+	}
+
+	worker := inspectWorker(lookPath)
+	if len(worker.Features) != 1 || worker.Features[0] != "git-worktree" {
+		t.Fatalf("inspectWorker() features = %v, want [git-worktree]", worker.Features)
 	}
 }
 

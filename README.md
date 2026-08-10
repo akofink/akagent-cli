@@ -42,3 +42,13 @@ Near-term work is local only:
 6. Add explicitly selected remote EC2 workers after the local protocol is stable.
 
 Containers, automatic scheduling, and a central service are deferred.
+
+## Design documentation
+
+- [`docs/README.md`](docs/README.md) indexes the design and current decisions.
+- [`docs/architecture.md`](docs/architecture.md) defines system boundaries and failure assumptions.
+- [`docs/protocol.md`](docs/protocol.md) defines resources, state, lifecycle operations, output, and compatibility.
+- [`docs/credentials.md`](docs/credentials.md) defines credential discovery, validation, propagation, and cleanup.
+- [`docs/technology.md`](docs/technology.md) records the implementation-stack evaluation.
+- [`docs/roadmap.md`](docs/roadmap.md) stages local, integration, remote, and discovery work.
+- [`docs/handoff.md`](docs/handoff.md) records implementation status and the next concrete work.
