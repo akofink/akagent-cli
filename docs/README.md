@@ -16,6 +16,7 @@ The installed binary is `akagent`.
 - [`credentials.md`](credentials.md) defines credential sources, requirements, transfer, installation, lifetime, redaction, and revocation.
 - [`technology.md`](technology.md) compares Go, Rust, TypeScript, Python, and shell.
 - [`roadmap.md`](roadmap.md) separates the local proof from hooks, remote EC2 support, and later discovery.
+- [`implementation-plan.md`](implementation-plan.md) maps GitHub issues, parallel ownership, delivery conventions, and integration order.
 - [`handoff.md`](handoff.md) records current implementation state and the next tasks.
 
 ## Current decisions

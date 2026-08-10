@@ -46,13 +46,13 @@ Build a local-first agent orchestration protocol that preserves tmux and Git wor
 
 ## Next implementation slice
 
-1. Select and pin an exact TOON specification version.
-2. Evaluate the current Go encoder against official conformance cases and representative token measurements.
-3. Define typed task, event, repository-policy, and credential-manifest schemas.
-4. Implement the worker-local state root with secure directory creation, atomic manifest replacement, and per-task locking.
-5. Implement `credential doctor` for `file:` and `env:` references without reading or printing values unnecessarily.
-6. Add tests for concurrent inspection, partial writes, unsafe permissions, missing credentials, and output redaction.
-7. Define and test the managed-process environment allowlist before launching an agent.
+Parent issue [#1](https://github.com/akofink/akagent-cli/issues/1) tracks three parallel foundations:
+
+1. [#2](https://github.com/akofink/akagent-cli/issues/2) validates and pins the TOON output contract.
+2. [#3](https://github.com/akofink/akagent-cli/issues/3) implements the secure worker-local state store.
+3. [#4](https://github.com/akofink/akagent-cli/issues/4) adds the local credential manifest and doctor commands.
+
+The detailed ownership, delivery, integration, and future-wave plan is in [`implementation-plan.md`](implementation-plan.md).
 
 Tmux task mutation should follow these storage and credential foundations rather than precede them.
 

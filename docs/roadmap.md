@@ -15,8 +15,10 @@ Current foundation:
 
 Remaining work:
 
-- Pin and validate the TOON specification and library.
-- Define manifest, event, repository-policy, and credential schemas.
+- [#2](https://github.com/akofink/akagent-cli/issues/2): pin and validate the TOON specification and library.
+- [#3](https://github.com/akofink/akagent-cli/issues/3): define manifest and event schemas and implement persistence primitives.
+- [#4](https://github.com/akofink/akagent-cli/issues/4): define credential schemas and implement local readiness commands.
+- Define repository-policy schemas after the parallel foundation wave.
 - Decide the durable storage encoding.
 - Add token measurements and failure tests.
 - Evaluate a rate-limited background update check only after explicit updates prove reliable.
