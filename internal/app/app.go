@@ -55,6 +55,7 @@ func Run(args []string, stdout io.Writer) int {
 		return write(stdout, helpView{
 			Usage: "akagent <command>",
 			Commands: []string{
+				"credential <list|inspect|doctor>",
 				"id generate",
 				"update [--source <path>]",
 				"worker inspect",
@@ -63,6 +64,8 @@ func Run(args []string, stdout io.Writer) int {
 	}
 
 	switch args[0] {
+	case "credential":
+		return credentialCommand(args[1:], stdout)
 	case "id":
 		if len(args) == 2 && args[1] == "generate" {
 			id, err := uuid.NewV7()
@@ -144,6 +147,7 @@ func home() homeView {
 		Description: description,
 		Tasks:       []string{},
 		Help: []string{
+			"Run `akagent credential doctor` to check local credential readiness",
 			"Run `akagent id generate` to create a task ID",
 			"Run `akagent update` to update from the local source checkout",
 			"Run `akagent worker inspect` to inspect the local worker",
@@ -166,10 +170,11 @@ func write(stdout io.Writer, value any) int {
 }
 
 func writeError(stdout io.Writer, category, message string, retryable bool, recovery string) int {
+	if err := output.WriteError(stdout, category, message, retryable, recovery); err != nil {
+		return 1
+	}
 	if category == "usage" {
-		_ = output.WriteError(stdout, category, message, retryable, recovery)
 		return 2
 	}
-	_ = output.WriteError(stdout, category, message, retryable, recovery)
 	return 1
 }
