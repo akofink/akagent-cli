@@ -116,6 +116,7 @@ Containers, automatic scheduling, and a central service are deferred.
 ## Design documentation
 
 - [`docs/README.md`](docs/README.md) indexes the design and current decisions.
+- [`docs/storage.md`](docs/storage.md) defines the worker-local state store layout, schema, permissions, locking, and recovery.
 - [`docs/architecture.md`](docs/architecture.md) defines system boundaries and failure assumptions.
 - [`docs/protocol.md`](docs/protocol.md) defines resources, state, lifecycle operations, output, and compatibility.
 - [`docs/credentials.md`](docs/credentials.md) defines credential discovery, validation, propagation, and cleanup.
