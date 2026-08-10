@@ -17,6 +17,7 @@ The installed binary is `akagent`.
 - [`technology.md`](technology.md) compares Go, Rust, TypeScript, Python, and shell.
 - [`roadmap.md`](roadmap.md) separates the local proof from hooks, remote EC2 support, and later discovery.
 - [`implementation-plan.md`](implementation-plan.md) maps GitHub issues, parallel ownership, delivery conventions, and integration order.
+- [`storage.md`](storage.md) defines the worker-local state store layout, schema, permissions, locking, and recovery.
 - [`handoff.md`](handoff.md) records current implementation state and the next tasks.
 
 ## Current decisions
