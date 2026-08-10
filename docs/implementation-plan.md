@@ -62,6 +62,16 @@ The issues are implementation-independent but semantic dependencies remain:
 Merge order may change when branches remain independent.
 The orchestrator should prefer the least-conflicting order supported by current diffs and CI rather than imposing artificial sequencing.
 
+## Foundation completion
+
+Issues [#2](https://github.com/akofink/akagent-cli/issues/2), [#3](https://github.com/akofink/akagent-cli/issues/3), and [#4](https://github.com/akofink/akagent-cli/issues/4) are merged into `main`.
+The output boundary is pinned to TOON 4.1 with a documented supported subset and conformance floors.
+The state store uses typed JSON envelopes, descriptor-safe durable mutation, per-task locking, and recovery.
+The credential package provides non-secret manifest discovery, metadata-only readiness, and structured list, inspect, and doctor commands.
+
+The next implementation issue is [#8 Implement local task lifecycle commands](https://github.com/akofink/akagent-cli/issues/8).
+It owns the first integration surface across these foundations and must keep repository policy, task lifecycle, tmux observation, credential capabilities, and protocol output behind the stable CLI boundary.
+
 ## Orchestrator role
 
 An OpenCode orchestrator remains idle while implementation agents work.

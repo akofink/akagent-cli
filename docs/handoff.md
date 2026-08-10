@@ -18,10 +18,12 @@ Build a local-first agent orchestration protocol that preserves tmux and Git wor
 - `akagent` compact home view.
 - `akagent id generate` using UUIDv7.
 - `akagent worker inspect` with local capabilities.
-- TOON output through a narrow output package.
+- TOON 4.1 output through a narrow, conformance-tested output package.
 - Structured usage errors and shell exit codes.
 - Unit tests, vet, and GitHub Actions CI.
 - Source-managed `akagent update` with clean-main validation, fast-forward-only Git updates, and atomic binary replacement.
+- A secure worker-local state store for versioned manifests, append-only events, atomic replacement, locking, and recovery.
+- A local credential manifest with `file:` and `env:` readiness checks plus `credential list`, `inspect`, and `doctor`.
 
 ## Design evidence from the remote-workstation prototype
 
@@ -44,25 +46,35 @@ Build a local-first agent orchestration protocol that preserves tmux and Git wor
 - Git signing uses the existing signing subkey exported without its parent secret key or passphrase and treated as a scoped bearer credential.
 - Remote transfer, refresh, and cleanup begin with remote execution, not before.
 
+## Phase 0 completion
+
+Parent issue [#1](https://github.com/akofink/akagent-cli/issues/1) tracked the three parallel protocol foundations:
+
+1. [#2](https://github.com/akofink/akagent-cli/issues/2) pinned the TOON 4.1 output contract.
+2. [#3](https://github.com/akofink/akagent-cli/issues/3) implemented the secure worker-local state store.
+3. [#4](https://github.com/akofink/akagent-cli/issues/4) added the local credential manifest and doctor commands.
+
+All three child issues are merged into `main`.
+The detailed ownership, delivery, integration, and future-wave record is in [`implementation-plan.md`](implementation-plan.md).
+
+The foundation is now ready for local task lifecycle work.
+Tmux and Git worktree mutation must build on the store, credential, and output boundaries rather than bypass them.
+
 ## Next implementation slice
 
-Parent issue [#1](https://github.com/akofink/akagent-cli/issues/1) tracks three parallel foundations:
-
-1. [#2](https://github.com/akofink/akagent-cli/issues/2) validates and pins the TOON output contract.
-2. [#3](https://github.com/akofink/akagent-cli/issues/3) implements the secure worker-local state store.
-3. [#4](https://github.com/akofink/akagent-cli/issues/4) adds the local credential manifest and doctor commands.
-
-The detailed ownership, delivery, integration, and future-wave plan is in [`implementation-plan.md`](implementation-plan.md).
-
-Tmux task mutation should follow these storage and credential foundations rather than precede them.
+Issue [#8](https://github.com/akofink/akagent-cli/issues/8) is the refined next task: implement local task lifecycle commands.
+It should register repositories and policy, create and inspect task manifests, manage tmux-backed local tasks, publish durable state, reconcile observations, and preserve uncommitted work and credential cleanup debt.
+The implementation must use `internal/store` for durable records and locks, `internal/credential` for named capability readiness, and `internal/output` for pinned TOON and structured errors.
 
 ## Open decisions
 
-- Whether TOON is suitable for durable manifests or only output and interchange.
 - The exact task and event schema fields.
 - The initial repository-registration format and policy discovery rules.
 - The first remote transport after local lifecycle completion.
 - Whether GitHub access begins with a fine-grained token or a GitHub App installation.
+
+The durable store encoding is JSON.
+TOON remains the agent-facing output and interchange encoding until a separate durable-encoding decision is justified.
 
 ## Explicitly deferred
 
