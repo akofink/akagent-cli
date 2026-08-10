@@ -132,14 +132,21 @@ It avoids copying a key but depends on a live connection and allows a compromise
 
 ## Git signing
 
-Use a dedicated signing subkey attached to the existing identity.
-Workers receive only the public key, the dedicated secret signing subkey, required trust configuration, and a controlled unlock mechanism.
+Use the existing signing subkey attached to the operator's identity for both local and managed agent development.
+Export and import only that secret signing subkey and the required public key material.
+Workers never receive the primary secret key or unrelated encryption and authentication subkeys.
 
-Never propagate the primary secret key or unrelated encryption and authentication subkeys.
+The exported signing subkey intentionally has no passphrase.
+This keeps Git and other DVCS signing behavior consistent across local and remote environments without per-instance pinentry or signing-key changes.
 
-Unattended signing requires an explicit passphrase policy.
-The initial preference is a dedicated signing subkey protected by a worker-specific secret delivered at startup.
-Signing must fail quickly and report a blocked capability instead of hanging on pinentry.
+The passphrase-free secret subkey is a bearer credential.
+Possession is sufficient to create signatures under that subkey, so filesystem permissions, propagation scope, worker trust, inventory, revocation, rotation, snapshot policy, and cleanup are the protection boundary.
+
+`akagent` should record the subkey fingerprint and installation state without recording exported key material.
+Import must verify the expected primary-key and signing-subkey fingerprints before reporting readiness.
+Removal must target the propagated secret subkey without deleting unrelated local keys.
+
+This decision removes passphrase and pinentry availability from task startup, but signing failures must still fail quickly and produce a structured capability error.
 
 ## GitHub and APIs
 

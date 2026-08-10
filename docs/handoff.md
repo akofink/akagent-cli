@@ -39,7 +39,8 @@ Build a local-first agent orchestration protocol that preserves tmux and Git wor
 - Dedicated secret files, when needed, live under XDG data with strict permissions.
 - Tasks request named capabilities rather than secret paths.
 - Missing optional credentials warn; missing required credentials block startup.
-- Dedicated agent SSH, GPG signing, GitHub, and LLM credentials are preferred over copied primary human credentials.
+- Dedicated agent SSH, GitHub, and LLM credentials are preferred over copied primary human credentials.
+- Git signing uses the existing signing subkey exported without its parent secret key or passphrase and treated as a scoped bearer credential.
 - Remote transfer, refresh, and cleanup begin with remote execution, not before.
 
 ## Next implementation slice
@@ -60,7 +61,6 @@ Tmux task mutation should follow these storage and credential foundations rather
 - The exact task and event schema fields.
 - The initial repository-registration format and policy discovery rules.
 - The first remote transport after local lifecycle completion.
-- The operational mechanism for unlocking a dedicated unattended GPG signing subkey.
 - Whether GitHub access begins with a fine-grained token or a GitHub App installation.
 
 ## Explicitly deferred

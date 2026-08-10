@@ -31,6 +31,7 @@ The installed binary is `akagent`.
 9. Keep application source and releases in this repository while using dots or another provisioner to install the binary.
 10. Add local cross-worker discovery and a stale-aware read cache only after basic remote execution works.
 11. Source credentials from the machine invoking `akagent`, validate task requirements, and propagate only explicitly selected capabilities.
+12. Use the existing passphrase-free signing subkey as a scoped bearer credential while never distributing the primary secret key.
 
 ## Design constraints
 
