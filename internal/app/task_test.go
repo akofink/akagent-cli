@@ -31,7 +31,7 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	const taskID = "task-14"
 	startArgs := []string{"task", "start", "--task-id", taskID, "--title", "Build feature", "--repository", "demo"}
 	startOutput := runCommand(t, startArgs)
-	wantStarted := "task:\n  id: task-14\n  title: Build feature\n  status: running\n  worker: local\n  condition: none\n"
+	wantStarted := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: running\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: none\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
 	if startOutput.code != 0 || startOutput.stdout != wantStarted {
 		t.Fatalf("task start = (%d, %q), want (0, %q)", startOutput.code, startOutput.stdout, wantStarted)
 	}
@@ -39,7 +39,7 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 		t.Fatalf("idempotent task start = (%d, %q), want (0, %q)", repeated.code, repeated.stdout, wantStarted)
 	}
 
-	wantList := "tasks[1]{id,title,status,worker,condition}:\n  task-14,Build feature,running,local,none\ntotal: 1\n"
+	wantList := fmt.Sprintf("tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:\n  task-14,Build feature,running,local,main,\"0000000000000000000000000000000000000001\",%s,none,true,false,false\ntotal: 1\n", repositoryPath)
 	if listed := runCommand(t, []string{"task", "list"}); listed.code != 0 || listed.stdout != wantList {
 		t.Fatalf("task list = (%d, %q), want (0, %q)", listed.code, listed.stdout, wantList)
 	}
@@ -48,7 +48,7 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 
 	published := runCommand(t, []string{"task", "publish", taskID, "--condition", "active", "--reason", "coding", "--activity", "tests"})
-	wantPublished := "task:\n  id: task-14\n  title: Build feature\n  status: active\n  worker: local\n  condition: active\n  reason: coding\n  activity: tests\n"
+	wantPublished := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: active\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: active\n  reason: coding\n  activity: tests\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
 	if published.code != 0 || published.stdout != wantPublished {
 		t.Fatalf("task publish = (%d, %q), want (0, %q)", published.code, published.stdout, wantPublished)
 	}
@@ -61,7 +61,7 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 
 	stopped := runCommand(t, []string{"task", "stop", taskID})
-	wantStopped := "task:\n  id: task-14\n  title: Build feature\n  status: stopped\n  worker: local\n  condition: none\n  reason: coding\n  activity: tests\n"
+	wantStopped := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: stopped\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: none\n  reason: coding\n  activity: tests\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
 	if stopped.code != 0 || stopped.stdout != wantStopped {
 		t.Fatalf("task stop = (%d, %q), want (0, %q)", stopped.code, stopped.stdout, wantStopped)
 	}
@@ -70,7 +70,7 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 
 	finished := runCommand(t, []string{"task", "finish", taskID, "succeeded", "done"})
-	wantFinished := "task:\n  id: task-14\n  title: Build feature\n  status: finished\n  worker: local\n  condition: none\n  reason: coding\n  activity: tests\n  result: done\n"
+	wantFinished := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: finished\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: none\n  reason: coding\n  activity: tests\n  result: done\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
 	if finished.code != 0 || finished.stdout != wantFinished {
 		t.Fatalf("task finish = (%d, %q), want (0, %q)", finished.code, finished.stdout, wantFinished)
 	}
@@ -96,7 +96,7 @@ func TestTaskReconcileCommandContract(t *testing.T) {
 	}
 
 	result := runCommand(t, []string{"task", "reconcile"})
-	want := "tasks[1]{id,title,status,worker,condition}:\n  reconcile-14,Reconcile,stopped,local,none\ntotal: 1\n"
+	want := fmt.Sprintf("tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:\n  reconcile-14,Reconcile,stopped,local,main,\"0000000000000000000000000000000000000001\",%s,none,true,false,false\ntotal: 1\n", repositoryPath)
 	if result.code != 0 || result.stdout != want {
 		t.Fatalf("task reconcile = (%d, %q), want (0, %q)", result.code, result.stdout, want)
 	}
@@ -313,7 +313,26 @@ esac
 		t.Fatal(err)
 	}
 	fakeGit := filepath.Join(bin, "git")
-	if err := os.WriteFile(fakeGit, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+	fakeGitScript := `#!/bin/sh
+set -eu
+path="$2"
+shift 2
+case "${1:-}" in
+rev-parse)
+  case "${2:-}" in
+  --is-inside-work-tree) printf 'true\n' ;;
+  --show-toplevel) printf '%s\n' "$path" ;;
+  HEAD) printf '0000000000000000000000000000000000000001\n' ;;
+  *) printf '0000000000000000000000000000000000000001\n' ;;
+  esac
+  ;;
+branch) printf 'main\n' ;;
+status) printf '## main\n' ;;
+worktree) ;;
+*) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(fakeGit, []byte(fakeGitScript), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

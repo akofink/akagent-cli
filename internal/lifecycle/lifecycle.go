@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,6 +43,26 @@ type TmuxObservation struct {
 	Processes []TmuxProcess
 }
 
+// GitStatus contains observations from one Git worktree without command output.
+type GitStatus struct {
+	Exists    bool
+	Root      string
+	Branch    string
+	Head      string
+	Dirty     bool
+	Untracked bool
+}
+
+// Git provides the small Git surface needed by task lifecycle operations.
+type Git interface {
+	RepositoryRoot(path string) (string, error)
+	Head(path string) (string, error)
+	Branch(path string) (string, error)
+	Resolve(path, revision string) (string, error)
+	Status(path string) (GitStatus, error)
+	AddWorktree(repository, path, branch, base string) error
+}
+
 type Tmux interface {
 	Start(taskID string) (TmuxProcess, error)
 	Observe(taskID string) (TmuxObservation, error)
@@ -51,6 +72,7 @@ type Tmux interface {
 type Manager struct {
 	Store              *store.Store
 	Tmux               Tmux
+	Git                Git
 	Credentials        func() (*credential.Manifest, error)
 	Checker            *credential.Checker
 	Now                func() time.Time
@@ -66,6 +88,9 @@ type StartRequest struct {
 	ID           string
 	Title        string
 	Repository   string
+	Branch       string
+	BaseRevision string
+	WorktreePath string
 	Requirements []string
 	Optional     []string
 }
@@ -76,38 +101,42 @@ type StartResult struct {
 }
 
 func New(state *store.Store) *Manager {
-	manager := &Manager{
-		Store: state, Tmux: commandTmux{}, Credentials: func() (*credential.Manifest, error) {
+	return &Manager{
+		Store: state, Tmux: commandTmux{}, Git: commandGit{}, Credentials: func() (*credential.Manifest, error) {
 			return credential.Load(credential.ConfigPath())
 		}, Checker: credential.NewChecker(), Now: time.Now, HeartbeatTimeout: DefaultHeartbeatTimeout,
+		GitFacts:           func(store.Manifest) (store.GitFacts, error) { return store.GitFacts{}, nil },
+		TerminalHistory:    func(string) (string, error) { return "", nil },
+		CleanupWorktree:    func(store.Manifest, store.GitFacts) error { return nil },
+		CleanupCredentials: func(store.Manifest) error { return nil },
 	}
-	manager.GitFacts = manager.inspectGitFacts
-	manager.TerminalHistory = manager.captureTerminalHistory
-	manager.CleanupWorktree = func(store.Manifest, store.GitFacts) error { return nil }
-	manager.CleanupCredentials = func(store.Manifest) error { return nil }
-	return manager
 }
 
 func (m *Manager) RegisterRepository(name, path, policy string) (store.Repository, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
-		return store.Repository{}, fmt.Errorf("resolve repository path: %w", err)
+		return store.Repository{}, fmt.Errorf("resolve repository path")
 	}
-	info, err := os.Stat(abs)
-	if err != nil || !info.IsDir() {
-		return store.Repository{}, fmt.Errorf("repository path is not a directory")
+	root, err := m.Git.RepositoryRoot(abs)
+	if err != nil {
+		return store.Repository{}, fmt.Errorf("repository path is not a Git worktree")
+	}
+	root, err = filepath.Abs(root)
+	if err != nil || root != abs {
+		return store.Repository{}, fmt.Errorf("repository path must be the Git worktree root")
 	}
 	if policy == "" {
 		policy = discoverPolicy(abs)
 	}
-	repository := store.Repository{Name: name, Path: abs, Policy: policy}
-	if existing, err := m.Store.ReadRepository(name); err == nil {
-		if existing == repository {
-			return existing, nil
-		}
-		return store.Repository{}, fmt.Errorf("repository registration conflicts with existing %s", name)
+	if policy != "worktree" && policy != "direct" {
+		return store.Repository{}, fmt.Errorf("repository policy must be worktree or direct")
 	}
-	if err := m.Store.WriteRepository(repository); err != nil {
+	worktreeRoot := ""
+	if policy == "worktree" {
+		worktreeRoot = filepath.Join(filepath.Dir(abs), ".akagent", "worktrees", name)
+	}
+	repository := store.Repository{Name: name, Path: abs, Policy: policy, WorktreeRoot: worktreeRoot, Instructions: discoverInstructions(abs)}
+	if _, err := m.Store.RegisterRepository(repository); err != nil {
 		return store.Repository{}, err
 	}
 	return repository, nil
@@ -120,11 +149,34 @@ func discoverPolicy(path string) string {
 	return "direct"
 }
 
+func discoverInstructions(path string) []string {
+	var reversed []string
+	for current := path; ; current = filepath.Dir(current) {
+		candidate := filepath.Join(current, "AGENTS.md")
+		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+			reversed = append(reversed, candidate)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+	if len(reversed) == 0 {
+		return nil
+	}
+	instructions := make([]string, len(reversed))
+	for i := range reversed {
+		instructions[i] = reversed[len(reversed)-1-i]
+	}
+	return instructions
+}
+
 func (m *Manager) Start(request StartRequest) (StartResult, error) {
 	if request.ID == "" || request.Title == "" || request.Repository == "" {
 		return StartResult{}, fmt.Errorf("task ID, title, and repository are required")
 	}
-	if _, err := m.Store.ReadRepository(request.Repository); err != nil {
+	repository, err := m.Store.ReadRepository(request.Repository)
+	if err != nil {
 		return StartResult{}, err
 	}
 	request.Requirements = unique(request.Requirements)
@@ -133,50 +185,180 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 	if err != nil {
 		return StartResult{}, err
 	}
-	now := m.now()
-	manifest := store.Manifest{
-		Title:                  request.Title,
-		Worker:                 "local",
-		Repository:             request.Repository,
-		Lifecycle:              "starting",
-		Condition:              "none",
-		HeartbeatAt:            now,
-		ArchiveState:           "none",
-		CleanupState:           "none",
-		WorktreeCleanupState:   "none",
-		CredentialCleanupState: "none",
-		Requirements:           strings.Join(request.Requirements, ","),
-		Warnings:               strings.Join(warnings, "; "),
-	}
-	if envelope, err := m.Store.ReadManifest(request.ID); err == nil {
-		existing, decodeErr := envelope.DecodeManifest()
-		if decodeErr != nil {
-			return StartResult{}, decodeErr
-		}
-		if !sameStart(existing, manifest) {
-			return StartResult{}, fmt.Errorf("task inputs conflict with the existing task")
-		}
-		// Only resume a persisted, incomplete startup. A completed start remains
-		// a no-op even if a later observation found its tmux window missing.
-		if existing.Lifecycle == "starting" {
-			if err := m.ensureStarted(request.ID, &existing); err != nil {
-				return StartResult{}, err
+	var result StartResult
+	err = m.Store.WithRepositoryLock(repository.Name, func() error {
+		existingEnvelope, readErr := m.Store.ReadManifest(request.ID)
+		if readErr == nil {
+			existing, decodeErr := existingEnvelope.DecodeManifest()
+			if decodeErr != nil {
+				return decodeErr
 			}
+			if err := m.validateExistingStart(request, repository, existing); err != nil {
+				return err
+			}
+			if existing.Lifecycle == "starting" {
+				if err := m.ensureWorktree(request.ID, repository, &existing); err != nil {
+					return err
+				}
+				if err := m.ensureStarted(request.ID, &existing); err != nil {
+					return err
+				}
+			}
+			result = StartResult{Manifest: existing}
+			return nil
 		}
-		return StartResult{Manifest: existing}, nil
-	} else if !store.IsKind(err, store.KindNotFound) {
-		return StartResult{}, err
+		if !store.IsKind(readErr, store.KindNotFound) {
+			return readErr
+		}
+		branch, base, worktree, err := m.startInputs(request, repository)
+		if err != nil {
+			return err
+		}
+		manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree, Lifecycle: "starting", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+		created, existing, err := m.Store.CreateManifest(request.ID, manifest)
+		if err != nil {
+			return err
+		}
+		if !created {
+			if !sameStart(existing, manifest) {
+				return fmt.Errorf("task inputs conflict with the existing task")
+			}
+			result = StartResult{Manifest: existing}
+			return nil
+		}
+		if _, err := m.Store.AppendEvent(request.ID, store.Event{Operation: "start", Outcome: "intent"}); err != nil {
+			return err
+		}
+		if err := m.ensureWorktree(request.ID, repository, &manifest); err != nil {
+			_, _ = m.Store.AppendEvent(request.ID, store.Event{Operation: "start", Outcome: "failed", Detail: "worktree"})
+			return err
+		}
+		if err := m.ensureStarted(request.ID, &manifest); err != nil {
+			return err
+		}
+		result = StartResult{Manifest: manifest, Created: true}
+		return nil
+	})
+	return result, err
+}
+
+func (m *Manager) startInputs(request StartRequest, repository store.Repository) (string, string, string, error) {
+	branch := request.Branch
+	if branch == "" {
+		if repository.Policy == "direct" {
+			var err error
+			branch, err = m.Git.Branch(repository.Path)
+			if err != nil {
+				return "", "", "", fmt.Errorf("inspect the repository branch")
+			}
+		} else {
+			branch = "akagent/" + request.ID
+		}
 	}
-	if err := m.Store.WriteManifest(request.ID, manifest); err != nil {
-		return StartResult{}, err
+	if !validBranch(branch) {
+		return "", "", "", fmt.Errorf("task branch is invalid")
 	}
-	if _, err := m.Store.AppendEvent(request.ID, store.Event{Operation: "start", Outcome: "intent"}); err != nil {
-		return StartResult{}, err
+	base := request.BaseRevision
+	if base == "" {
+		var err error
+		base, err = m.Git.Head(repository.Path)
+		if err != nil {
+			return "", "", "", fmt.Errorf("inspect the repository base revision")
+		}
+	} else {
+		resolved, err := m.Git.Resolve(repository.Path, base)
+		if err != nil {
+			return "", "", "", fmt.Errorf("requested base revision is unavailable")
+		}
+		base = resolved
 	}
-	if err := m.ensureStarted(request.ID, &manifest); err != nil {
-		return StartResult{}, err
+	worktree := request.WorktreePath
+	if repository.Policy == "direct" {
+		if worktree == "" {
+			worktree = repository.Path
+		}
+		abs, err := filepath.Abs(worktree)
+		if err != nil || abs != repository.Path {
+			return "", "", "", fmt.Errorf("direct repository policy requires its registered worktree path")
+		}
+		currentHead, err := m.Git.Head(repository.Path)
+		if err != nil || currentHead != base {
+			return "", "", "", fmt.Errorf("direct repository base does not match its current revision")
+		}
+	} else {
+		root := repository.WorktreeRoot
+		if root == "" {
+			root = filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
+		}
+		if worktree == "" {
+			worktree = filepath.Join(root, request.ID)
+		}
+		abs, err := filepath.Abs(worktree)
+		if err != nil || !within(abs, root) || abs == repository.Path {
+			return "", "", "", fmt.Errorf("task worktree must be under the repository worktree root")
+		}
+		worktree = abs
 	}
-	return StartResult{Manifest: manifest, Created: true}, nil
+	return branch, base, worktree, nil
+}
+
+func (m *Manager) validateExistingStart(request StartRequest, repository store.Repository, existing store.Manifest) error {
+	if existing.Title != request.Title || existing.Repository != request.Repository || existing.Worker != "local" {
+		return fmt.Errorf("task inputs conflict with the existing task")
+	}
+	if strings.Join(unique(request.Requirements), ",") != existing.Requirements {
+		return fmt.Errorf("task inputs conflict with the existing task")
+	}
+	if request.Branch != "" && request.Branch != existing.Branch {
+		return fmt.Errorf("task inputs conflict with the existing task")
+	}
+	if request.WorktreePath != "" {
+		abs, err := filepath.Abs(request.WorktreePath)
+		if err != nil || abs != existing.WorktreePath {
+			return fmt.Errorf("task inputs conflict with the existing task")
+		}
+	}
+	if request.BaseRevision != "" {
+		resolved, err := m.Git.Resolve(repository.Path, request.BaseRevision)
+		if err != nil || resolved != existing.BaseRevision {
+			return fmt.Errorf("task inputs conflict with the existing task")
+		}
+	}
+	return nil
+}
+
+func (m *Manager) ensureWorktree(id string, repository store.Repository, manifest *store.Manifest) error {
+	if repository.Policy == "direct" {
+		status, err := m.Git.Status(manifest.WorktreePath)
+		if err != nil || !status.Exists || status.Root != repository.Path || status.Branch != manifest.Branch {
+			return fmt.Errorf("registered direct worktree does not match task inputs")
+		}
+		m.applyGitStatus(manifest, status)
+		return m.Store.WriteManifest(id, *manifest)
+	}
+	status, err := m.Git.Status(manifest.WorktreePath)
+	if err == nil && status.Exists {
+		if status.Root != repository.Path || status.Branch != manifest.Branch {
+			return fmt.Errorf("task worktree does not match its immutable inputs")
+		}
+		m.applyGitStatus(manifest, status)
+		return m.Store.WriteManifest(id, *manifest)
+	}
+	if _, err := os.Stat(manifest.WorktreePath); err == nil {
+		return fmt.Errorf("task worktree path exists but is not the expected Git worktree")
+	}
+	if err := os.MkdirAll(filepath.Dir(manifest.WorktreePath), 0o755); err != nil {
+		return fmt.Errorf("create the task worktree parent")
+	}
+	if err := m.Git.AddWorktree(repository.Path, manifest.WorktreePath, manifest.Branch, manifest.BaseRevision); err != nil {
+		return fmt.Errorf("create task Git worktree")
+	}
+	status, err = m.Git.Status(manifest.WorktreePath)
+	if err != nil || !status.Exists || status.Branch != manifest.Branch {
+		return fmt.Errorf("created task worktree could not be validated")
+	}
+	m.applyGitStatus(manifest, status)
+	return m.Store.WriteManifest(id, *manifest)
 }
 
 func (m *Manager) ensureStarted(id string, manifest *store.Manifest) error {
@@ -259,6 +441,11 @@ func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
 	if err != nil {
 		return store.Manifest{}, err
 	}
+	if m.refreshGit(&manifest) {
+		if err := m.Store.WriteManifest(id, manifest); err != nil {
+			return store.Manifest{}, err
+		}
+	}
 	if changed {
 		_, err = m.Store.AppendEvent(id, store.Event{Operation: "finish", Outcome: outcome})
 	}
@@ -290,13 +477,18 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 	if err != nil {
 		return store.Manifest{}, err
 	}
+	if m.refreshGit(&manifest) {
+		if err := m.Store.WriteManifest(id, manifest); err != nil {
+			return store.Manifest{}, err
+		}
+	}
 	if changed {
 		_, err = m.Store.AppendEvent(id, store.Event{Operation: "stop", Outcome: "succeeded"})
 	}
 	return manifest, err
 }
 
-// Reconcile repairs derived observations only. It never removes a window or worktree.
+// Reconcile repairs derived observations and Git facts only. It never removes a window or worktree.
 func (m *Manager) Reconcile() ([]store.Manifest, error) {
 	if _, err := m.Store.Recover(); err != nil {
 		return nil, err
@@ -314,12 +506,14 @@ func (m *Manager) Reconcile() ([]store.Manifest, error) {
 		var changed bool
 		manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
 			beforeObservation, beforeLifecycle := manifest.Observation, manifest.Lifecycle
+			beforeGit := *manifest
 			legacyProcess := manifest.ProcessPID == 0 || manifest.ProcessStartTime == 0
 			applyObservation(manifest, observation, m.now(), m.heartbeatTimeout())
 			if legacyProcess && observation.Available && len(observation.Processes) == 0 && manifest.Lifecycle == "running" {
 				manifest.Lifecycle, manifest.Condition = "stopped", "none"
 			}
-			changed = beforeObservation != manifest.Observation || beforeLifecycle != manifest.Lifecycle
+			m.refreshGit(manifest)
+			changed = beforeObservation != manifest.Observation || beforeLifecycle != manifest.Lifecycle || !sameGitFacts(beforeGit, *manifest)
 			return nil
 		})
 		if err != nil {
@@ -405,7 +599,86 @@ func (m *Manager) heartbeatTimeout() time.Duration {
 }
 
 func sameStart(a, b store.Manifest) bool {
-	return a.Title == b.Title && a.Worker == b.Worker && a.Repository == b.Repository && a.Requirements == b.Requirements
+	return a.Title == b.Title && a.Worker == b.Worker && a.Repository == b.Repository && a.Branch == b.Branch && a.BaseRevision == b.BaseRevision && a.WorktreePath == b.WorktreePath && a.Requirements == b.Requirements
+}
+
+func validBranch(branch string) bool {
+	if branch == "" || strings.HasPrefix(branch, "-") || strings.HasSuffix(branch, "/") || strings.ContainsAny(branch, " ~^:?*[\\\\") || strings.Contains(branch, "..") || strings.Contains(branch, "@{") {
+		return false
+	}
+	return regexp.MustCompile(`^[A-Za-z0-9._/-]+$`).MatchString(branch)
+}
+
+func within(path, root string) bool {
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(absoluteRoot, absolutePath)
+	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && relative != "."
+}
+
+func (m *Manager) refreshGit(manifest *store.Manifest) bool {
+	if manifest.WorktreePath == "" || m.Git == nil {
+		return false
+	}
+	before := *manifest
+	status, err := m.Git.Status(manifest.WorktreePath)
+	if err != nil || !status.Exists {
+		manifest.Committed, manifest.Dirty, manifest.Untracked = false, false, false
+		manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "worktree_missing")
+		return !sameGitFacts(before, *manifest)
+	}
+	m.applyGitStatus(manifest, status)
+	repository, repositoryErr := m.Store.ReadRepository(manifest.Repository)
+	if repositoryErr != nil || status.Root != repository.Path || status.Branch != manifest.Branch {
+		manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "worktree_mismatch")
+	} else {
+		manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_mismatch")
+	}
+	return !sameGitFacts(before, *manifest)
+}
+
+func (m *Manager) applyGitStatus(manifest *store.Manifest, status GitStatus) {
+	manifest.Dirty, manifest.Untracked = status.Dirty, status.Untracked
+	manifest.Committed = !status.Dirty && !status.Untracked && status.Head != ""
+	manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_missing")
+	if status.Dirty || status.Untracked {
+		manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "uncommitted_work")
+	} else {
+		manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "uncommitted_work")
+	}
+}
+
+func sameGitFacts(a, b store.Manifest) bool {
+	return a.Committed == b.Committed && a.Dirty == b.Dirty && a.Untracked == b.Untracked && a.RecoveryDebt == b.RecoveryDebt
+}
+
+func addDebt(values, value string) string {
+	for _, existing := range strings.Split(values, ";") {
+		if existing == value {
+			return values
+		}
+	}
+	if values == "" {
+		return value
+	}
+	return values + ";" + value
+}
+
+func removeDebt(values, value string) string {
+	parts := strings.Split(values, ";")
+	remaining := make([]string, 0, len(parts))
+	for _, existing := range parts {
+		if existing != "" && existing != value {
+			remaining = append(remaining, existing)
+		}
+	}
+	return strings.Join(remaining, ";")
 }
 
 func validCondition(value string) bool {
@@ -521,6 +794,80 @@ func Status(manifest store.Manifest, now time.Time, heartbeatTimeout time.Durati
 	default:
 		return "unknown"
 	}
+}
+
+type commandGit struct{}
+
+func (commandGit) run(path string, args ...string) ([]byte, error) {
+	return exec.Command("git", append([]string{"-C", path}, args...)...).Output()
+}
+func (g commandGit) RepositoryRoot(path string) (string, error) {
+	inside, err := g.run(path, "rev-parse", "--is-inside-work-tree")
+	if err != nil || strings.TrimSpace(string(inside)) != "true" {
+		return "", errors.New("not a Git worktree")
+	}
+	root, err := g.run(path, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", errors.New("Git worktree root unavailable")
+	}
+	return strings.TrimSpace(string(root)), nil
+}
+func (g commandGit) Head(path string) (string, error) {
+	output, err := g.run(path, "rev-parse", "HEAD")
+	if err != nil {
+		return "", errors.New("Git HEAD unavailable")
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+func (g commandGit) Branch(path string) (string, error) {
+	output, err := g.run(path, "branch", "--show-current")
+	if err != nil || strings.TrimSpace(string(output)) == "" {
+		return "", errors.New("Git branch unavailable")
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+func (g commandGit) Resolve(path, revision string) (string, error) {
+	output, err := g.run(path, "rev-parse", "--verify", revision+"^{commit}")
+	if err != nil {
+		return "", errors.New("Git revision unavailable")
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+func (g commandGit) Status(path string) (GitStatus, error) {
+	root, err := g.RepositoryRoot(path)
+	if err != nil {
+		return GitStatus{}, err
+	}
+	branch, err := g.Branch(path)
+	if err != nil {
+		return GitStatus{}, err
+	}
+	head, err := g.Head(path)
+	if err != nil {
+		return GitStatus{}, err
+	}
+	output, err := g.run(path, "status", "--porcelain=v1", "--branch")
+	if err != nil {
+		return GitStatus{}, errors.New("Git status unavailable")
+	}
+	status := GitStatus{Exists: true, Root: root, Branch: branch, Head: head}
+	for _, line := range strings.Split(string(output), "\n") {
+		if line == "" || strings.HasPrefix(line, "##") {
+			continue
+		}
+		if strings.HasPrefix(line, "??") {
+			status.Untracked = true
+		} else {
+			status.Dirty = true
+		}
+	}
+	return status, nil
+}
+func (g commandGit) AddWorktree(repository, path, branch, base string) error {
+	if _, err := g.run(repository, "worktree", "add", "-b", branch, path, base); err != nil {
+		return errors.New("Git worktree add failed")
+	}
+	return nil
 }
 
 type commandTmux struct{}

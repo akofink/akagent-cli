@@ -2,7 +2,10 @@ package lifecycle
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -13,17 +16,26 @@ import (
 )
 
 type fakeTmux struct {
+	mu          sync.Mutex
 	observation TmuxObservation
 	starts      int
 }
 
 func (t *fakeTmux) Start(string) (TmuxProcess, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.starts++
 	t.observation = TmuxObservation{Available: true, Processes: []TmuxProcess{{WindowID: "@1", PaneID: "%1", PID: 42, StartTime: 100}}}
 	return t.observation.Processes[0], nil
 }
-func (t *fakeTmux) Observe(string) (TmuxObservation, error) { return t.observation, nil }
+func (t *fakeTmux) Observe(string) (TmuxObservation, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.observation, nil
+}
 func (t *fakeTmux) Stop(string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.observation = TmuxObservation{Available: true}
 	return nil
 }
@@ -42,10 +54,29 @@ func newTestManager(t *testing.T) (*Manager, *fakeTmux) {
 	manager := New(state)
 	manager.Tmux = tmux
 	manager.Credentials = func() (*credential.Manifest, error) { return &credential.Manifest{Version: 1}, nil }
-	if _, err := manager.RegisterRepository("demo", t.TempDir(), "direct"); err != nil {
+	repositoryPath := t.TempDir()
+	for _, args := range [][]string{{"init"}, {"config", "user.email", "test@example.com"}, {"config", "user.name", "Test"}} {
+		if err := runGit(repositoryPath, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repositoryPath, "README"), []byte("test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runGit(repositoryPath, "add", "README"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runGit(repositoryPath, "commit", "-m", "initial"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.RegisterRepository("demo", repositoryPath, "direct"); err != nil {
 		t.Fatal(err)
 	}
 	return manager, tmux
+}
+
+func runGit(path string, args ...string) error {
+	return exec.Command("git", append([]string{"-C", path}, args...)...).Run()
 }
 
 func TestStartPersistsProcessIdentityAndIsIdempotent(t *testing.T) {
@@ -230,6 +261,125 @@ func TestFinishRequiresTaskProcessToExit(t *testing.T) {
 	}
 	if manifest.Lifecycle != "finished" || manifest.Observation != ObservationMissing {
 		t.Fatalf("manifest = %#v, want finished with missing process", manifest)
+	}
+}
+
+func TestRegisterRejectsNonGitDirectory(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.RegisterRepository("not-git", t.TempDir(), "direct"); err == nil {
+		t.Fatal("RegisterRepository() accepted a non-Git directory")
+	}
+}
+
+func TestWorktreeStartOwnsImmutableGitInputs(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository.Name = "demo-worktree"
+	repository.Policy = "worktree"
+	repository.WorktreeRoot = filepath.Join(t.TempDir(), "worktrees")
+	if _, err := manager.Store.RegisterRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	request := StartRequest{ID: "task-worktree", Title: "Own worktree", Repository: "demo-worktree", Branch: "feature/task-worktree"}
+	result, err := manager.Start(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Created || result.Manifest.Branch != request.Branch || result.Manifest.BaseRevision == "" {
+		t.Fatalf("Start() = %#v, want created branch and base", result)
+	}
+	if _, err := os.Stat(result.Manifest.WorktreePath); err != nil {
+		t.Fatalf("worktree path %q: %v", result.Manifest.WorktreePath, err)
+	}
+	if tmux.starts != 1 {
+		t.Fatalf("tmux starts = %d, want 1", tmux.starts)
+	}
+	if repeated, err := manager.Start(request); err != nil || repeated.Created {
+		t.Fatalf("equivalent Start() = %#v, %v; want no-op", repeated, err)
+	}
+	if _, err := manager.Start(StartRequest{ID: request.ID, Title: request.Title, Repository: request.Repository, Branch: "feature/other"}); err == nil {
+		t.Fatal("conflicting branch was accepted")
+	}
+}
+
+func TestConcurrentWorktreeStartsAreSerializedByRepositoryLock(t *testing.T) {
+	manager, _ := newTestManager(t)
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository.Name = "demo-concurrent"
+	repository.Policy = "worktree"
+	repository.WorktreeRoot = filepath.Join(t.TempDir(), "worktrees")
+	if _, err := manager.Store.RegisterRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	var wait sync.WaitGroup
+	errors := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			_, startErr := manager.Start(StartRequest{ID: fmt.Sprintf("task-concurrent-%d", index), Title: "Concurrent", Repository: "demo-concurrent"})
+			errors <- startErr
+		}(i)
+	}
+	wait.Wait()
+	close(errors)
+	for startErr := range errors {
+		if startErr != nil {
+			t.Fatalf("concurrent Start() error = %v", startErr)
+		}
+	}
+}
+
+func TestReconcileReportsWorktreeRecoveryAndGitFacts(t *testing.T) {
+	manager, _ := newTestManager(t)
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository.Name = "demo-facts"
+	repository.Policy = "worktree"
+	repository.WorktreeRoot = filepath.Join(t.TempDir(), "worktrees")
+	if _, err := manager.Store.RegisterRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.Start(StartRequest{ID: "task-facts", Title: "Facts", Repository: "demo-facts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(result.Manifest.WorktreePath, "README"), []byte("changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(result.Manifest.WorktreePath, "untracked"), []byte("recover\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := manager.Inspect("task-facts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !manifest.Dirty || !manifest.Untracked || manifest.Committed || !strings.Contains(manifest.RecoveryDebt, "uncommitted_work") {
+		t.Fatalf("Git facts = %#v, want dirty and untracked recovery facts", manifest)
+	}
+	if err := os.RemoveAll(result.Manifest.WorktreePath); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err = manager.Inspect("task-facts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(manifest.RecoveryDebt, "worktree_missing") {
+		t.Fatalf("recovery debt = %q, want missing worktree", manifest.RecoveryDebt)
 	}
 }
 

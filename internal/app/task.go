@@ -16,10 +16,17 @@ type taskView struct {
 	Title                  string `json:"title"`
 	Status                 string `json:"status"`
 	Worker                 string `json:"worker"`
+	Branch                 string `json:"branch,omitempty"`
+	BaseRevision           string `json:"base_revision,omitempty"`
+	WorktreePath           string `json:"worktree_path,omitempty"`
 	Condition              string `json:"condition,omitempty"`
 	Reason                 string `json:"reason,omitempty"`
 	Activity               string `json:"activity,omitempty"`
 	Result                 string `json:"result,omitempty"`
+	Committed              bool   `json:"committed"`
+	Dirty                  bool   `json:"dirty"`
+	Untracked              bool   `json:"untracked"`
+	RecoveryDebt           string `json:"recovery_debt,omitempty"`
 	Warnings               string `json:"warnings,omitempty"`
 	ArchiveState           string `json:"archive_state,omitempty"`
 	CleanupState           string `json:"cleanup_state,omitempty"`
@@ -52,7 +59,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	case "start":
 		request, ok := parseStart(args[1:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task start --title <title> --repository <name> [--task-id <id>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then start the task")
+			return writeError(stdout, "usage", "Usage: akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then start the task")
 		}
 		if request.ID == "" {
 			id, idErr := uuid.NewV7()
@@ -199,6 +206,12 @@ func parseStart(args []string) (lifecycle.StartRequest, bool) {
 			request.Title = value
 		case "--repository":
 			request.Repository = value
+		case "--branch":
+			request.Branch = value
+		case "--base":
+			request.BaseRevision = value
+		case "--worktree":
+			request.WorktreePath = value
 		case "--require":
 			request.Requirements = append(request.Requirements, value)
 		case "--optional":
@@ -250,7 +263,7 @@ func taskUsage(stdout io.Writer) int {
 	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 func view(id string, manifest store.Manifest) taskView {
-	return taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
+	return taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
 }
 
 func taskState(value string) string {

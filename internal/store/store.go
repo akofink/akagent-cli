@@ -161,6 +161,33 @@ func (s *Store) ReadManifest(taskID string) (Envelope, error) {
 	return envelope, nil
 }
 
+// CreateManifest atomically creates a task manifest if it does not exist.
+// It returns the existing manifest and created=false for an idempotent retry.
+func (s *Store) CreateManifest(taskID string, manifest Manifest) (bool, Manifest, error) {
+	if err := validateTaskID(taskID); err != nil {
+		return false, Manifest{}, err
+	}
+	var created bool
+	var existing Manifest
+	err := s.WithLock(taskID, func() error {
+		envelope, err := s.ReadManifest(taskID)
+		if err == nil {
+			existing, err = envelope.DecodeManifest()
+			return err
+		}
+		if !IsKind(err, KindNotFound) {
+			return err
+		}
+		if err := s.writeManifestLocked(taskID, manifest); err != nil {
+			return err
+		}
+		created = true
+		existing = manifest
+		return nil
+	})
+	return created, existing, err
+}
+
 // AppendEvent appends a single immutable event to the task's append-only
 // history and returns its 1-based sequence number. It acquires the per-task
 // lock.
@@ -341,6 +368,15 @@ func (s *Store) Lock(taskID string) (func() error, error) {
 		}
 		return closeErr
 	}, nil
+}
+
+// WithRepositoryLock runs fn while holding a repository-scoped advisory lock.
+// Repository locks use a distinct namespace from task locks.
+func (s *Store) WithRepositoryLock(name string, fn func() error) error {
+	if err := validateRepositoryName(name); err != nil {
+		return err
+	}
+	return s.WithLock("repo-"+name, fn)
 }
 
 // WithLock runs fn while holding the per-task advisory lock. It returns a

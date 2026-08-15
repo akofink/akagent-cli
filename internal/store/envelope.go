@@ -34,6 +34,9 @@ type Manifest struct {
 	Title                  string    `json:"title"`
 	Worker                 string    `json:"worker"`
 	Repository             string    `json:"repository,omitempty"`
+	Branch                 string    `json:"branch,omitempty"`
+	BaseRevision           string    `json:"base_revision,omitempty"`
+	WorktreePath           string    `json:"worktree_path,omitempty"`
 	Lifecycle              string    `json:"lifecycle"`
 	Condition              string    `json:"condition"`
 	Reason                 string    `json:"reason,omitempty"`
@@ -43,6 +46,10 @@ type Manifest struct {
 	Requirements           string    `json:"requirements,omitempty"`
 	Warnings               string    `json:"warnings,omitempty"`
 	Result                 string    `json:"result,omitempty"`
+	Committed              bool      `json:"committed,omitempty"`
+	Dirty                  bool      `json:"dirty,omitempty"`
+	Untracked              bool      `json:"untracked,omitempty"`
+	RecoveryDebt           string    `json:"recovery_debt,omitempty"`
 	ArchiveState           string    `json:"archive_state,omitempty"`
 	CleanupState           string    `json:"cleanup_state,omitempty"`
 	WorktreeCleanupState   string    `json:"worktree_cleanup_state,omitempty"`
