@@ -4,8 +4,7 @@ Agent orchestration is ready for default enablement over the stable `akagent` CL
 Automated lifecycle behavior belongs to the agent skill, while direct human `akagent` commands remain available independently.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-At the CLI boundary, only the exact value `1` enables automation.
-An unset signal, an empty value, or any other value disables automation.
+At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 
 Inspect the current state without changing it:
 
@@ -13,13 +12,13 @@ Inspect the current state without changing it:
 akagent integration inspect
 ```
 
-Enable the signal for the current shell when an approved automated integration needs it:
+Disable automation immediately for the current shell with:
 
 ```bash
-export AKAGENT_ENABLED=1
+export AKAGENT_ENABLED=0
 ```
 
-Disable it immediately for the current shell with:
+Re-enable automation for the current shell with:
 
 ```bash
 unset AKAGENT_ENABLED

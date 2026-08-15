@@ -86,12 +86,12 @@ After a command that may have mutated state fails, inspect the task and run reco
 Direct human `akagent` commands remain available regardless of the integration signal.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-At the CLI boundary, only the exact value `1` is enabled; an unset, empty, or other value is disabled.
+At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 
 ```bash
 akagent integration inspect
-export AKAGENT_ENABLED=1
-unset AKAGENT_ENABLED
+export AKAGENT_ENABLED=0
+unset AKAGENT_ENABLED # Re-enable automation
 ```
 
 `integration inspect` is read-only.

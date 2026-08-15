@@ -41,7 +41,7 @@ Agent orchestration is ready for default enablement over the stable CLI boundary
 The agent skill owns automated lifecycle behavior and should inspect and reconcile before a manual fallback after a possibly mutating failure.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal.
-At the CLI boundary, only the exact value `1` enables automated integrations; an unset, empty, or other value disables them.
+At the CLI boundary, automated integrations are enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 Direct CLI commands, including managed Pi launch, remain available when the signal disables automation.
 Integrations must be idempotent, independently removable, token-budgeted, and limited to CLI operations.
 

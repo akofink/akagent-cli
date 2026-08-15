@@ -8,34 +8,34 @@ import (
 	"github.com/akofink/akagent-cli/internal/integration"
 )
 
-func TestIntegrationInspectReportsDisabledWhenSignalIsMissing(t *testing.T) {
+func TestIntegrationInspectReportsEnabledWhenSignalIsMissing(t *testing.T) {
 	unsetIntegrationSignal(t)
 
 	result := runCommand(t, []string{"integration", "inspect"})
-	want := "integration:\n  enabled: false\n  signal: AKAGENT_ENABLED\n  reason: AKAGENT_ENABLED is unset\n"
+	want := "integration:\n  enabled: true\n  signal: AKAGENT_ENABLED\n  reason: AKAGENT_ENABLED is unset\n"
 	if result.code != 0 || result.stdout != want {
 		t.Fatalf("integration inspect = (%d, %q), want (0, %q)", result.code, result.stdout, want)
 	}
 }
 
-func TestIntegrationInspectDoesNotExposeNonEnabledSignalValue(t *testing.T) {
+func TestIntegrationInspectDoesNotExposeEnabledSignalValue(t *testing.T) {
 	secretValue := "operator-only-value"
 	t.Setenv(integration.EnableEnv, secretValue)
 
 	result := runCommand(t, []string{"integration", "inspect"})
-	if result.code != 0 || !strings.Contains(result.stdout, "enabled: false") || !strings.Contains(result.stdout, "other than 1") {
-		t.Fatalf("integration inspect = (%d, %q), want disabled reason", result.code, result.stdout)
+	if result.code != 0 || !strings.Contains(result.stdout, "enabled: true") || !strings.Contains(result.stdout, "not set to 0") {
+		t.Fatalf("integration inspect = (%d, %q), want enabled reason", result.code, result.stdout)
 	}
 	if strings.Contains(result.stdout, secretValue) {
 		t.Fatalf("integration inspect exposed the signal value")
 	}
 }
 
-func TestIntegrationInspectReportsEnabledForOne(t *testing.T) {
-	t.Setenv(integration.EnableEnv, "1")
+func TestIntegrationInspectReportsDisabledForZero(t *testing.T) {
+	t.Setenv(integration.EnableEnv, "0")
 
 	result := runCommand(t, []string{"integration", "inspect"})
-	want := "integration:\n  enabled: true\n  signal: AKAGENT_ENABLED\n  reason: AKAGENT_ENABLED is set to 1\n"
+	want := "integration:\n  enabled: false\n  signal: AKAGENT_ENABLED\n  reason: AKAGENT_ENABLED is set to 0\n"
 	if result.code != 0 || result.stdout != want {
 		t.Fatalf("integration inspect = (%d, %q), want (0, %q)", result.code, result.stdout, want)
 	}

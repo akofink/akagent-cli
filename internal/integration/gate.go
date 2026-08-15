@@ -1,4 +1,4 @@
-// Package integration defines the opt-in gate for automated akagent integrations.
+// Package integration defines the default-on gate for automated akagent integrations.
 package integration
 
 import "os"
@@ -19,13 +19,14 @@ func Inspect() Status {
 func InspectValue(value string, set bool) Status {
 	status := Status{Signal: EnableEnv}
 	switch {
+	case set && value == "0":
+		status.Reason = EnableEnv + " is set to 0"
 	case !set:
+		status.Enabled = true
 		status.Reason = EnableEnv + " is unset"
-	case value != "1":
-		status.Reason = EnableEnv + " is set to a value other than 1"
 	default:
 		status.Enabled = true
-		status.Reason = EnableEnv + " is set to 1"
+		status.Reason = EnableEnv + " is not set to 0"
 	}
 	return status
 }

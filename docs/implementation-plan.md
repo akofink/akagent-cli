@@ -36,7 +36,7 @@ The local lifecycle implementation established:
 - Durable condition publication, finish, stop, and reconciliation.
 - Archive capture and cleanup-preservation policy.
 - Independent archive, worktree-cleanup, credential-cleanup, and recovery-debt state.
-- Exact-signal automated integration gating with an immediate per-environment disable path.
+- Default-on automated integration gating with an immediate per-environment disable path.
 - Managed local Pi launch with durable configuration, interactive prompt-file references, safe environment construction, process identity, retry, and recovery behavior.
 
 The current CLI starts a shell for direct human or shell-driven work by default and starts managed Pi when `--agent pi` is selected.
@@ -49,7 +49,7 @@ The agent skill owns automated lifecycle behavior, while direct human CLI comman
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-At the CLI boundary, only the exact value `1` enables automation; an unset, empty, or other value disables it.
+At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 
 ## Current command surface
 
