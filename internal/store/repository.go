@@ -2,9 +2,13 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // Repository is a local clone registration. Policy is deliberately small:
@@ -86,6 +90,123 @@ func (s *Store) readRepository(name string) (Repository, error) {
 		return Repository{}, malformedError(fmt.Sprintf("Malformed repository record for %s", name), "Register the repository again")
 	}
 	return repository, nil
+}
+
+// UpdateRepository applies an atomic read-modify-write to a registration.
+// Returning the existing value for an equivalent update makes retries safe.
+func (s *Store) UpdateRepository(name string, update func(*Repository) error) (Repository, error) {
+	if err := validateRepositoryName(name); err != nil {
+		return Repository{}, err
+	}
+	var result Repository
+	err := s.WithRepositoryLock(name, func() error {
+		current, err := s.readRepository(name)
+		if err != nil {
+			return err
+		}
+		updated := current
+		if err := update(&updated); err != nil {
+			return err
+		}
+		if updated.Name != name {
+			return newError(KindUsage, "Repository name cannot be changed by update", "Unregister and register under the new name")
+		}
+		if err := validateRepository(updated); err != nil {
+			return err
+		}
+		if sameRepository(current, updated) {
+			result = current
+			return nil
+		}
+		if updated.Path != current.Path {
+			references, err := s.RepositoryReferences(name)
+			if err != nil {
+				return err
+			}
+			if len(references) > 0 {
+				return &Error{
+					Kind:     KindConflict,
+					Message:  fmt.Sprintf("repository %s path update conflicts with referenced tasks: %s", name, strings.Join(references, ", ")),
+					Recovery: "Stop or archive the referencing tasks, then retry the repository update",
+				}
+			}
+		}
+		if err := s.writeRepositoryLocked(updated); err != nil {
+			return err
+		}
+		result = updated
+		return nil
+	})
+	return result, err
+}
+
+// UnregisterRepository removes only the registration record. It preserves the
+// repository on disk and refuses removal while task manifests reference it.
+func (s *Store) UnregisterRepository(name string) error {
+	if err := validateRepositoryName(name); err != nil {
+		return err
+	}
+	return s.WithRepositoryLock(name, func() error {
+		if _, err := s.readRepository(name); err != nil {
+			return err
+		}
+		references, err := s.RepositoryReferences(name)
+		if err != nil {
+			return err
+		}
+		if len(references) > 0 {
+			return &Error{
+				Kind:     KindConflict,
+				Message:  fmt.Sprintf("repository %s is referenced by tasks: %s", name, strings.Join(references, ", ")),
+				Recovery: "Stop or archive the referencing tasks, then retry unregister; the registration record remains intact",
+			}
+		}
+		return s.removeRepositoryLocked(name)
+	})
+}
+
+// RepositoryReferences returns task IDs whose durable manifests reference name.
+func (s *Store) RepositoryReferences(name string) ([]string, error) {
+	if err := validateRepositoryName(name); err != nil {
+		return nil, err
+	}
+	ids, err := s.TaskIDs()
+	if err != nil {
+		return nil, err
+	}
+	references := make([]string, 0)
+	for _, id := range ids {
+		envelope, err := s.ReadManifest(id)
+		if err != nil {
+			return nil, err
+		}
+		manifest, err := envelope.DecodeManifest()
+		if err != nil {
+			return nil, err
+		}
+		if manifest.Repository == name {
+			references = append(references, id)
+		}
+	}
+	return references, nil
+}
+
+func (s *Store) removeRepositoryLocked(name string) error {
+	directory, err := s.openOwned(s.repositoriesDir(), true)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	if err := unix.Unlinkat(int(directory.Fd()), name+".json", 0); err != nil {
+		if errors.Is(err, unix.ENOENT) {
+			return newError(KindNotFound, fmt.Sprintf("No repository registered as %s", name), "Register it with `akagent repository register`")
+		}
+		return internalError(fmt.Sprintf("remove repository registration %s", name), "Check the repository state and retry")
+	}
+	if err := unix.Fsync(int(directory.Fd())); err != nil && !errors.Is(err, unix.EINVAL) {
+		return &Error{Kind: KindPartial, Message: fmt.Sprintf("Unregistered repository %s but could not sync its directory", name), Retryable: true, Recovery: "Retry unregister to confirm the registration is absent"}
+	}
+	return nil
 }
 
 // RepositoryNames returns registered repository names in deterministic order.

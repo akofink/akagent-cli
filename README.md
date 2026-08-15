@@ -17,8 +17,8 @@ Implemented commands:
 akagent
 akagent credential <list|inspect|doctor>
 akagent id generate
-akagent repository register <name> <path> [--policy <worktree|direct>]
-akagent task <start|list|inspect|publish|finish|stop|reconcile>
+akagent repository <register|list|inspect|update|unregister>
+akagent task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```

@@ -14,6 +14,8 @@ const (
 	KindUsage ErrorKind = "usage"
 	// KindNotFound means the requested record does not exist.
 	KindNotFound ErrorKind = "not_found"
+	// KindConflict means the requested mutation conflicts with durable state.
+	KindConflict ErrorKind = "conflict"
 	// KindLocked means another writer holds the per-task lock.
 	KindLocked ErrorKind = "lock_contention"
 	// KindMalformed means a stored record is unreadable or uses an unsupported

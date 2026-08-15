@@ -16,21 +16,46 @@ Exit code `2` means the command or its arguments are invalid.
 
 ```text
 akagent repository register <name> <path> [--policy <worktree|direct>]
+akagent repository list
+akagent repository inspect <name>
+akagent repository update <name> [--path <path>] [--policy <worktree|direct>]
+akagent repository unregister <name>
 ```
 
-The path must name an existing directory.
+The path must name the root of an existing Git worktree.
 
-When the policy is omitted, `worktree` is selected for a Git checkout and `direct` is selected otherwise.
+When the policy is omitted during registration, `worktree` is selected for a Git checkout.
 
-Registering the same name with the same path and policy is an idempotent success.
+Registering the same name with the same fields is an idempotent success.
 
-Registering the name with different immutable values returns a `conflict` error.
+Registering the name with different fields returns a `conflict` error.
+
+The list command emits only the name, path, policy, and definitive total by default.
+
+Inspect and mutation commands emit the durable registration detail.
+
+Updating equivalent fields is a successful no-op.
+
+An update that changes the path of a repository referenced by tasks returns a structured `conflict` error and leaves the record unchanged.
+
+Unregister removes only the registration record.
+
+It never removes the checkout, Git metadata, worktrees, or task files.
+
+Unregister fails with a structured `conflict` error while any task references the repository and leaves the record intact.
+
+```toon
+repositories[1]{name,path,policy}:
+  demo,/work/demo,worktree
+total: 1
+```
 
 ```toon
 repository:
   name: demo
   path: /work/demo
   policy: worktree
+  worktree_root: /work/.akagent/worktrees/demo
 ```
 
 ## Task commands
