@@ -16,9 +16,9 @@ The installed binary is `akagent`.
 - [`protocol.md`](protocol.md) defines worker and task resources, state, lifecycle, TOON output, errors, compatibility, and reconciliation.
 - [`task-cli.md`](task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
 - [`credentials.md`](credentials.md) defines local credential sources, requirements, validation, and current limitations.
-- [`integration-gate.md`](integration-gate.md) defines the default-disabled signal for automated integrations.
+- [`integration-gate.md`](integration-gate.md) defines the integration signal and immediate disable path.
 - [`technology.md`](technology.md) compares the implementation options.
-- [`roadmap.md`](roadmap.md) separates completed local work from the remaining local integration work.
+- [`roadmap.md`](roadmap.md) separates shipped local work from tracked follow-ups.
 - [`implementation-plan.md`](implementation-plan.md) records the public issue and delivery map.
 - [`storage.md`](storage.md) defines the worker-local state store layout, schema, permissions, locking, archive, and recovery.
 - [`handoff.md`](handoff.md) records current implementation status and the next public work.

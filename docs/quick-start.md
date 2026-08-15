@@ -26,19 +26,21 @@ akagent update --source /path/to/akagent-cli
 The updater fetches `origin`, fast-forwards the source checkout to `origin/main`, builds in a temporary detached worktree, and atomically replaces the installed binary.
 It does not discard source changes.
 
-## Check the integration gate
+## Control automated orchestration
 
-Automated integrations are disabled unless the invoking environment contains exactly `AKAGENT_ENABLED=1`.
-A missing variable, an empty value, or any other value is disabled.
+Agent orchestration is ready for default enablement over the stable `akagent` CLI boundary.
+The agent skill owns automated lifecycle behavior and direct human `akagent` commands remain available.
+After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal.
+At the CLI boundary, only the exact value `1` enables automated integrations; an unset, empty, or other value disables them.
 
 ```bash
 akagent integration inspect
 ```
 
-The inspection command is read-only and does not enable anything.
-Direct human `akagent` commands, including an explicit managed Pi task start, remain available regardless of the gate.
-
-Enable the gate only for the current shell when an approved integration needs it:
+The inspection command is read-only.
+Enable the signal only for the current shell when an approved automated integration needs it:
 
 ```bash
 export AKAGENT_ENABLED=1
@@ -196,7 +198,8 @@ The default local cleanup hooks do not delete worktrees or credentials, but clea
 
 ## Recovery rules
 
-Start with `task inspect` and `task reconcile` when observations are unclear.
+Start with `task inspect` and `task reconcile` when observations are unclear or a possibly mutating command fails.
+Use the agent skill for automated lifecycle behavior and manual fallback only after those checks.
 
 If a managed launch fails, repeat the same `task start` command to retry the recoverable `starting` task.
 Equivalent repeated starts are idempotent; changing immutable launch inputs returns a conflict.

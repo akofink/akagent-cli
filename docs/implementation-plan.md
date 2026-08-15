@@ -36,11 +36,20 @@ The local lifecycle implementation established:
 - Durable condition publication, finish, stop, and reconciliation.
 - Archive capture and cleanup-preservation policy.
 - Independent archive, worktree-cleanup, credential-cleanup, and recovery-debt state.
-- Default-disabled automated integration gating.
+- Exact-signal automated integration gating with an immediate per-environment disable path.
 - Managed local Pi launch with durable configuration, interactive prompt-file references, safe environment construction, process identity, retry, and recovery behavior.
 
 The current CLI starts a shell for direct human or shell-driven work by default and starts managed Pi when `--agent pi` is selected.
 Destructive cleanup hooks are not part of the current implementation.
+
+## Current orchestration boundary
+
+Agent orchestration is ready for default enablement over the stable CLI boundary.
+The agent skill owns automated lifecycle behavior, while direct human CLI commands remain available.
+After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
+At the CLI boundary, only the exact value `1` enables automation; an unset, empty, or other value disables it.
 
 ## Current command surface
 
@@ -55,8 +64,8 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
-## Integration order for future work
+## Tracked follow-ups
 
 1. Keep direct local commands stable and protocol output compatible.
-2. Add opt-in shell or tool integrations that check `AKAGENT_ENABLED=1`.
-3. Extend local lifecycle coverage for managed launch, recovery, and cleanup preservation.
+2. Add broader workflow integrations beyond the stable CLI boundary while preserving the immediate disable signal.
+3. Extend local lifecycle coverage for destructive cleanup, recovery, and cleanup preservation.

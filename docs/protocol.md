@@ -223,11 +223,16 @@ Exit code `0` means success or no-op.
 Exit code `1` means the requested operation could not be completed.
 Exit code `2` means the command or its arguments are invalid.
 
-## Integration gate
+## Orchestration and integration signal
 
-Automated integrations must treat a missing `AKAGENT_ENABLED` signal or any value other than `1` as disabled.
+Agent orchestration is ready for default enablement over this stable CLI protocol.
+The agent skill owns automated lifecycle behavior and direct human commands remain available independently.
+After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
+At the CLI boundary, only the exact value `1` enables automation; an unset, empty, or other value disables it.
 `akagent integration inspect` reports the read-only state.
-The gate controls automated invocation only; direct human commands, including an explicit managed Pi task start, remain available regardless of the gate.
+The signal controls automated invocation only; direct human commands, including an explicit managed Pi task start, remain available regardless of the signal.
 
 ## Concurrency and consistency
 

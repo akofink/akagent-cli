@@ -78,10 +78,15 @@ Optional credentials produce non-secret warnings and are not injected; file cred
 `task clean` archives first, refuses live tasks, preserves committed, dirty, and untracked work unless each category is explicitly authorized, and records independent cleanup debt.
 The default local cleanup hooks do not delete worktrees or credentials.
 
-## Integration gate
+## Orchestration workflow
 
-Automated integrations are disabled unless `AKAGENT_ENABLED=1` is present in the invoking environment.
-A missing value or any value other than `1` is disabled.
+Agent orchestration is ready for default enablement over the stable `akagent` CLI boundary.
+The agent skill owns automated lifecycle behavior instead of bypassing the CLI.
+After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+Direct human `akagent` commands remain available regardless of the integration signal.
+
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
+At the CLI boundary, only the exact value `1` is enabled; an unset, empty, or other value is disabled.
 
 ```bash
 akagent integration inspect
@@ -90,7 +95,6 @@ unset AKAGENT_ENABLED
 ```
 
 `integration inspect` is read-only.
-Direct human CLI commands remain available regardless of the gate.
 
 ## Credentials
 
@@ -149,8 +153,8 @@ Automatic update on every invocation remains intentionally deferred because ordi
 
 ## Direction
 
-Near-term work focuses on the local protocol, managed local Pi launch, and opt-in workflow integrations.
 The current CLI remains local-first: it uses the registered checkout, Git worktrees, and tmux on the invoking machine.
+The tracked follow-ups are destructive cleanup hooks, broader workflow integrations beyond the stable CLI boundary, and work-specific secrets or deployment behavior.
 
 ## Design documentation
 
@@ -161,7 +165,7 @@ The current CLI remains local-first: it uses the registered checkout, Git worktr
 - [`docs/protocol.md`](docs/protocol.md) defines resources, state, lifecycle operations, output, and compatibility.
 - [`docs/task-cli.md`](docs/task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
 - [`docs/credentials.md`](docs/credentials.md) defines credential discovery, validation, and managed-launch environment behavior.
-- [`docs/integration-gate.md`](docs/integration-gate.md) defines the default-disabled integration signal.
+- [`docs/integration-gate.md`](docs/integration-gate.md) defines the integration signal and immediate disable path.
 - [`docs/technology.md`](docs/technology.md) records the implementation-stack evaluation.
-- [`docs/roadmap.md`](docs/roadmap.md) stages completed local work and remaining local integration work.
+- [`docs/roadmap.md`](docs/roadmap.md) stages shipped local work and tracked follow-ups.
 - [`docs/handoff.md`](docs/handoff.md) records current implementation status and limitations.
