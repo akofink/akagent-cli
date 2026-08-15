@@ -517,6 +517,158 @@ func TestRegisterRejectsNonGitDirectory(t *testing.T) {
 	}
 }
 
+func registerWorktreeRepository(t *testing.T, manager *Manager, name string) store.Repository {
+	t.Helper()
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository.Name = name
+	repository.Policy = "worktree"
+	repository.WorktreeRoot = filepath.Join(t.TempDir(), "worktrees")
+	if _, err := manager.Store.RegisterRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	return repository
+}
+
+func TestManagedWorktreeReconcileDoesNotCreateMismatchDebt(t *testing.T) {
+	manager, _ := newTestManager(t)
+	registerWorktreeRepository(t, manager, "managed-worktree")
+	prompt := filepath.Join(t.TempDir(), "prompt.md")
+	if err := os.WriteFile(prompt, []byte("prompt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager.ResolveAgent = func(string) (string, error) { return "/usr/local/bin/pi", nil }
+	if _, err := manager.Start(StartRequest{ID: "managed-worktree-task", Title: "Managed worktree", Repository: "managed-worktree", Agent: "pi", PromptReference: prompt}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := manager.Inspect("managed-worktree-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(manifest.RecoveryDebt, "worktree_mismatch") {
+		t.Fatalf("managed worktree recovery debt = %q, want no mismatch", manifest.RecoveryDebt)
+	}
+}
+
+func TestShellWorktreeReconcileDoesNotCreateMismatchDebt(t *testing.T) {
+	manager, _ := newTestManager(t)
+	registerWorktreeRepository(t, manager, "shell-worktree")
+	result, err := manager.Start(StartRequest{ID: "shell-worktree-task", Title: "Shell worktree", Repository: "shell-worktree"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(result.Manifest.WorktreePath, "committed"), []byte("valid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runGit(result.Manifest.WorktreePath, "add", "committed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runGit(result.Manifest.WorktreePath, "commit", "-m", "valid task commit"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := manager.Inspect("shell-worktree-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(manifest.RecoveryDebt, "worktree_mismatch") {
+		t.Fatalf("shell worktree recovery debt = %q, want no mismatch", manifest.RecoveryDebt)
+	}
+}
+
+func TestReconcilePreservesWorktreeMismatchDetection(t *testing.T) {
+	t.Run("wrong path", func(t *testing.T) {
+		manager, _ := newTestManager(t)
+		registerWorktreeRepository(t, manager, "wrong-path")
+		if _, err := manager.Start(StartRequest{ID: "wrong-path-task", Title: "Wrong path", Repository: "wrong-path"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Store.UpdateManifest("wrong-path-task", func(manifest *store.Manifest) error {
+			manifest.Repository = "demo"
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Reconcile(); err != nil {
+			t.Fatal(err)
+		}
+		manifest, err := manager.Inspect("wrong-path-task")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(manifest.RecoveryDebt, "worktree_mismatch") {
+			t.Fatalf("recovery debt = %q, want path mismatch", manifest.RecoveryDebt)
+		}
+	})
+
+	t.Run("wrong branch", func(t *testing.T) {
+		manager, _ := newTestManager(t)
+		registerWorktreeRepository(t, manager, "wrong-branch")
+		result, err := manager.Start(StartRequest{ID: "wrong-branch-task", Title: "Wrong branch", Repository: "wrong-branch"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runGit(result.Manifest.WorktreePath, "switch", "-c", "wrong"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Reconcile(); err != nil {
+			t.Fatal(err)
+		}
+		manifest, err := manager.Inspect("wrong-branch-task")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(manifest.RecoveryDebt, "worktree_mismatch") {
+			t.Fatalf("recovery debt = %q, want branch mismatch", manifest.RecoveryDebt)
+		}
+	})
+
+	t.Run("wrong base", func(t *testing.T) {
+		manager, _ := newTestManager(t)
+		registerWorktreeRepository(t, manager, "wrong-base")
+		result, err := manager.Start(StartRequest{ID: "wrong-base-task", Title: "Wrong base", Repository: "wrong-base"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		base, err := gitOutput(result.Manifest.WorktreePath, "rev-parse", "HEAD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tree, err := gitOutput(result.Manifest.WorktreePath, "rev-parse", "HEAD^{tree}")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wrongBase, err := exec.Command("git", "-C", result.Manifest.WorktreePath, "commit-tree", tree, "-m", "unrelated base", "-p", base).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		wrongBase = []byte(strings.TrimSpace(string(wrongBase)))
+		if _, err := manager.Store.UpdateManifest("wrong-base-task", func(manifest *store.Manifest) error {
+			manifest.BaseRevision = string(wrongBase)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Reconcile(); err != nil {
+			t.Fatal(err)
+		}
+		manifest, err := manager.Inspect("wrong-base-task")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(manifest.RecoveryDebt, "worktree_mismatch") {
+			t.Fatalf("recovery debt = %q, want base mismatch", manifest.RecoveryDebt)
+		}
+	})
+}
+
 func TestWorktreeStartOwnsImmutableGitInputs(t *testing.T) {
 	manager, tmux := newTestManager(t)
 	repository, err := manager.Store.ReadRepository("demo")
