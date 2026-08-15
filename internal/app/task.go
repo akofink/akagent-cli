@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"io"
 	"strings"
 	"time"
@@ -11,15 +12,20 @@ import (
 )
 
 type taskView struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Status    string `json:"status"`
-	Worker    string `json:"worker"`
-	Condition string `json:"condition,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-	Activity  string `json:"activity,omitempty"`
-	Result    string `json:"result,omitempty"`
-	Warnings  string `json:"warnings,omitempty"`
+	ID                     string `json:"id"`
+	Title                  string `json:"title"`
+	Status                 string `json:"status"`
+	Worker                 string `json:"worker"`
+	Condition              string `json:"condition,omitempty"`
+	Reason                 string `json:"reason,omitempty"`
+	Activity               string `json:"activity,omitempty"`
+	Result                 string `json:"result,omitempty"`
+	Warnings               string `json:"warnings,omitempty"`
+	ArchiveState           string `json:"archive_state,omitempty"`
+	CleanupState           string `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool   `json:"cleanup_debt,omitempty"`
 }
 
 type taskListView struct {
@@ -40,7 +46,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|publish|finish|stop|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
 	case "start":
@@ -117,6 +123,28 @@ func taskCommand(args []string, stdout io.Writer) int {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
+	case "archive":
+		if len(args) != 2 {
+			return writeError(stdout, "usage", "Usage: akagent task archive <task-id>", false, "Run `akagent task list`")
+		}
+		manifest, err := manager.Archive(args[1])
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
+	case "clean":
+		if len(args) < 2 {
+			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked]", false, "Inspect the task before authorizing cleanup")
+		}
+		options, ok := parseCleanup(args[2:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked]", false, "Inspect the task before authorizing cleanup")
+		}
+		manifest, err := manager.Clean(args[1], options)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "reconcile":
 		if len(args) != 1 {
 			return taskUsage(stdout)
@@ -181,6 +209,23 @@ func parseStart(args []string) (lifecycle.StartRequest, bool) {
 	}
 	return request, request.Title != "" && request.Repository != ""
 }
+func parseCleanup(args []string) (lifecycle.CleanupOptions, bool) {
+	var options lifecycle.CleanupOptions
+	for _, arg := range args {
+		switch arg {
+		case "--allow-committed":
+			options.AllowCommitted = true
+		case "--allow-dirty":
+			options.AllowDirty = true
+		case "--allow-untracked":
+			options.AllowUntracked = true
+		default:
+			return options, false
+		}
+	}
+	return options, true
+}
+
 func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	for len(args) > 0 {
 		if len(args) < 2 {
@@ -202,10 +247,17 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|publish|finish|stop|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 func view(id string, manifest store.Manifest) taskView {
-	return taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Warnings: manifest.Warnings}
+	return taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
+}
+
+func taskState(value string) string {
+	if value == "none" {
+		return ""
+	}
+	return value
 }
 
 func status(manifest store.Manifest) string {
@@ -214,7 +266,12 @@ func status(manifest store.Manifest) string {
 
 func lifecycleError(stdout io.Writer, err error) int {
 	message := err.Error()
-	category, retryable := "internal", false
+	category, retryable, recovery := "internal", false, "Inspect the task state and retry"
+	var storeErr *store.Error
+	if errors.As(err, &storeErr) && (storeErr.Kind == store.KindPartial || storeErr.Kind == store.KindPreservation) {
+		recovery = storeErr.Recovery
+		retryable = storeErr.Retryable
+	}
 	switch {
 	case store.IsKind(err, store.KindNotFound):
 		category = "not_found"
@@ -222,10 +279,14 @@ func lifecycleError(stdout io.Writer, err error) int {
 		category = "usage"
 	case store.IsKind(err, store.KindLocked):
 		category, retryable = "retryable", true
+	case store.IsKind(err, store.KindPartial):
+		category, retryable = "partial", true
+	case store.IsKind(err, store.KindPreservation):
+		category = "preservation_required"
 	case strings.Contains(message, "conflict"):
 		category = "conflict"
 	case strings.Contains(message, "credential"):
 		category = "capability"
 	}
-	return writeError(stdout, category, message, retryable, "Inspect the task state and retry")
+	return writeError(stdout, category, message, retryable, recovery)
 }

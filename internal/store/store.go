@@ -194,14 +194,6 @@ func (s *Store) AppendEvent(taskID string, event Event) (int, error) {
 	return sequence, err
 }
 
-// EventRecord is a stored event together with its sequence number and
-// observation time.
-type EventRecord struct {
-	Sequence   int
-	ObservedAt time.Time
-	Event      Event
-}
-
 // ReadEvents returns the task's events in sequence order. A task with no
 // events yields an empty slice. Event file names must form a contiguous,
 // zero-padded sequence starting at 1; malformed history is reported rather
@@ -436,7 +428,10 @@ func (s *Store) recoverTaskLocked(taskID string, result *RecoveryResult) error {
 	if err := s.validateManifestForRecovery(taskID, result); err != nil {
 		return err
 	}
-	return s.validateEventsForRecovery(taskID, result)
+	if err := s.validateEventsForRecovery(taskID, result); err != nil {
+		return err
+	}
+	return s.validateArchiveForRecovery(taskID, result)
 }
 
 func (s *Store) removeStaleTemps(taskID string, result *RecoveryResult) error {

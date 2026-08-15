@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/akofink/akagent-cli/internal/credential"
@@ -48,12 +49,17 @@ type Tmux interface {
 }
 
 type Manager struct {
-	Store            *store.Store
-	Tmux             Tmux
-	Credentials      func() (*credential.Manifest, error)
-	Checker          *credential.Checker
-	Now              func() time.Time
-	HeartbeatTimeout time.Duration
+	Store              *store.Store
+	Tmux               Tmux
+	Credentials        func() (*credential.Manifest, error)
+	Checker            *credential.Checker
+	Now                func() time.Time
+	HeartbeatTimeout   time.Duration
+	GitFacts           func(store.Manifest) (store.GitFacts, error)
+	TerminalHistory    func(string) (string, error)
+	CleanupWorktree    func(store.Manifest, store.GitFacts) error
+	CleanupCredentials func(store.Manifest) error
+	operationMu        sync.Mutex
 }
 
 type StartRequest struct {
@@ -70,11 +76,16 @@ type StartResult struct {
 }
 
 func New(state *store.Store) *Manager {
-	return &Manager{
+	manager := &Manager{
 		Store: state, Tmux: commandTmux{}, Credentials: func() (*credential.Manifest, error) {
 			return credential.Load(credential.ConfigPath())
 		}, Checker: credential.NewChecker(), Now: time.Now, HeartbeatTimeout: DefaultHeartbeatTimeout,
 	}
+	manager.GitFacts = manager.inspectGitFacts
+	manager.TerminalHistory = manager.captureTerminalHistory
+	manager.CleanupWorktree = func(store.Manifest, store.GitFacts) error { return nil }
+	manager.CleanupCredentials = func(store.Manifest) error { return nil }
+	return manager
 }
 
 func (m *Manager) RegisterRepository(name, path, policy string) (store.Repository, error) {
@@ -123,7 +134,20 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 		return StartResult{}, err
 	}
 	now := m.now()
-	manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Lifecycle: "starting", Condition: "none", HeartbeatAt: now, Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+	manifest := store.Manifest{
+		Title:                  request.Title,
+		Worker:                 "local",
+		Repository:             request.Repository,
+		Lifecycle:              "starting",
+		Condition:              "none",
+		HeartbeatAt:            now,
+		ArchiveState:           "none",
+		CleanupState:           "none",
+		WorktreeCleanupState:   "none",
+		CredentialCleanupState: "none",
+		Requirements:           strings.Join(request.Requirements, ","),
+		Warnings:               strings.Join(warnings, "; "),
+	}
 	if envelope, err := m.Store.ReadManifest(request.ID); err == nil {
 		existing, decodeErr := envelope.DecodeManifest()
 		if decodeErr != nil {
