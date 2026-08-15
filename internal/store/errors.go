@@ -26,6 +26,8 @@ const (
 	KindUnsafePath ErrorKind = "unsafe_path"
 	// KindPartial means the intended state change only partially completed.
 	KindPartial ErrorKind = "partial"
+	// KindPreservation means destructive cleanup needs explicit authorization.
+	KindPreservation ErrorKind = "preservation_required"
 	// KindInternal means an unexpected storage failure occurred.
 	KindInternal ErrorKind = "internal"
 )

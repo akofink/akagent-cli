@@ -15,6 +15,7 @@ const SchemaVersion = 1
 const (
 	KindManifest = "manifest"
 	KindEvent    = "event"
+	KindArchive  = "archive"
 )
 
 // Envelope is the typed, versioned wrapper persisted for every record.
@@ -30,26 +31,42 @@ type Envelope struct {
 
 // Manifest is the typed mutable payload of a task manifest.
 type Manifest struct {
-	Title             string    `json:"title"`
-	Worker            string    `json:"worker"`
-	Repository        string    `json:"repository,omitempty"`
-	Lifecycle         string    `json:"lifecycle"`
-	Condition         string    `json:"condition"`
-	Reason            string    `json:"reason,omitempty"`
-	Activity          string    `json:"activity,omitempty"`
-	HeartbeatAt       time.Time `json:"heartbeat_at,omitempty"`
-	TmuxWindow        string    `json:"tmux_window,omitempty"`
-	Requirements      string    `json:"requirements,omitempty"`
-	Warnings          string    `json:"warnings,omitempty"`
-	Result            string    `json:"result,omitempty"`
-	CleanupDebt       bool      `json:"cleanup_debt,omitempty"`
-	ProcessPID        int       `json:"process_pid,omitempty"`
-	ProcessStartTime  uint64    `json:"process_start_time,omitempty"`
-	ObservedPID       int       `json:"observed_pid,omitempty"`
-	ObservedStartTime uint64    `json:"observed_start_time,omitempty"`
-	ProcessPane       string    `json:"process_pane,omitempty"`
-	Observation       string    `json:"observation,omitempty"`
-	ObservationAt     time.Time `json:"observation_at,omitempty"`
+	Title                  string    `json:"title"`
+	Worker                 string    `json:"worker"`
+	Repository             string    `json:"repository,omitempty"`
+	Lifecycle              string    `json:"lifecycle"`
+	Condition              string    `json:"condition"`
+	Reason                 string    `json:"reason,omitempty"`
+	Activity               string    `json:"activity,omitempty"`
+	HeartbeatAt            time.Time `json:"heartbeat_at,omitempty"`
+	TmuxWindow             string    `json:"tmux_window,omitempty"`
+	Requirements           string    `json:"requirements,omitempty"`
+	Warnings               string    `json:"warnings,omitempty"`
+	Result                 string    `json:"result,omitempty"`
+	ArchiveState           string    `json:"archive_state,omitempty"`
+	CleanupState           string    `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string    `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string    `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool      `json:"cleanup_debt,omitempty"`
+	Git                    GitFacts  `json:"git,omitempty"`
+	ProcessPID             int       `json:"process_pid,omitempty"`
+	ProcessStartTime       uint64    `json:"process_start_time,omitempty"`
+	ObservedPID            int       `json:"observed_pid,omitempty"`
+	ObservedStartTime      uint64    `json:"observed_start_time,omitempty"`
+	ProcessPane            string    `json:"process_pane,omitempty"`
+	Observation            string    `json:"observation,omitempty"`
+	ObservationAt          time.Time `json:"observation_at,omitempty"`
+}
+
+// GitFacts are non-secret observations captured for recovery and cleanup
+// decisions. They never contain credential values or repository file content.
+type GitFacts struct {
+	Path      string `json:"path,omitempty"`
+	Head      string `json:"head,omitempty"`
+	Branch    string `json:"branch,omitempty"`
+	Dirty     bool   `json:"dirty,omitempty"`
+	Untracked bool   `json:"untracked,omitempty"`
+	Committed bool   `json:"committed,omitempty"`
 }
 
 // Event is the typed immutable payload of an append-only task event.
@@ -57,6 +74,26 @@ type Event struct {
 	Operation string `json:"operation"`
 	Outcome   string `json:"outcome,omitempty"`
 	Detail    string `json:"detail,omitempty"`
+}
+
+// EventRecord is a durable event together with its sequence and observation
+// time. It is also used in task archives.
+type EventRecord struct {
+	Sequence   int       `json:"sequence"`
+	ObservedAt time.Time `json:"observed_at"`
+	Event      Event     `json:"event"`
+}
+
+// TaskArchive is an immutable snapshot of the durable task state and the
+// non-secret resource facts available when archive was requested.
+type TaskArchive struct {
+	TaskID     string        `json:"task_id"`
+	CapturedAt time.Time     `json:"captured_at"`
+	Manifest   Manifest      `json:"manifest"`
+	Events     []EventRecord `json:"events"`
+	Git        GitFacts      `json:"git,omitempty"`
+	Terminal   string        `json:"terminal,omitempty"`
+	Warnings   []string      `json:"warnings,omitempty"`
 }
 
 func newEnvelope(kind, taskID string, data any) (Envelope, error) {
@@ -79,6 +116,10 @@ func manifestEnvelope(taskID string, manifest Manifest) (Envelope, error) {
 
 func eventEnvelope(taskID string, event Event) (Envelope, error) {
 	return newEnvelope(KindEvent, taskID, event)
+}
+
+func archiveEnvelope(taskID string, archive TaskArchive) (Envelope, error) {
+	return newEnvelope(KindArchive, taskID, archive)
 }
 
 // DecodeManifest returns the typed manifest payload. Decode failures are
@@ -105,6 +146,18 @@ func (e Envelope) DecodeEvent() (Event, error) {
 		return Event{}, malformedError("Malformed event payload", "Inspect and repair the event record")
 	}
 	return event, nil
+}
+
+// DecodeArchive returns the typed archive payload.
+func (e Envelope) DecodeArchive() (TaskArchive, error) {
+	var archive TaskArchive
+	if !isObjectPayload(e.Data) {
+		return TaskArchive{}, malformedError("Archive payload must be a JSON object", "Inspect and repair the archive record")
+	}
+	if err := json.Unmarshal(e.Data, &archive); err != nil {
+		return TaskArchive{}, malformedError("Malformed archive payload", "Inspect and repair the archive record")
+	}
+	return archive, nil
 }
 
 func isObjectPayload(data []byte) bool {

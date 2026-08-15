@@ -22,11 +22,13 @@ The store lives under the XDG state root for the `akagent` application:
   tasks/<task-id>/manifest.json
   tasks/<task-id>/events/000001.json
   tasks/<task-id>/events/000002.json
+  tasks/<task-id>/archive.json
   locks/<task-id>.lock
 ```
 
 - `manifest.json` is the mutable manifest, atomically replaced.
 - `events/<sequence>.json` is an immutable event record; sequences are 1-based and zero-padded.
+- `archive.json` is an atomically replaced snapshot of the manifest, event history, non-secret Git facts, and available terminal history.
 - `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
 
 ## Permissions
@@ -107,7 +109,7 @@ The bounded wait is long enough for durable fsync-backed mutations, while caller
 `Recover` scans each valid task's directory under its per-task lock and:
 
 - Removes temporary files left behind by an interrupted write (names beginning `.akagent-write-`) with descriptor-relative `unlinkat`, never path-based `WalkDir`/`Remove`.
-- Validates the manifest and each event file.
+- Validates the manifest, each event file, and any archive snapshot.
 - Reports malformed records in `RecoveryResult.MalformedRecords` without deleting them, so an operator can inspect before acting.
 - Reports tasks whose lock is contended in `RecoveryResult.SkippedLocked` and leaves them alone.
 
@@ -128,6 +130,15 @@ Store failures are typed `*store.Error` values carrying a kind, message, retryab
 
 Callers translate these kinds into protocol errors at the command boundary.
 
+## Archive and cleanup semantics
+
+`Archive` writes an idempotent snapshot for stopped or finished tasks and records partial attempts in the task manifest and event history so a later retry can complete the snapshot.
+
+`Clean` never runs while a task's verified tmux identity is live.
+It archives first, preserves committed, dirty, or untracked Git facts unless the operator explicitly authorizes each category, and records worktree and credential cleanup debt independently.
+Reconciliation does not invoke either destructive operation.
+
 ## Out of scope
 
 Starting or stopping agents, repository registration, task lifecycle commands, credentials, tmux, and Git remain outside this package.
+The lifecycle package supplies the archive and cleanup policy while this package supplies only their durable records.

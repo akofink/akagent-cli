@@ -293,6 +293,36 @@ func asFilenames(t *testing.T, store *Store, taskID string) []string {
 	return files
 }
 
+func TestArchiveRoundTrip(t *testing.T) {
+	store := openTest(t)
+	taskID := validTaskID(t)
+	archive := TaskArchive{
+		TaskID:     taskID,
+		CapturedAt: time.Now().UTC(),
+		Manifest:   Manifest{Title: "archived", Lifecycle: "stopped"},
+		Events:     []EventRecord{{Sequence: 1, ObservedAt: time.Now().UTC(), Event: Event{Operation: "stop"}}},
+		Git:        GitFacts{Head: "abc123", Dirty: true},
+		Terminal:   "safe history",
+	}
+	if err := store.WriteArchive(taskID, archive); err != nil {
+		t.Fatalf("WriteArchive() error = %v", err)
+	}
+	got, err := store.ReadArchive(taskID)
+	if err != nil {
+		t.Fatalf("ReadArchive() error = %v", err)
+	}
+	if got.TaskID != archive.TaskID || got.Manifest != archive.Manifest || got.Git != archive.Git || got.Terminal != archive.Terminal {
+		t.Fatalf("archive = %#v, want %#v", got, archive)
+	}
+	info, err := os.Stat(store.archivePath(taskID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perms := info.Mode().Perm(); perms != 0o600 {
+		t.Fatalf("archive mode = %04o, want 0600", perms)
+	}
+}
+
 func TestReadEventsEmpty(t *testing.T) {
 	store := openTest(t)
 	taskID := validTaskID(t)
