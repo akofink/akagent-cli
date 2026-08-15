@@ -68,4 +68,4 @@ akagent worker inspect
 
 1. Keep direct local commands stable and protocol output compatible.
 2. Add broader workflow integrations beyond the stable CLI boundary while preserving the immediate disable signal.
-3. Extend local lifecycle coverage for destructive cleanup, recovery, and cleanup preservation.
+3. Extend local lifecycle coverage for broader cleanup integrations beyond the approved worktree hook.

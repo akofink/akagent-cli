@@ -124,6 +124,32 @@ func TestTaskListHeterogeneousRowsCommandContract(t *testing.T) {
 	}
 }
 
+func TestApprovedWorktreeCleanupCommandContract(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "worktree"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	const taskID = "cleanup-14"
+	if result := runCommand(t, []string{"task", "start", "--task-id", taskID, "--title", "Cleanup", "--repository", "demo", "--branch", "main"}); result.code != 0 {
+		t.Fatalf("task start = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
+		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
+	}
+	blocked := runCommand(t, []string{"task", "clean", taskID})
+	if blocked.code != 1 || !strings.Contains(blocked.stdout, "category: preservation_required") || !strings.Contains(blocked.stdout, "--allow-worktree") {
+		t.Fatalf("unapproved cleanup = (%d, %q), want structured approval error", blocked.code, blocked.stdout)
+	}
+	approved := runCommand(t, []string{"task", "clean", taskID, "--allow-worktree"})
+	if approved.code != 0 || !strings.Contains(approved.stdout, "worktree_cleanup_state: complete") {
+		t.Fatalf("approved cleanup = (%d, %q), want completed cleanup state", approved.code, approved.stdout)
+	}
+}
+
 func TestTaskReconcileCommandContract(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
@@ -218,6 +244,7 @@ func TestLifecycleMalformedFlagsReturnUsage(t *testing.T) {
 		{"task", "attach", "task-14", "--bogus"},
 		{"task", "publish", "task-14", "--condition", "active", "--bogus", "value"},
 		{"task", "finish", "task-14", "succeeded"},
+		{"task", "clean", "task-14", "--bogus"},
 		{"task", "stop", "task-14", "--bogus"},
 		{"task", "reconcile", "--bogus"},
 	}
@@ -382,6 +409,7 @@ rev-parse)
   case "${2:-}" in
   --is-inside-work-tree) printf 'true\n' ;;
   --show-toplevel) printf '%s\n' "$path" ;;
+  --git-common-dir) printf '/fake/common\n' ;;
   HEAD) printf '0000000000000000000000000000000000000001\n' ;;
   *) printf '0000000000000000000000000000000000000001\n' ;;
   esac

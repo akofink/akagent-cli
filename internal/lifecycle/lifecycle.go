@@ -65,6 +65,7 @@ type Git interface {
 	IsAncestor(path, ancestor, descendant string) (bool, error)
 	Status(path string) (GitStatus, error)
 	AddWorktree(repository, path, branch, base string) error
+	RemoveWorktree(repository, path string) error
 }
 
 type Tmux interface {
@@ -117,17 +118,18 @@ type StartResult struct {
 }
 
 func New(state *store.Store) *Manager {
-	return &Manager{
+	manager := &Manager{
 		Store: state, Tmux: commandTmux{}, Git: commandGit{}, Credentials: func() (*credential.Manifest, error) {
 			return credential.Load(credential.ConfigPath())
 		}, Checker: credential.NewChecker(), Now: time.Now, HeartbeatTimeout: DefaultHeartbeatTimeout,
-		GitFacts:           func(store.Manifest) (store.GitFacts, error) { return store.GitFacts{}, nil },
 		ResolveAgent:       exec.LookPath,
 		TerminalHistory:    func(string) (string, error) { return "", nil },
-		CleanupWorktree:    func(store.Manifest, store.GitFacts) error { return nil },
 		CleanupCredentials: func(store.Manifest) error { return nil },
 		ExecAgent:          syscall.Exec,
 	}
+	manager.GitFacts = manager.inspectGitFacts
+	manager.CleanupWorktree = manager.removeWorktree
+	return manager
 }
 
 func (m *Manager) RegisterRepository(name, path, policy string) (store.Repository, error) {
@@ -935,14 +937,18 @@ func (m *Manager) refreshGit(manifest *store.Manifest) bool {
 		return false
 	}
 	before := *manifest
+	repository, repositoryErr := m.Store.ReadRepository(manifest.Repository)
 	status, err := m.Git.Status(manifest.WorktreePath)
 	if err != nil || !status.Exists {
 		manifest.Committed, manifest.Dirty, manifest.Untracked = false, false, false
-		manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "worktree_missing")
+		if repositoryErr == nil && repository.Policy == "worktree" && manifest.WorktreeCleanupState == cleanupComplete {
+			manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_missing")
+		} else {
+			manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "worktree_missing")
+		}
 		return !sameGitFacts(before, *manifest)
 	}
 	m.applyGitStatus(manifest, status)
-	repository, repositoryErr := m.Store.ReadRepository(manifest.Repository)
 	if repositoryErr != nil || !m.worktreeMatches(repository, *manifest, status, false) {
 		manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "worktree_mismatch")
 	} else {
@@ -1252,6 +1258,12 @@ func (g commandGit) IsAncestor(path, ancestor, descendant string) (bool, error) 
 func (g commandGit) AddWorktree(repository, path, branch, base string) error {
 	if _, err := g.run(repository, "worktree", "add", "-b", branch, path, base); err != nil {
 		return errors.New("Git worktree add failed")
+	}
+	return nil
+}
+func (g commandGit) RemoveWorktree(repository, path string) error {
+	if _, err := g.run(repository, "worktree", "remove", "--force", path); err != nil {
+		return errors.New("Git worktree remove failed")
 	}
 	return nil
 }

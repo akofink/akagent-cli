@@ -54,8 +54,9 @@ The lifecycle layer owns:
 - Process and Git reconciliation.
 - Archive capture and cleanup-preservation policy.
 
-The default local cleanup hooks do not remove worktrees or credentials.
-The lifecycle records independent cleanup states and recovery debt so destructive behavior can be added or retried without losing evidence.
+The lifecycle exposes an approval-gated worktree cleanup hook that validates ownership before removal.
+Direct repositories are never removed, and credential cleanup remains independent.
+The lifecycle records independent cleanup states and recovery debt so approved destructive behavior can be retried without losing evidence.
 
 ### Tmux
 

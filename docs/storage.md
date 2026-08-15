@@ -143,4 +143,5 @@ Reconciliation does not invoke either destructive operation.
 
 Starting or stopping task shells, task lifecycle commands, credentials, tmux, and Git remain outside this package.
 The store also persists repository registration records, while the lifecycle package supplies repository validation and archive and cleanup policy.
-The default local cleanup hooks do not remove worktrees or credentials.
+Worktree removal is available only through the lifecycle approval-gated hook and preserves the task archive and branch.
+Credential cleanup remains an independent local hook.

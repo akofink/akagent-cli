@@ -65,7 +65,7 @@ akagent task publish <task-id> --condition <condition> [--reason <reason>] [--ac
 akagent task finish <task-id> <succeeded|failed> <result>
 akagent task stop <task-id>
 akagent task archive <task-id>
-akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked]
+akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]
 akagent task reconcile
 ```
 
@@ -99,8 +99,13 @@ A finish while the task process is running fails without changing the task outco
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.
 
 Archive requires a stopped or finished task and captures the manifest, events, Git facts, and available terminal history.
-Clean archives first, refuses a live task, and requires explicit authorization for each committed, dirty, or untracked category before destructive cleanup.
-The default local cleanup hooks do not delete worktrees or credentials.
+Clean archives first and refuses a live task.
+It requires explicit authorization for each committed, dirty, or untracked category before destructive cleanup.
+For a registered `worktree` repository, `--allow-worktree` is a separate explicit approval that enables the destructive worktree cleanup hook.
+The hook validates durable ownership, removes only the task worktree, preserves the task branch, and records the pre-cleanup Git facts in the archive.
+Direct repository tasks never remove their registered checkout.
+Without worktree approval, cleanup records preservation debt and leaves the worktree available for direct human recovery.
+Credential cleanup remains independent and retryable.
 
 Reconciliation repairs derived observations and Git facts.
 It never deletes task state, branches, worktrees, windows, or terminal history.
