@@ -28,7 +28,8 @@ It does not discard source changes.
 
 ## Control automated orchestration
 
-Agent orchestration is ready for default enablement over the stable `akagent` CLI boundary.
+Agent orchestration is enabled by default over the stable `akagent` CLI boundary.
+Repository implementation work uses the managed `akagent` lifecycle when the integration gate reports enabled.
 The agent skill owns automated lifecycle behavior and direct human `akagent` commands remain available.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 

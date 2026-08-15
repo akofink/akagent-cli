@@ -11,4 +11,7 @@
 - Preserve local tmux and Git worktree recovery paths.
 - Do not add remote execution, containers, a daemon, or a central store without a demonstrated requirement.
 - Run `go test ./...`, `go test -race ./...`, and `go vet ./...` before committing.
-- Use one signed Conventional Commit and include `Fixes #N` for the assigned implementation issue. Push and open a pull request when requested, but never merge without explicit operator instruction.
+- Before automated lifecycle use, load the `akagent` skill and run `akagent integration inspect`. For repository implementation work, when it reports `enabled: true`, use the managed `akagent` lifecycle by default; retain direct human CLI use.
+- If the integration is disabled, do not invoke automated lifecycle commands. If a lifecycle command may have mutated state and fails, inspect the affected task and run reconciliation before any manual fallback, then use the established tmux and Git worktree recovery path.
+- For explicitly requested issue delivery, this repository authorizes issue creation, branch pushes, pull-request creation, and merge after required CI passes without another approval step. Higher-level safety rules still apply.
+- Use one signed Conventional Commit and include `Fixes #N` for the assigned implementation issue.

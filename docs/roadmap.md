@@ -35,9 +35,9 @@ The current start operation creates a task-tagged tmux resource.
 It starts a shell by default or a managed local Pi process when requested.
 The default cleanup hooks do not delete worktrees or credentials.
 
-## Phase 2: workflow integrations - default-enable readiness
+## Phase 2: workflow integrations - default-enabled integration
 
-Agent orchestration is ready for default enablement over the stable CLI boundary.
+Agent orchestration is enabled by default over the stable CLI boundary.
 The agent skill owns automated lifecycle behavior and should inspect and reconcile before a manual fallback after a possibly mutating failure.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal.

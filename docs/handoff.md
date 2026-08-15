@@ -35,7 +35,7 @@ The default local cleanup hooks do not remove worktrees or credentials, but clea
 `task reconcile` repairs safe derived observations and Git facts.
 It never deletes task state, branches, worktrees, windows, or terminal history.
 
-Agent orchestration is ready for default enablement over this stable CLI boundary.
+Agent orchestration is enabled by default over this stable CLI boundary.
 The agent skill owns automated lifecycle behavior and preserves direct human CLI use.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 

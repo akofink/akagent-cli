@@ -147,7 +147,7 @@ Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnin
 
 ## Orchestration and integration signal
 
-Agent orchestration is ready for default enablement over the stable task CLI boundary.
+Agent orchestration is enabled by default over the stable task CLI boundary.
 The agent skill owns automated lifecycle behavior and direct human commands remain available independently.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
