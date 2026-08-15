@@ -58,7 +58,7 @@ The encoder emits exactly the forms the CLI and its documented schemas need:
 | Nested object | `worker:` followed by indented fields |
 | Non-empty primitive array (inline) | `tags[3]: admin,ops,dev` |
 | Empty array | `tasks: []` |
-| Tabular array of uniform scalar objects | `tasks[2]{id,title,status}:` with one row per line |
+| Tabular array of scalar objects | `tasks[2]{id,title,status}:` with one row per line and `null` for missing fields |
 | Structured error envelope | `error:` with `category`, `message`, `retryable`, `recovery` |
 
 Field order is the struct field declaration order.
@@ -81,8 +81,8 @@ Documented deviations and boundaries:
   ordinary nested objects.
 - Nested field groups in tabular arrays (section 9.3) are not emitted; a
   tabular array whose columns are not all primitive scalars is rejected.
-- List form for mixed or non-uniform arrays (section 9.4) is not emitted; such
-  arrays are rejected.
+- List form for arrays containing non-object or nested values (section 9.4) is
+  not emitted; such arrays are rejected.
 - Map values sort their keys alphabetically instead of preserving encounter
   order (section 2), because Go maps are unordered.
   Struct-based schemas, which are the norm, preserve declaration order.

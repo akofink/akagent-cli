@@ -40,6 +40,23 @@ func TestWriteTabularArray(t *testing.T) {
 	}
 }
 
+func TestWriteHeterogeneousTabularArray(t *testing.T) {
+	value := map[string]any{"tasks": []any{
+		map[string]any{"id": "one", "status": "stopped"},
+		map[string]any{"id": "two", "status": "waiting", "reason": "needs review"},
+	}}
+
+	got, err := Encode(value)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+
+	want := "tasks[2]{id,status,reason}:\n  one,stopped,null\n  two,waiting,needs review"
+	if got != want {
+		t.Fatalf("Encode() = %q, want %q", got, want)
+	}
+}
+
 // TestSchemaOutputs pins every output form the CLI emits today, including
 // stable field behavior, quoting, and empty arrays.
 func TestSchemaOutputs(t *testing.T) {
@@ -177,10 +194,6 @@ func TestUnsupportedFormsGuarded(t *testing.T) {
 			map[string]any{"id": 2, "customer": map[string]any{"name": "Bob"}},
 		}}},
 		{"mixed arrays", map[string]any{"items": []any{1, "text", map[string]any{"a": 1}}}},
-		{"non-uniform tabular keys", map[string]any{"items": []any{
-			map[string]any{"id": 1, "name": "A"},
-			map[string]any{"id": 2, "name": "B", "extra": true},
-		}}},
 		{"array of arrays", map[string]any{"grid": []any{[]any{1, 2}, []any{3, 4}}}},
 		{"empty object element disqualifies tabular", map[string]any{"items": []any{map[string]any{}}}},
 	}
