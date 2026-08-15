@@ -152,7 +152,7 @@ The agent skill owns automated lifecycle behavior and direct human commands rema
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-Only the exact value `1` enables automation at the CLI boundary; an unset, empty, or other value disables it.
+Automation is enabled at the CLI boundary unless `AKAGENT_ENABLED` is set to the exact value `0`.
 `akagent integration inspect` reports the read-only state.
 Direct human commands, including explicit managed Pi task starts, are unaffected.
 

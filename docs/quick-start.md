@@ -33,20 +33,20 @@ The agent skill owns automated lifecycle behavior and direct human `akagent` com
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal.
-At the CLI boundary, only the exact value `1` enables automated integrations; an unset, empty, or other value disables them.
+At the CLI boundary, automated integrations are enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 
 ```bash
 akagent integration inspect
 ```
 
 The inspection command is read-only.
-Enable the signal only for the current shell when an approved automated integration needs it:
+Disable automation immediately for the current shell with:
 
 ```bash
-export AKAGENT_ENABLED=1
+export AKAGENT_ENABLED=0
 ```
 
-Disable it immediately when the integration is no longer needed:
+Re-enable automation when the integration is needed again:
 
 ```bash
 unset AKAGENT_ENABLED

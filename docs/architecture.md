@@ -96,7 +96,7 @@ TOON remains the agent-facing output encoding.
 Shell helpers, LLM hooks, plugins, and installable skills are optional adapters.
 They must invoke the CLI, request small field sets, preserve structured errors, and never write the task store directly.
 
-Automated integrations are disabled unless `AKAGENT_ENABLED=1` is present.
+Automated integrations are enabled unless `AKAGENT_ENABLED=0` is present.
 The gate is checked by the integration before automated behavior, while direct human commands, including explicit managed Pi starts, remain available.
 
 ## Failure assumptions
