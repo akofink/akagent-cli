@@ -66,6 +66,7 @@ type Git interface {
 type Tmux interface {
 	Start(taskID string) (TmuxProcess, error)
 	Observe(taskID string) (TmuxObservation, error)
+	Attach(taskID, windowID string) error
 	Stop(taskID string) error
 }
 
@@ -610,6 +611,61 @@ func (m *Manager) Reconcile() ([]store.Manifest, error) {
 	return manifests, nil
 }
 
+// Attach resolves durable task state, verifies the current task process and
+// tmux task-ID option, then attaches to the verified window. It never changes
+// durable state or creates, kills, or renames tmux resources.
+func (m *Manager) Attach(id string) error {
+	manifest, err := m.manifest(id)
+	if err != nil {
+		return err
+	}
+	if manifest.Lifecycle == "stopped" {
+		return attachStateError(id, "the task is stopped", "Inspect the task or start a new task before attaching")
+	}
+	if manifest.Lifecycle == "finished" {
+		return attachStateError(id, "the task is finished", "Inspect the finished task instead of attaching")
+	}
+	if manifest.Lifecycle != "running" {
+		return attachStateError(id, "the task is not running", fmt.Sprintf("Run `akagent task inspect %s` and reconcile before attaching", id))
+	}
+	if manifest.Observation != ObservationFresh || manifest.ProcessPID <= 0 || manifest.ProcessStartTime == 0 {
+		return attachStateError(id, "the durable process observation is not fresh", fmt.Sprintf("Run `akagent task reconcile` and retry `akagent task attach %s`", id))
+	}
+	if manifest.HeartbeatAt.IsZero() || m.now().Sub(manifest.HeartbeatAt) > m.heartbeatTimeout() {
+		return attachStateError(id, "the task heartbeat is stale", fmt.Sprintf("Run `akagent task reconcile` and retry `akagent task attach %s`", id))
+	}
+	observation, err := m.Tmux.Observe(id)
+	if err != nil {
+		return attachStateError(id, "the tmux observation failed", fmt.Sprintf("Retry `akagent task attach %s`", id))
+	}
+	if !observation.Available {
+		return attachStateError(id, "tmux is unavailable", "Start tmux, then retry the attach")
+	}
+	if len(observation.Processes) == 0 {
+		return attachStateError(id, "the task window is missing", fmt.Sprintf("Run `akagent task reconcile` and inspect task %s", id))
+	}
+	if len(observation.Processes) != 1 || processState(observation.Processes[0]) != ObservationFresh {
+		return attachStateError(id, "the task window observation is contradictory", fmt.Sprintf("Run `akagent task reconcile` and inspect task %s", id))
+	}
+	process := observation.Processes[0]
+	if process.WindowID == "" || manifest.TmuxWindow != process.WindowID || manifest.ProcessPane != process.PaneID || manifest.ProcessPID != process.PID || manifest.ProcessStartTime != process.StartTime {
+		return attachStateError(id, "the task process or window was replaced", fmt.Sprintf("Run `akagent task reconcile` and inspect task %s", id))
+	}
+	if err := m.Tmux.Attach(id, process.WindowID); err != nil {
+		return fmt.Errorf("attach to verified tmux task window: %w", err)
+	}
+	return nil
+}
+
+func attachStateError(id, reason, recovery string) error {
+	return &store.Error{
+		Kind:      store.KindConflict,
+		Message:   fmt.Sprintf("Task %s cannot be attached: %s", id, reason),
+		Retryable: false,
+		Recovery:  recovery,
+	}
+}
+
 func (m *Manager) Inspect(id string) (store.Manifest, error) { return m.manifest(id) }
 
 func (m *Manager) List() ([]store.Manifest, error) {
@@ -1009,6 +1065,21 @@ func (commandTmux) Observe(id string) (TmuxObservation, error) {
 		}
 	}
 	return observation, nil
+}
+
+func (commandTmux) Attach(taskID, windowID string) error {
+	option, err := exec.Command("tmux", "display-message", "-p", "-t", windowID, "#{@akagent_task_id}").Output()
+	if err != nil || strings.TrimSpace(string(option)) != taskID {
+		return errors.New("tmux task window could not be verified")
+	}
+	command := exec.Command("tmux", "attach-session", "-t", windowID)
+	command.Stdin = os.Stdin
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		return errors.New("tmux task window could not be attached")
+	}
+	return nil
 }
 
 func (commandTmux) Stop(id string) error {
