@@ -23,6 +23,8 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
+Repository registration requires a Git worktree and records applicable `AGENTS.md` instructions.
+
 Stdout uses TOON because coding agents are the primary machine consumers.
 The TOON output contract is pinned to specification version 4.1 with a validated encoder and official conformance fixtures; see [`docs/toon.md`](docs/toon.md).
 
@@ -35,10 +37,11 @@ akagent repository register akagent-cli ~/dev/repos/akagent-cli
 akagent task start --title "Implement lifecycle" --repository akagent-cli
 ```
 
-`task start` creates a durable task record before creating its detached tmux window.
+`task start` creates a durable task record, an isolated Git branch and worktree when repository policy requires it, and a detached tmux window.
+Use `--branch`, `--base`, and `--worktree` to provide explicit immutable Git inputs.
 Repeated equivalent starts are no-ops, while conflicting task inputs are rejected.
 `task publish` persists an agent condition, reason, activity, and heartbeat without exposing credential values.
-`task reconcile` compares durable task records with tmux observations and records missing windows as stopped; it never deletes task state, worktrees, or terminal history.
+`task reconcile` compares durable task records with tmux and Git observations, reports dirty or untracked work and recovery debt, and never deletes task state, worktrees, branches, or terminal history.
 Required credential IDs passed with `--require` must be ready; unavailable `--optional` IDs are reported as non-secret warnings.
 
 ## Credentials
