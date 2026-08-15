@@ -1,6 +1,6 @@
 # `akagent` integration signal
 
-Agent orchestration is ready for default enablement over the stable `akagent` CLI boundary.
+Agent orchestration is enabled by default over the stable `akagent` CLI boundary.
 Automated lifecycle behavior belongs to the agent skill, while direct human `akagent` commands remain available independently.
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.

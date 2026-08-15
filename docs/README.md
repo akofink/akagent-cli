@@ -45,7 +45,7 @@ The installed binary is `akagent`.
 - Do not trust a declared condition without checking process, tmux, filesystem, and Git facts where required.
 - Avoid fields and ambient context that do not change the next agent decision.
 - Expose worker capability and persistence differences instead of claiming false backend transparency.
-- Keep automated integrations disabled by default.
+- Keep automated integrations enabled by default, with `AKAGENT_ENABLED=0` as the immediate disable signal.
 - Never expose credential values in commands, output, logs, task records, or tmux metadata.
 
 ## Current local boundary

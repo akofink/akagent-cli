@@ -14,7 +14,7 @@ The public workflow is:
 3. Run the repository's focused checks and full Go verification.
 4. Reconcile documentation with the shipped command surface.
 5. Open a pull request with one reviewable change.
-6. Wait for review and CI before merging.
+6. Wait for required CI to pass, then merge; this repository does not require another approval step.
 
 ## Completed foundation
 
@@ -44,7 +44,7 @@ Destructive cleanup hooks are not part of the current implementation.
 
 ## Current orchestration boundary
 
-Agent orchestration is ready for default enablement over the stable CLI boundary.
+Agent orchestration is enabled by default over the stable CLI boundary.
 The agent skill owns automated lifecycle behavior, while direct human CLI commands remain available.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 

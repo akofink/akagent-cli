@@ -225,7 +225,7 @@ Exit code `2` means the command or its arguments are invalid.
 
 ## Orchestration and integration signal
 
-Agent orchestration is ready for default enablement over this stable CLI protocol.
+Agent orchestration is enabled by default over this stable CLI protocol.
 The agent skill owns automated lifecycle behavior and direct human commands remain available independently.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
