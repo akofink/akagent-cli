@@ -128,6 +128,72 @@ func TestManagedStartPersistsExplicitLaunchConfiguration(t *testing.T) {
 	}
 }
 
+func TestManagedLaunchUsesInteractivePiWithPromptReference(t *testing.T) {
+	manager, _ := newTestManager(t)
+	prompt := filepath.Join(t.TempDir(), "prompt with spaces.md")
+	promptContents := "prompt contents must not become process arguments\n"
+	if err := os.WriteFile(prompt, []byte(promptContents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager.ResolveAgent = func(string) (string, error) { return "/usr/local/bin/pi", nil }
+	request := StartRequest{ID: "managed-interactive", Title: "Interactive Pi", Repository: "demo", Agent: "pi", PromptReference: prompt}
+	if _, err := manager.Start(request); err != nil {
+		t.Fatal(err)
+	}
+
+	originalDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(originalDirectory) }()
+	var gotCommand string
+	var gotArgs []string
+	manager.ExecAgent = func(command string, args, _ []string) error {
+		gotCommand = command
+		gotArgs = append([]string(nil), args...)
+		return errors.New("test exec failure")
+	}
+	if err := manager.Launch(request.ID); err == nil {
+		t.Fatal("Launch succeeded despite injected exec failure")
+	}
+	if gotCommand != "/usr/local/bin/pi" {
+		t.Fatalf("agent command = %q, want Pi executable", gotCommand)
+	}
+	wantArgs := []string{"/usr/local/bin/pi", "@" + prompt}
+	if strings.Join(gotArgs, "\x00") != strings.Join(wantArgs, "\x00") {
+		t.Fatalf("agent args = %#v, want %#v", gotArgs, wantArgs)
+	}
+	if strings.Contains(strings.Join(gotArgs, "\x00"), promptContents) {
+		t.Fatal("prompt contents reached agent arguments")
+	}
+}
+
+func TestManagedLaunchMissingPromptRemainsRecoverable(t *testing.T) {
+	manager, _ := newTestManager(t)
+	prompt := filepath.Join(t.TempDir(), "prompt.md")
+	if err := os.WriteFile(prompt, []byte("prompt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager.ResolveAgent = func(string) (string, error) { return "/usr/local/bin/pi", nil }
+	request := StartRequest{ID: "managed-missing-prompt", Title: "Missing prompt", Repository: "demo", Agent: "pi", PromptReference: prompt}
+	if _, err := manager.Start(request); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(prompt); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Launch(request.ID); err == nil {
+		t.Fatal("Launch succeeded with a missing prompt file")
+	}
+	manifest, err := manager.Inspect(request.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Lifecycle != "starting" || manifest.Observation != ObservationMissing || manifest.RecoveryDebt != "launch_failed" {
+		t.Fatalf("manifest after missing prompt = %#v, want recoverable launch failure", manifest)
+	}
+}
+
 func TestManagedLaunchWindowFailureRemainsRetryable(t *testing.T) {
 	manager, tmux := newTestManager(t)
 	prompt := filepath.Join(t.TempDir(), "prompt.md")

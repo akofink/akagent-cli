@@ -24,7 +24,8 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 
 `task start` creates a durable record, creates or validates the task Git worktree, and starts either a detached shell or a managed local Pi process in a task-tagged tmux window.
 Managed launch persists the resolved `pi` command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
-The prompt is supplied on standard input, the launcher replaces itself with Pi, and the durable process identity therefore identifies Pi.
+The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive in the tmux pane.
+The launcher replaces itself with Pi, and the durable process identity therefore identifies Pi.
 A failed launch remains in recoverable `starting` state and can be retried with the same immutable inputs.
 
 `task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.

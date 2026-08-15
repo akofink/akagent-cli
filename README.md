@@ -49,7 +49,7 @@ The `direct` policy permits the registered checkout itself when that is explicit
 
 `task start` creates a durable record, validates the repository inputs, creates the required branch and worktree, and starts a task-tagged tmux resource.
 The local CLI can start either a detached shell for direct human work or a managed local Pi process.
-Use `--agent pi` to select the managed launch, `--prompt` to provide a local prompt file on standard input, and `--context` to provide one non-secret working-context value.
+Use `--agent pi` to select the managed launch, `--prompt` to provide a local prompt file, and `--context` to provide one non-secret working-context value.
 Use `task attach` for verified human attachment and use `task publish` for durable condition and heartbeat updates.
 
 `task reconcile` compares durable records with tmux and Git observations and repairs safe derived facts.
@@ -59,7 +59,10 @@ It never deletes task state, branches, worktrees, windows, or terminal history.
 
 Pi must be installed and available as `pi` on `PATH`.
 The managed launch configuration resolves that command, the task worktree, an optional prompt-file reference, and an optional non-secret context before starting tmux.
-The prompt file is opened as standard input for Pi and its content is never placed in process arguments, task events, or protocol output.
+The validated prompt-file reference is passed to Pi while standard input remains attached to the tmux terminal, preserving Pi's interactive mode.
+Prompt content is never placed in process arguments, task events, or protocol output.
+The pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible during execution.
+A failed launch prints safe recovery guidance and remains retryable through the same task start command.
 
 ```bash
 akagent task start --title "Review the build" --repository demo \
