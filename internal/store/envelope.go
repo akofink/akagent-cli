@@ -29,40 +29,52 @@ type Envelope struct {
 	Data          json.RawMessage `json:"data"`
 }
 
+// LaunchConfig is the durable, non-secret configuration for a managed agent.
+// PromptReference identifies a local prompt file rather than embedding prompt
+// content in process arguments or task events.
+type LaunchConfig struct {
+	Target           string `json:"target"`
+	Command          string `json:"command"`
+	PromptReference  string `json:"prompt_reference,omitempty"`
+	WorkingDirectory string `json:"working_directory"`
+	WorkingContext   string `json:"working_context,omitempty"`
+}
+
 // Manifest is the typed mutable payload of a task manifest.
 type Manifest struct {
-	Title                  string    `json:"title"`
-	Worker                 string    `json:"worker"`
-	Repository             string    `json:"repository,omitempty"`
-	Branch                 string    `json:"branch,omitempty"`
-	BaseRevision           string    `json:"base_revision,omitempty"`
-	WorktreePath           string    `json:"worktree_path,omitempty"`
-	Lifecycle              string    `json:"lifecycle"`
-	Condition              string    `json:"condition"`
-	Reason                 string    `json:"reason,omitempty"`
-	Activity               string    `json:"activity,omitempty"`
-	HeartbeatAt            time.Time `json:"heartbeat_at,omitempty"`
-	TmuxWindow             string    `json:"tmux_window,omitempty"`
-	Requirements           string    `json:"requirements,omitempty"`
-	Warnings               string    `json:"warnings,omitempty"`
-	Result                 string    `json:"result,omitempty"`
-	Committed              bool      `json:"committed,omitempty"`
-	Dirty                  bool      `json:"dirty,omitempty"`
-	Untracked              bool      `json:"untracked,omitempty"`
-	RecoveryDebt           string    `json:"recovery_debt,omitempty"`
-	ArchiveState           string    `json:"archive_state,omitempty"`
-	CleanupState           string    `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState   string    `json:"worktree_cleanup_state,omitempty"`
-	CredentialCleanupState string    `json:"credential_cleanup_state,omitempty"`
-	CleanupDebt            bool      `json:"cleanup_debt,omitempty"`
-	Git                    GitFacts  `json:"git,omitempty"`
-	ProcessPID             int       `json:"process_pid,omitempty"`
-	ProcessStartTime       uint64    `json:"process_start_time,omitempty"`
-	ObservedPID            int       `json:"observed_pid,omitempty"`
-	ObservedStartTime      uint64    `json:"observed_start_time,omitempty"`
-	ProcessPane            string    `json:"process_pane,omitempty"`
-	Observation            string    `json:"observation,omitempty"`
-	ObservationAt          time.Time `json:"observation_at,omitempty"`
+	Title                  string        `json:"title"`
+	Worker                 string        `json:"worker"`
+	Repository             string        `json:"repository,omitempty"`
+	Branch                 string        `json:"branch,omitempty"`
+	BaseRevision           string        `json:"base_revision,omitempty"`
+	WorktreePath           string        `json:"worktree_path,omitempty"`
+	Lifecycle              string        `json:"lifecycle"`
+	Condition              string        `json:"condition"`
+	Reason                 string        `json:"reason,omitempty"`
+	Activity               string        `json:"activity,omitempty"`
+	HeartbeatAt            time.Time     `json:"heartbeat_at,omitempty"`
+	TmuxWindow             string        `json:"tmux_window,omitempty"`
+	Requirements           string        `json:"requirements,omitempty"`
+	Warnings               string        `json:"warnings,omitempty"`
+	Result                 string        `json:"result,omitempty"`
+	Committed              bool          `json:"committed,omitempty"`
+	Dirty                  bool          `json:"dirty,omitempty"`
+	Untracked              bool          `json:"untracked,omitempty"`
+	RecoveryDebt           string        `json:"recovery_debt,omitempty"`
+	ArchiveState           string        `json:"archive_state,omitempty"`
+	CleanupState           string        `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string        `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string        `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool          `json:"cleanup_debt,omitempty"`
+	Git                    GitFacts      `json:"git,omitempty"`
+	ProcessPID             int           `json:"process_pid,omitempty"`
+	ProcessStartTime       uint64        `json:"process_start_time,omitempty"`
+	ObservedPID            int           `json:"observed_pid,omitempty"`
+	ObservedStartTime      uint64        `json:"observed_start_time,omitempty"`
+	ProcessPane            string        `json:"process_pane,omitempty"`
+	Observation            string        `json:"observation,omitempty"`
+	ObservationAt          time.Time     `json:"observation_at,omitempty"`
+	Launch                 *LaunchConfig `json:"launch,omitempty"`
 }
 
 // GitFacts are non-secret observations captured for recovery and cleanup

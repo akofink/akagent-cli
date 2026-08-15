@@ -16,11 +16,13 @@ import (
 )
 
 type fakeTmux struct {
-	mu          sync.Mutex
-	observation TmuxObservation
-	starts      int
-	attaches    []string
-	observedIDs []string
+	mu             sync.Mutex
+	observation    TmuxObservation
+	starts         int
+	attaches       []string
+	observedIDs    []string
+	managedStarts  []store.LaunchConfig
+	managedFailure int
 }
 
 func (t *fakeTmux) Start(string) (TmuxProcess, error) {
@@ -30,6 +32,19 @@ func (t *fakeTmux) Start(string) (TmuxProcess, error) {
 	t.observation = TmuxObservation{Available: true, Processes: []TmuxProcess{{WindowID: "@1", PaneID: "%1", PID: 42, StartTime: 100}}}
 	return t.observation.Processes[0], nil
 }
+func (t *fakeTmux) StartManaged(_ string, launch store.LaunchConfig) (TmuxProcess, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.managedStarts = append(t.managedStarts, launch)
+	if t.managedFailure > 0 {
+		t.managedFailure--
+		return TmuxProcess{}, errors.New("managed launch window failed")
+	}
+	t.starts++
+	t.observation = TmuxObservation{Available: true, Processes: []TmuxProcess{{WindowID: "@managed", PaneID: "%managed", PID: 52, StartTime: 120}}}
+	return t.observation.Processes[0], nil
+}
+
 func (t *fakeTmux) Observe(id string) (TmuxObservation, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -86,6 +101,58 @@ func newTestManager(t *testing.T) (*Manager, *fakeTmux) {
 
 func runGit(path string, args ...string) error {
 	return exec.Command("git", append([]string{"-C", path}, args...)...).Run()
+}
+
+func TestManagedStartPersistsExplicitLaunchConfiguration(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	prompt := filepath.Join(t.TempDir(), "prompt.md")
+	if err := os.WriteFile(prompt, []byte("full prompt must not be copied to process arguments\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager.ResolveAgent = func(string) (string, error) { return "/usr/local/bin/pi", nil }
+	result, err := manager.Start(StartRequest{ID: "managed-1", Title: "Managed Pi", Repository: "demo", Agent: "pi", PromptReference: prompt, WorkingContext: "issue-22"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Manifest.Launch == nil || result.Manifest.Launch.Target != "pi" || result.Manifest.Launch.Command != "/usr/local/bin/pi" || result.Manifest.Launch.PromptReference != prompt || result.Manifest.Launch.WorkingContext != "issue-22" {
+		t.Fatalf("launch config = %#v, want explicit durable Pi configuration", result.Manifest.Launch)
+	}
+	if len(tmux.managedStarts) != 1 || tmux.managedStarts[0].WorkingDirectory != result.Manifest.WorktreePath {
+		t.Fatalf("managed starts = %#v, want task worktree launch", tmux.managedStarts)
+	}
+	if result.Manifest.ProcessPID != 52 || result.Manifest.ProcessStartTime != 120 {
+		t.Fatalf("process identity = %d/%d, want managed process identity", result.Manifest.ProcessPID, result.Manifest.ProcessStartTime)
+	}
+	if repeated, err := manager.Start(StartRequest{ID: "managed-1", Title: "Managed Pi", Repository: "demo", Agent: "pi", PromptReference: prompt, WorkingContext: "issue-22"}); err != nil || repeated.Created {
+		t.Fatalf("repeated managed start = %#v, %v; want idempotent no-op", repeated, err)
+	}
+}
+
+func TestManagedLaunchWindowFailureRemainsRetryable(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	prompt := filepath.Join(t.TempDir(), "prompt.md")
+	if err := os.WriteFile(prompt, []byte("prompt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager.ResolveAgent = func(string) (string, error) { return "/usr/local/bin/pi", nil }
+	tmux.managedFailure = 1
+	request := StartRequest{ID: "managed-retry", Title: "Retry Pi", Repository: "demo", Agent: "pi", PromptReference: prompt}
+	if _, err := manager.Start(request); err == nil {
+		t.Fatal("managed start succeeded despite tmux launch failure")
+	}
+	failed, err := manager.Inspect(request.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.Lifecycle != "starting" || failed.Launch == nil {
+		t.Fatalf("failed launch manifest = %#v, want durable starting state", failed)
+	}
+	if _, err := manager.Start(request); err != nil {
+		t.Fatalf("retry managed start = %v", err)
+	}
+	if len(tmux.managedStarts) != 2 {
+		t.Fatalf("managed starts = %d, want failed launch plus retry", len(tmux.managedStarts))
+	}
 }
 
 func TestStartPersistsProcessIdentityAndIsIdempotent(t *testing.T) {

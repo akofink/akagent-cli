@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/akofink/akagent-cli/internal/credential"
@@ -70,6 +71,12 @@ type Tmux interface {
 	Stop(taskID string) error
 }
 
+// ManagedTmux starts a task with an explicit launch configuration. The legacy
+// Tmux.Start path remains available for tasks that intentionally launch a shell.
+type ManagedTmux interface {
+	StartManaged(taskID string, launch store.LaunchConfig) (TmuxProcess, error)
+}
+
 type Manager struct {
 	Store              *store.Store
 	Tmux               Tmux
@@ -82,18 +89,22 @@ type Manager struct {
 	TerminalHistory    func(string) (string, error)
 	CleanupWorktree    func(store.Manifest, store.GitFacts) error
 	CleanupCredentials func(store.Manifest) error
+	ResolveAgent       func(string) (string, error)
 	operationMu        sync.Mutex
 }
 
 type StartRequest struct {
-	ID           string
-	Title        string
-	Repository   string
-	Branch       string
-	BaseRevision string
-	WorktreePath string
-	Requirements []string
-	Optional     []string
+	ID              string
+	Title           string
+	Repository      string
+	Branch          string
+	BaseRevision    string
+	WorktreePath    string
+	Requirements    []string
+	Optional        []string
+	Agent           string
+	PromptReference string
+	WorkingContext  string
 }
 
 type StartResult struct {
@@ -107,6 +118,7 @@ func New(state *store.Store) *Manager {
 			return credential.Load(credential.ConfigPath())
 		}, Checker: credential.NewChecker(), Now: time.Now, HeartbeatTimeout: DefaultHeartbeatTimeout,
 		GitFacts:           func(store.Manifest) (store.GitFacts, error) { return store.GitFacts{}, nil },
+		ResolveAgent:       exec.LookPath,
 		TerminalHistory:    func(string) (string, error) { return "", nil },
 		CleanupWorktree:    func(store.Manifest, store.GitFacts) error { return nil },
 		CleanupCredentials: func(store.Manifest) error { return nil },
@@ -263,6 +275,10 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 	}
 	request.Requirements = unique(request.Requirements)
 	request.Optional = unique(request.Optional)
+	launch, err := m.prepareLaunch(request)
+	if err != nil {
+		return StartResult{}, err
+	}
 	warnings, err := m.checkCredentials(request.Requirements, request.Optional)
 	if err != nil {
 		return StartResult{}, err
@@ -275,7 +291,7 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 			if decodeErr != nil {
 				return decodeErr
 			}
-			if err := m.validateExistingStart(request, repository, existing); err != nil {
+			if err := m.validateExistingStart(request, repository, existing, launch); err != nil {
 				return err
 			}
 			if existing.Lifecycle == "starting" {
@@ -296,7 +312,10 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 		if err != nil {
 			return err
 		}
-		manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree, Lifecycle: "starting", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+		if launch != nil {
+			launch.WorkingDirectory = worktree
+		}
+		manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree, Lifecycle: "starting", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; "), Launch: launch}
 		created, existing, err := m.Store.CreateManifest(request.ID, manifest)
 		if err != nil {
 			return err
@@ -322,6 +341,41 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 		return nil
 	})
 	return result, err
+}
+
+func (m *Manager) prepareLaunch(request StartRequest) (*store.LaunchConfig, error) {
+	if request.Agent == "" && request.PromptReference == "" && request.WorkingContext == "" {
+		return nil, nil
+	}
+	if request.Agent == "" {
+		return nil, fmt.Errorf("an agent target is required for managed launch")
+	}
+	if request.Agent != "pi" {
+		return nil, fmt.Errorf("unsupported agent target %q", request.Agent)
+	}
+	resolve := m.ResolveAgent
+	if resolve == nil {
+		resolve = exec.LookPath
+	}
+	command, err := resolve(request.Agent)
+	if err != nil || command == "" {
+		return nil, fmt.Errorf("Pi agent command is unavailable")
+	}
+	prompt := request.PromptReference
+	if prompt != "" {
+		prompt, err = filepath.Abs(prompt)
+		if err != nil {
+			return nil, fmt.Errorf("resolve the prompt reference")
+		}
+		info, statErr := os.Lstat(prompt)
+		if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("prompt reference must identify a regular local file")
+		}
+	}
+	if strings.ContainsAny(request.WorkingContext, "\r\n") {
+		return nil, fmt.Errorf("working context must be a single non-secret line")
+	}
+	return &store.LaunchConfig{Target: request.Agent, Command: command, PromptReference: prompt, WorkingContext: request.WorkingContext}, nil
 }
 
 func (m *Manager) startInputs(request StartRequest, repository store.Repository) (string, string, string, error) {
@@ -384,7 +438,7 @@ func (m *Manager) startInputs(request StartRequest, repository store.Repository)
 	return branch, base, worktree, nil
 }
 
-func (m *Manager) validateExistingStart(request StartRequest, repository store.Repository, existing store.Manifest) error {
+func (m *Manager) validateExistingStart(request StartRequest, repository store.Repository, existing store.Manifest, launch *store.LaunchConfig) error {
 	if existing.Title != request.Title || existing.Repository != request.Repository || existing.Worker != "local" {
 		return fmt.Errorf("task inputs conflict with the existing task")
 	}
@@ -405,6 +459,9 @@ func (m *Manager) validateExistingStart(request StartRequest, repository store.R
 		if err != nil || resolved != existing.BaseRevision {
 			return fmt.Errorf("task inputs conflict with the existing task")
 		}
+	}
+	if !sameRequestedLaunch(existing.Launch, launch) {
+		return fmt.Errorf("task inputs conflict with the existing task")
 	}
 	return nil
 }
@@ -455,7 +512,17 @@ func (m *Manager) ensureStarted(id string, manifest *store.Manifest) error {
 		}
 		return nil
 	}
-	process, err := m.Tmux.Start(id)
+	var process TmuxProcess
+	var err error
+	if manifest.Launch != nil {
+		managed, ok := m.Tmux.(ManagedTmux)
+		if !ok {
+			return fmt.Errorf("tmux implementation does not support managed launch")
+		}
+		process, err = managed.StartManaged(id, *manifest.Launch)
+	} else {
+		process, err = m.Tmux.Start(id)
+	}
 	if err != nil {
 		_, _ = m.Store.AppendEvent(id, store.Event{Operation: "start", Outcome: "failed"})
 		return fmt.Errorf("start tmux task: %w", err)
@@ -668,6 +735,80 @@ func attachStateError(id, reason, recovery string) error {
 
 func (m *Manager) Inspect(id string) (store.Manifest, error) { return m.manifest(id) }
 
+// Launch is the short-lived worker entrypoint used by tmux. It reconstructs a
+// minimal environment from durable task inputs, opens the prompt by reference,
+// and replaces itself with the selected agent so the recorded PID remains the
+// agent PID. It returns only redaction-safe errors because it runs in a tmux pane.
+func (m *Manager) Launch(id string) error {
+	manifest, err := m.manifest(id)
+	if err != nil {
+		return err
+	}
+	if manifest.Launch == nil {
+		return m.markLaunchFailure(id, "missing launch configuration")
+	}
+	if m.Credentials == nil {
+		return m.markLaunchFailure(id, "credential manifest unavailable")
+	}
+	credentials, err := m.Credentials()
+	if err != nil {
+		return m.markLaunchFailure(id, "credential manifest unavailable")
+	}
+	environment, err := credential.BuildEnvironment(credentials, splitRequirements(manifest.Requirements), os.Environ())
+	if err != nil {
+		return m.markLaunchFailure(id, "requested credential unavailable")
+	}
+	environment = append(environment, "AKAGENT_TASK_ID="+id)
+	if manifest.Launch.WorkingContext != "" {
+		environment = append(environment, "AKAGENT_WORKING_CONTEXT="+manifest.Launch.WorkingContext)
+	}
+	if err := os.Chdir(manifest.Launch.WorkingDirectory); err != nil {
+		return m.markLaunchFailure(id, "task worktree unavailable")
+	}
+	var input *os.File
+	if manifest.Launch.PromptReference != "" {
+		input, err = os.Open(manifest.Launch.PromptReference)
+		if err != nil {
+			return m.markLaunchFailure(id, "prompt reference unavailable")
+		}
+		defer input.Close()
+	}
+	if input != nil {
+		if err := syscall.Dup2(int(input.Fd()), int(os.Stdin.Fd())); err != nil {
+			return m.markLaunchFailure(id, "prompt input could not be prepared")
+		}
+	}
+	if err := syscall.Exec(manifest.Launch.Command, []string{manifest.Launch.Command}, environment); err != nil {
+		return m.markLaunchFailure(id, "agent process could not be started")
+	}
+	return nil
+}
+
+func (m *Manager) markLaunchFailure(id, detail string) error {
+	_, updateErr := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
+		manifest.Lifecycle = "starting"
+		manifest.Observation = ObservationMissing
+		manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
+		manifest.ProcessPID, manifest.ProcessStartTime = 0, 0
+		manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "launch_failed")
+		return nil
+	})
+	if updateErr != nil {
+		return errors.New("managed launch failed and could not be recorded")
+	}
+	if _, eventErr := m.Store.AppendEvent(id, store.Event{Operation: "launch", Outcome: "failed", Detail: detail}); eventErr != nil {
+		return errors.New("managed launch failed and recovery event could not be recorded")
+	}
+	return errors.New("managed agent launch failed; retry the task start")
+}
+
+func splitRequirements(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, ",")
+}
+
 func (m *Manager) List() ([]store.Manifest, error) {
 	ids, err := m.Store.TaskIDs()
 	if err != nil {
@@ -736,7 +877,21 @@ func (m *Manager) heartbeatTimeout() time.Duration {
 }
 
 func sameStart(a, b store.Manifest) bool {
-	return a.Title == b.Title && a.Worker == b.Worker && a.Repository == b.Repository && a.Branch == b.Branch && a.BaseRevision == b.BaseRevision && a.WorktreePath == b.WorktreePath && a.Requirements == b.Requirements
+	return a.Title == b.Title && a.Worker == b.Worker && a.Repository == b.Repository && a.Branch == b.Branch && a.BaseRevision == b.BaseRevision && a.WorktreePath == b.WorktreePath && a.Requirements == b.Requirements && sameLaunch(a.Launch, b.Launch)
+}
+
+func sameLaunch(a, b *store.LaunchConfig) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
+func sameRequestedLaunch(existing, requested *store.LaunchConfig) bool {
+	if existing == nil || requested == nil {
+		return existing == nil && requested == nil
+	}
+	return existing.Target == requested.Target && existing.Command == requested.Command && existing.PromptReference == requested.PromptReference && existing.WorkingContext == requested.WorkingContext
 }
 
 func validBranch(branch string) bool {
@@ -1014,7 +1169,25 @@ func (commandTmux) Start(id string) (TmuxProcess, error) {
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	output, err := exec.Command("tmux", "new-window", "-d", "-P", "-F", "#{window_id}", "-n", "akagent-"+id[:min(8, len(id))], shell).Output()
+	return startTmuxWindow(id, "", shell)
+}
+
+func (commandTmux) StartManaged(id string, launch store.LaunchConfig) (TmuxProcess, error) {
+	executable, err := os.Executable()
+	if err != nil || executable == "" {
+		return TmuxProcess{}, errors.New("akagent executable could not be resolved")
+	}
+	command := shellQuote(executable) + " worker launch " + shellQuote(id)
+	return startTmuxWindow(id, launch.WorkingDirectory, command)
+}
+
+func startTmuxWindow(id, directory, command string) (TmuxProcess, error) {
+	args := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-n", "akagent-" + id[:min(8, len(id))]}
+	if directory != "" {
+		args = append(args, "-c", directory)
+	}
+	args = append(args, command)
+	output, err := exec.Command("tmux", args...).Output()
 	if err != nil {
 		return TmuxProcess{}, errors.New("tmux window could not be created")
 	}
@@ -1033,6 +1206,10 @@ func (commandTmux) Start(id string) (TmuxProcess, error) {
 		return observation.Processes[0], nil
 	}
 	return TmuxProcess{WindowID: window}, nil
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\\"'\\\"'") + "'"
 }
 
 func (commandTmux) Observe(id string) (TmuxObservation, error) {

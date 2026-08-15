@@ -33,6 +33,10 @@ type taskView struct {
 	WorktreeCleanupState   string `json:"worktree_cleanup_state,omitempty"`
 	CredentialCleanupState string `json:"credential_cleanup_state,omitempty"`
 	CleanupDebt            bool   `json:"cleanup_debt,omitempty"`
+	Agent                  string `json:"agent,omitempty"`
+	AgentCommand           string `json:"agent_command,omitempty"`
+	PromptReference        string `json:"prompt_reference,omitempty"`
+	WorkingContext         string `json:"working_context,omitempty"`
 }
 
 type taskListView struct {
@@ -59,7 +63,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	case "start":
 		request, ok := parseStart(args[1:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then start the task")
+			return writeError(stdout, "usage", "Usage: akagent task start --title <title> --repository <name> [--task-id <id>] [--agent pi --prompt <path>] [--context <value>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then start the task")
 		}
 		if request.ID == "" {
 			id, idErr := uuid.NewV7()
@@ -223,6 +227,12 @@ func parseStart(args []string) (lifecycle.StartRequest, bool) {
 			request.Requirements = append(request.Requirements, value)
 		case "--optional":
 			request.Optional = append(request.Optional, value)
+		case "--agent", "--command":
+			request.Agent = value
+		case "--prompt", "--prompt-ref", "--prompt-reference":
+			request.PromptReference = value
+		case "--context", "--working-context":
+			request.WorkingContext = value
 		default:
 			return request, false
 		}
@@ -270,7 +280,14 @@ func taskUsage(stdout io.Writer) int {
 	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 func view(id string, manifest store.Manifest) taskView {
-	return taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
+	result := taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
+	if manifest.Launch != nil {
+		result.Agent = manifest.Launch.Target
+		result.AgentCommand = manifest.Launch.Command
+		result.PromptReference = manifest.Launch.PromptReference
+		result.WorkingContext = manifest.Launch.WorkingContext
+	}
+	return result
 }
 
 func taskState(value string) string {

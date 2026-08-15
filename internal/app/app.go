@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/output"
+	"github.com/akofink/akagent-cli/internal/store"
 	updatecmd "github.com/akofink/akagent-cli/internal/update"
 	"github.com/google/uuid"
 )
@@ -85,6 +87,16 @@ func Run(args []string, stdout io.Writer) int {
 	case "task":
 		return taskCommand(args[1:], stdout)
 	case "worker":
+		if len(args) == 3 && args[1] == "launch" {
+			state, err := store.Open()
+			if err != nil {
+				return 1
+			}
+			if err := lifecycle.New(state).Launch(args[2]); err != nil {
+				return 1
+			}
+			return 0
+		}
 		if len(args) == 2 && args[1] == "inspect" {
 			return write(stdout, workerView{Worker: inspectWorker(exec.LookPath)})
 		}
