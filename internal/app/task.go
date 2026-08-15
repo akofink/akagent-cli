@@ -78,8 +78,9 @@ func taskCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, taskDetailView{Task: view(request.ID, result.Manifest)})
 	case "list":
-		if len(args) != 1 {
-			return taskUsage(stdout)
+		options, ok := parseTaskList(args[1:])
+		if !ok {
+			return taskListUsage(stdout)
 		}
 		ids, err := state.TaskIDs()
 		if err != nil {
@@ -90,6 +91,15 @@ func taskCommand(args []string, stdout io.Writer) int {
 			manifest, err := manager.Inspect(id)
 			if err != nil {
 				return lifecycleError(stdout, err)
+			}
+			if !options.All && !actionable(manifest) {
+				continue
+			}
+			if options.Repository != "" && manifest.Repository != options.Repository {
+				continue
+			}
+			if options.Worktree != "" && manifest.WorktreePath != options.Worktree {
+				continue
 			}
 			items = append(items, view(id, manifest))
 		}
@@ -202,6 +212,35 @@ func repositoryCommand(args []string, stdout io.Writer) int {
 	}
 }
 
+type taskListOptions struct {
+	All        bool
+	Repository string
+	Worktree   string
+}
+
+func parseTaskList(args []string) (taskListOptions, bool) {
+	var options taskListOptions
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--all":
+			options.All = true
+		case "--repository", "--worktree":
+			if index+1 >= len(args) || args[index+1] == "" {
+				return options, false
+			}
+			if args[index] == "--repository" {
+				options.Repository = args[index+1]
+			} else {
+				options.Worktree = args[index+1]
+			}
+			index++
+		default:
+			return options, false
+		}
+	}
+	return options, true
+}
+
 func parseStart(args []string) (lifecycle.StartRequest, bool) {
 	var request lifecycle.StartRequest
 	for len(args) > 0 {
@@ -281,6 +320,18 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 func taskUsage(stdout io.Writer) int {
 	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
+
+func taskListUsage(stdout io.Writer) int {
+	return writeError(stdout, "usage", "Usage: akagent task list [--all] [--repository <name>] [--worktree <path>]", false, "Run `akagent task list`")
+}
+
+func actionable(manifest store.Manifest) bool {
+	return manifest.ArchiveState != "complete" ||
+		manifest.CleanupState != "complete" ||
+		manifest.CleanupDebt ||
+		strings.TrimSpace(manifest.RecoveryDebt) != ""
+}
+
 func view(id string, manifest store.Manifest) taskView {
 	result := taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
 	if manifest.Launch != nil {

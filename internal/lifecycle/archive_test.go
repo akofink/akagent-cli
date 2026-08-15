@@ -198,6 +198,12 @@ func TestApprovedWorktreeCleanupPreservesArchiveAndReconcileRecovery(t *testing.
 	if archive.Git.Path != result.Manifest.WorktreePath || archive.Manifest.WorktreePath != result.Manifest.WorktreePath {
 		t.Fatalf("archive = %#v, want pre-cleanup worktree facts", archive)
 	}
+	if _, err := manager.Store.UpdateManifest("cleanup-worktree-task", func(manifest *store.Manifest) error {
+		manifest.RecoveryDebt = "worktree_mismatch"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := manager.Reconcile(); err != nil {
 		t.Fatal(err)
 	}
@@ -205,8 +211,8 @@ func TestApprovedWorktreeCleanupPreservesArchiveAndReconcileRecovery(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(manifest.RecoveryDebt, "worktree_missing") {
-		t.Fatalf("reconcile added expected missing-worktree debt: %q", manifest.RecoveryDebt)
+	if strings.Contains(manifest.RecoveryDebt, "worktree_missing") || strings.Contains(manifest.RecoveryDebt, "worktree_mismatch") {
+		t.Fatalf("reconcile retained obsolete worktree debt: %q", manifest.RecoveryDebt)
 	}
 }
 

@@ -124,6 +124,86 @@ func TestTaskListHeterogeneousRowsCommandContract(t *testing.T) {
 	}
 }
 
+func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
+	setupTaskCommandTest(t)
+	alphaPath := filepath.Join(t.TempDir(), "alpha")
+	betaPath := filepath.Join(t.TempDir(), "beta")
+	for _, path := range []string{alphaPath, betaPath} {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, path := range map[string]string{"alpha": alphaPath, "beta": betaPath} {
+		if result := runCommand(t, []string{"repository", "register", name, path, "--policy", "worktree"}); result.code != 0 {
+			t.Fatalf("repository %s register = (%d, %q)", name, result.code, result.stdout)
+		}
+	}
+	if result := runCommand(t, []string{"task", "start", "--task-id", "alpha-history", "--title", "Archived", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
+		t.Fatalf("archived task start = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", "alpha-history"}); result.code != 0 {
+		t.Fatalf("archived task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "clean", "alpha-history", "--allow-committed", "--allow-dirty", "--allow-untracked", "--allow-worktree"}); result.code != 0 {
+		t.Fatalf("archived task clean = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "start", "--task-id", "alpha-pending", "--title", "Pending cleanup", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
+		t.Fatalf("pending task start = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", "alpha-pending"}); result.code != 0 {
+		t.Fatalf("pending task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "archive", "alpha-pending"}); result.code != 0 {
+		t.Fatalf("pending task archive = (%d, %q)", result.code, result.stdout)
+	}
+	for _, task := range []struct {
+		id, title, repository string
+	}{
+		{id: "alpha-active", title: "Alpha", repository: "alpha"},
+		{id: "beta-active", title: "Beta", repository: "beta"},
+	} {
+		if result := runCommand(t, []string{"task", "start", "--task-id", task.id, "--title", task.title, "--repository", task.repository, "--branch", "main"}); result.code != 0 {
+			t.Fatalf("%s task start = (%d, %q)", task.id, result.code, result.stdout)
+		}
+	}
+
+	state, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := state.ReadManifest("alpha-active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	alphaActive, err := envelope.DecodeManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defaultList := runCommand(t, []string{"task", "list"})
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 3") || !strings.Contains(defaultList.stdout, "alpha-active") || !strings.Contains(defaultList.stdout, "alpha-pending") || !strings.Contains(defaultList.stdout, "beta-active") || strings.Contains(defaultList.stdout, "alpha-history") {
+		t.Fatalf("default task list = (%d, %q), want only actionable tasks", defaultList.code, defaultList.stdout)
+	}
+	allAlpha := runCommand(t, []string{"task", "list", "--all", "--repository", "alpha"})
+	if allAlpha.code != 0 || !strings.Contains(allAlpha.stdout, "total: 3") || !strings.Contains(allAlpha.stdout, "alpha-history") || !strings.Contains(allAlpha.stdout, "alpha-pending") || !strings.Contains(allAlpha.stdout, "alpha-active") || strings.Contains(allAlpha.stdout, "beta-active") {
+		t.Fatalf("repository-filtered task list = (%d, %q), want all alpha tasks", allAlpha.code, allAlpha.stdout)
+	}
+	scoped := runCommand(t, []string{"task", "list", "--all", "--repository", "alpha", "--worktree", alphaActive.WorktreePath})
+	if scoped.code != 0 || !strings.Contains(scoped.stdout, "total: 1") || !strings.Contains(scoped.stdout, "alpha-active") || strings.Contains(scoped.stdout, "alpha-history") || strings.Contains(scoped.stdout, "beta-active") {
+		t.Fatalf("composed task filters = (%d, %q), want one alpha worktree task", scoped.code, scoped.stdout)
+	}
+	if _, err := state.UpdateManifest("alpha-history", func(manifest *store.Manifest) error {
+		manifest.RecoveryDebt = "launch_failed"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	debtList := runCommand(t, []string{"task", "list"})
+	if debtList.code != 0 || !strings.Contains(debtList.stdout, "total: 4") || !strings.Contains(debtList.stdout, "alpha-history") {
+		t.Fatalf("debt-bearing task list = (%d, %q), want archived task retained", debtList.code, debtList.stdout)
+	}
+}
+
 func TestApprovedWorktreeCleanupCommandContract(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")

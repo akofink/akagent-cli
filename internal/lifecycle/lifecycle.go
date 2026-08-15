@@ -943,6 +943,7 @@ func (m *Manager) refreshGit(manifest *store.Manifest) bool {
 		manifest.Committed, manifest.Dirty, manifest.Untracked = false, false, false
 		if repositoryErr == nil && repository.Policy == "worktree" && manifest.WorktreeCleanupState == cleanupComplete {
 			manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_missing")
+			manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_mismatch")
 		} else {
 			manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "worktree_missing")
 		}
