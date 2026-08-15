@@ -48,6 +48,7 @@ type TmuxObservation struct {
 type GitStatus struct {
 	Exists    bool
 	Root      string
+	CommonDir string
 	Branch    string
 	Head      string
 	Dirty     bool
@@ -57,9 +58,11 @@ type GitStatus struct {
 // Git provides the small Git surface needed by task lifecycle operations.
 type Git interface {
 	RepositoryRoot(path string) (string, error)
+	CommonDir(path string) (string, error)
 	Head(path string) (string, error)
 	Branch(path string) (string, error)
 	Resolve(path, revision string) (string, error)
+	IsAncestor(path, ancestor, descendant string) (bool, error)
 	Status(path string) (GitStatus, error)
 	AddWorktree(repository, path, branch, base string) error
 }
@@ -467,21 +470,22 @@ func (m *Manager) validateExistingStart(request StartRequest, repository store.R
 }
 
 func (m *Manager) ensureWorktree(id string, repository store.Repository, manifest *store.Manifest) error {
-	if repository.Policy == "direct" {
-		status, err := m.Git.Status(manifest.WorktreePath)
-		if err != nil || !status.Exists || status.Root != repository.Path || status.Branch != manifest.Branch {
-			return fmt.Errorf("registered direct worktree does not match task inputs")
+	status, err := m.Git.Status(manifest.WorktreePath)
+	if err == nil && status.Exists {
+		if !m.worktreeMatches(repository, *manifest, status, true) {
+			if repository.Policy == "direct" {
+				return fmt.Errorf("registered direct worktree does not match task inputs")
+			}
+			return fmt.Errorf("task worktree does not match its immutable inputs")
+		}
+		if manifest.WorktreeBaseRevision == "" {
+			manifest.WorktreeBaseRevision = status.Head
 		}
 		m.applyGitStatus(manifest, status)
 		return m.Store.WriteManifest(id, *manifest)
 	}
-	status, err := m.Git.Status(manifest.WorktreePath)
-	if err == nil && status.Exists {
-		if status.Root != repository.Path || status.Branch != manifest.Branch {
-			return fmt.Errorf("task worktree does not match its immutable inputs")
-		}
-		m.applyGitStatus(manifest, status)
-		return m.Store.WriteManifest(id, *manifest)
+	if repository.Policy == "direct" {
+		return fmt.Errorf("registered direct worktree does not match task inputs")
 	}
 	if _, err := os.Stat(manifest.WorktreePath); err == nil {
 		return fmt.Errorf("task worktree path exists but is not the expected Git worktree")
@@ -493,9 +497,10 @@ func (m *Manager) ensureWorktree(id string, repository store.Repository, manifes
 		return fmt.Errorf("create task Git worktree")
 	}
 	status, err = m.Git.Status(manifest.WorktreePath)
-	if err != nil || !status.Exists || status.Branch != manifest.Branch {
+	if err != nil || !status.Exists || !m.worktreeMatches(repository, *manifest, status, true) {
 		return fmt.Errorf("created task worktree could not be validated")
 	}
+	manifest.WorktreeBaseRevision = status.Head
 	m.applyGitStatus(manifest, status)
 	return m.Store.WriteManifest(id, *manifest)
 }
@@ -927,12 +932,64 @@ func (m *Manager) refreshGit(manifest *store.Manifest) bool {
 	}
 	m.applyGitStatus(manifest, status)
 	repository, repositoryErr := m.Store.ReadRepository(manifest.Repository)
-	if repositoryErr != nil || status.Root != repository.Path || status.Branch != manifest.Branch {
+	if repositoryErr != nil || !m.worktreeMatches(repository, *manifest, status, false) {
 		manifest.RecoveryDebt = addDebt(manifest.RecoveryDebt, "worktree_mismatch")
 	} else {
 		manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_mismatch")
 	}
 	return !sameGitFacts(before, *manifest)
+}
+
+func (m *Manager) worktreeMatches(repository store.Repository, manifest store.Manifest, status GitStatus, requireBase bool) bool {
+	expectedRoot := manifest.WorktreePath
+	if repository.Policy == "direct" {
+		expectedRoot = repository.Path
+	}
+	if !sameGitPath(status.Root, expectedRoot) || status.Branch != manifest.Branch {
+		return false
+	}
+	repositoryCommonDir, err := m.Git.CommonDir(repository.Path)
+	if err != nil || !sameGitPath(status.CommonDir, repositoryCommonDir) {
+		return false
+	}
+	if manifest.BaseRevision == "" {
+		return true
+	}
+	if manifest.WorktreeBaseRevision != "" && manifest.WorktreeBaseRevision != manifest.BaseRevision {
+		return false
+	}
+	if requireBase {
+		return status.Head == manifest.BaseRevision
+	}
+	baseRevision := manifest.WorktreeBaseRevision
+	if baseRevision == "" {
+		baseRevision = manifest.BaseRevision
+	}
+	base, err := m.Git.IsAncestor(manifest.WorktreePath, baseRevision, status.Head)
+	return err == nil && base
+}
+
+func sameGitPath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absoluteA, err := filepath.Abs(a)
+	if err != nil {
+		return false
+	}
+	absoluteB, err := filepath.Abs(b)
+	if err != nil {
+		return false
+	}
+	resolvedA, err := filepath.EvalSymlinks(absoluteA)
+	if err == nil {
+		absoluteA = resolvedA
+	}
+	resolvedB, err := filepath.EvalSymlinks(absoluteB)
+	if err == nil {
+		absoluteB = resolvedB
+	}
+	return filepath.Clean(absoluteA) == filepath.Clean(absoluteB)
 }
 
 func (m *Manager) applyGitStatus(manifest *store.Manifest, status GitStatus) {
@@ -1104,6 +1161,17 @@ func (g commandGit) RepositoryRoot(path string) (string, error) {
 	}
 	return strings.TrimSpace(string(root)), nil
 }
+func (g commandGit) CommonDir(path string) (string, error) {
+	commonDir, err := g.run(path, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", errors.New("Git common directory unavailable")
+	}
+	commonDirPath := strings.TrimSpace(string(commonDir))
+	if !filepath.IsAbs(commonDirPath) {
+		commonDirPath = filepath.Join(path, commonDirPath)
+	}
+	return commonDirPath, nil
+}
 func (g commandGit) Head(path string) (string, error) {
 	output, err := g.run(path, "rev-parse", "HEAD")
 	if err != nil {
@@ -1130,6 +1198,10 @@ func (g commandGit) Status(path string) (GitStatus, error) {
 	if err != nil {
 		return GitStatus{}, err
 	}
+	commonDir, err := g.CommonDir(path)
+	if err != nil {
+		return GitStatus{}, err
+	}
 	branch, err := g.Branch(path)
 	if err != nil {
 		return GitStatus{}, err
@@ -1142,7 +1214,7 @@ func (g commandGit) Status(path string) (GitStatus, error) {
 	if err != nil {
 		return GitStatus{}, errors.New("Git status unavailable")
 	}
-	status := GitStatus{Exists: true, Root: root, Branch: branch, Head: head}
+	status := GitStatus{Exists: true, Root: root, CommonDir: commonDir, Branch: branch, Head: head}
 	for _, line := range strings.Split(string(output), "\n") {
 		if line == "" || strings.HasPrefix(line, "##") {
 			continue
@@ -1154,6 +1226,17 @@ func (g commandGit) Status(path string) (GitStatus, error) {
 		}
 	}
 	return status, nil
+}
+func (g commandGit) IsAncestor(path, ancestor, descendant string) (bool, error) {
+	_, err := exec.Command("git", "-C", path, "merge-base", "--is-ancestor", ancestor, descendant).Output()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, errors.New("Git ancestry unavailable")
 }
 func (g commandGit) AddWorktree(repository, path, branch, base string) error {
 	if _, err := g.run(repository, "worktree", "add", "-b", branch, path, base); err != nil {

@@ -331,6 +331,7 @@ rev-parse)
 branch) printf 'main\n' ;;
 status) printf '## main\n' ;;
 worktree) ;;
+merge-base) exit 0 ;;
 *) exit 2 ;;
 esac
 `

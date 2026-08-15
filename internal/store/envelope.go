@@ -47,6 +47,7 @@ type Manifest struct {
 	Repository             string        `json:"repository,omitempty"`
 	Branch                 string        `json:"branch,omitempty"`
 	BaseRevision           string        `json:"base_revision,omitempty"`
+	WorktreeBaseRevision   string        `json:"worktree_base_revision,omitempty"`
 	WorktreePath           string        `json:"worktree_path,omitempty"`
 	Lifecycle              string        `json:"lifecycle"`
 	Condition              string        `json:"condition"`
