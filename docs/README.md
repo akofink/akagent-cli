@@ -13,6 +13,7 @@ The installed binary is `akagent`.
 
 - [`architecture.md`](architecture.md) defines components, ownership, persistence, integrations, discovery, and explicit non-goals.
 - [`protocol.md`](protocol.md) defines worker and task resources, state, lifecycle operations, TOON output, errors, idempotency, and reconciliation.
+- [`task-cli.md`](task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
 - [`credentials.md`](credentials.md) defines credential sources, requirements, transfer, installation, lifetime, redaction, and revocation.
 - [`technology.md`](technology.md) compares Go, Rust, TypeScript, Python, and shell.
 - [`roadmap.md`](roadmap.md) separates the local proof from hooks, remote EC2 support, and later discovery.

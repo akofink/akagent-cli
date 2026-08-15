@@ -141,7 +141,7 @@ func TestCredentialDoctorReady(t *testing.T) {
 	}
 	// The doctor must never read or emit the file contents.
 	if strings.Contains(out, "placeholder") {
-		t.Errorf("output leaked secret content: %q", out)
+		t.Errorf("output leaked secret content")
 	}
 }
 
@@ -211,7 +211,7 @@ func TestCredentialMalformedManifestRedactsUntrustedContent(t *testing.T) {
 		t.Fatalf("Run() exit = %d, want 1", code)
 	}
 	if strings.Contains(stdout.String(), secret) {
-		t.Fatalf("output leaked malformed manifest content: %q", stdout.String())
+		t.Fatalf("output leaked malformed manifest content")
 	}
 }
 
@@ -226,9 +226,9 @@ func TestCredentialConfiguredManifestPathIsNotLeaked(t *testing.T) {
 		t.Fatalf("Run() exit = %d, want 1", code)
 	}
 	if strings.Contains(stdout.String(), secretPath) || strings.Contains(stdout.String(), "manifest-secret-path") {
-		t.Fatalf("configured manifest path leaked: %q", stdout.String())
+		t.Fatalf("configured manifest path leaked")
 	}
 	if !strings.Contains(stdout.String(), "configured credential manifest") {
-		t.Fatalf("output = %q, want generic recovery", stdout.String())
+		t.Fatalf("output did not use generic credential-manifest recovery")
 	}
 }
