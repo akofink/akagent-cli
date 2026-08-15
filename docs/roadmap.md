@@ -35,15 +35,17 @@ The current start operation creates a task-tagged tmux resource.
 It starts a shell by default or a managed local Pi process when requested.
 The default cleanup hooks do not delete worktrees or credentials.
 
-## Phase 2: workflow integrations - gated foundation
+## Phase 2: workflow integrations - default-enable readiness
 
-Automated integrations have a default-disabled gate.
-They must require exactly `AKAGENT_ENABLED=1` and must continue without the integration otherwise.
+Agent orchestration is ready for default enablement over the stable CLI boundary.
+The agent skill owns automated lifecycle behavior and should inspect and reconcile before a manual fallback after a possibly mutating failure.
 
-Direct CLI commands, including managed Pi launch, remain available when the gate is disabled.
-Any integration must be opt-in, idempotent, independently removable, token-budgeted, and limited to CLI operations.
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal.
+At the CLI boundary, only the exact value `1` enables automated integrations; an unset, empty, or other value disables them.
+Direct CLI commands, including managed Pi launch, remain available when the signal disables automation.
+Integrations must be idempotent, independently removable, token-budgeted, and limited to CLI operations.
 
-## Deferred local behavior
+## Tracked follow-ups
 
 - Destructive worktree and credential cleanup hooks.
 - Broader workflow integrations beyond the stable CLI boundary.

@@ -4,7 +4,7 @@
 
 Build a local-first task protocol that preserves ordinary Git worktree and tmux recovery paths.
 
-## Implemented
+## Shipped behavior
 
 - Compact `akagent` home view.
 - `akagent id generate` using UUIDv7.
@@ -18,15 +18,13 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Durable local task start, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
 - Task-tagged detached tmux resources, managed local Pi launch, and verified attachment using fresh process identity and heartbeat observations.
-- A default-disabled automated integration gate inspected by `akagent integration inspect`.
+- A per-environment integration signal inspected by `akagent integration inspect`.
 
-## Current task behavior
+## Current workflow
 
 `task start` creates a durable record, creates or validates the task Git worktree, and starts either a detached shell or a managed local Pi process in a task-tagged tmux window.
 Managed launch persists the resolved `pi` command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
-The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive in the tmux pane.
-The launcher replaces itself with Pi, and the durable process identity therefore identifies Pi.
-A failed launch remains in recoverable `starting` state and can be retried with the same immutable inputs.
+The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive and a failed launch remains retryable with the same immutable inputs.
 
 `task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.
 `task finish` records a result only after the task process has exited.
@@ -36,6 +34,17 @@ The default local cleanup hooks do not remove worktrees or credentials, but clea
 
 `task reconcile` repairs safe derived observations and Git facts.
 It never deletes task state, branches, worktrees, windows, or terminal history.
+
+Agent orchestration is ready for default enablement over this stable CLI boundary.
+The agent skill owns automated lifecycle behavior and preserves direct human CLI use.
+After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+
+## Integration signal
+
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
+At the CLI boundary, only the exact value `1` is enabled; an unset, empty, or other value is disabled.
+`akagent integration inspect` is read-only and reports the current state.
+Direct human commands, including managed Pi task starts, remain available regardless of the signal.
 
 ## Current public command surface
 
@@ -50,9 +59,10 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
-## Next public work
+## Tracked follow-ups
 
-The next work should improve opt-in workflow integrations over the stable CLI boundary while preserving the local task and managed Pi contracts.
-The default-disabled integration gate remains separate from direct human CLI commands.
+- Destructive worktree and credential cleanup hooks.
+- Broader workflow integrations beyond the stable CLI boundary.
+- Work-specific secrets and deployment behavior.
 
-The detailed public design and delivery map is in [`implementation-plan.md`](implementation-plan.md).
+The detailed public delivery map is in [`implementation-plan.md`](implementation-plan.md).

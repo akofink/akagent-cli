@@ -1,7 +1,11 @@
-# `akagent` integration gate
+# `akagent` integration signal
 
-Automated integrations must remain disabled unless the invoking environment contains exactly `AKAGENT_ENABLED=1`.
-A missing signal, an empty value, or any other value is disabled.
+Agent orchestration is ready for default enablement over the stable `akagent` CLI boundary.
+Automated lifecycle behavior belongs to the agent skill, while direct human `akagent` commands remain available independently.
+
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
+At the CLI boundary, only the exact value `1` enables automation.
+An unset signal, an empty value, or any other value disables automation.
 
 Inspect the current state without changing it:
 
@@ -9,22 +13,18 @@ Inspect the current state without changing it:
 akagent integration inspect
 ```
 
-The command reports the signal name, whether the gate is enabled, and a non-secret reason.
-Direct human `akagent` commands are available regardless of the gate.
-
-Enable the gate for the current shell only when an approved integration needs it:
+Enable the signal for the current shell when an approved automated integration needs it:
 
 ```bash
 export AKAGENT_ENABLED=1
 ```
 
-Disable it immediately when the integration is no longer needed:
+Disable it immediately for the current shell with:
 
 ```bash
 unset AKAGENT_ENABLED
 ```
 
-Integrations must check the gate before invoking automated `akagent` behavior.
-They must continue without the integration when the gate is disabled.
-The gate does not grant credentials or launch tasks by itself.
-An explicit direct CLI managed Pi start remains available regardless of the gate.
+After a command that may have mutated task state fails, inspect the task and run reconciliation before attempting a manual fallback.
+The signal does not grant credentials or launch tasks by itself.
+An explicit direct CLI managed Pi start remains available regardless of the signal.

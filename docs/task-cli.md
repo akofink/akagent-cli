@@ -145,10 +145,14 @@ total: 1
 
 Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnings`, archive state, cleanup state, and cleanup debt are emitted only when present.
 
-## Integration gate
+## Orchestration and integration signal
 
-Automated integrations must check `AKAGENT_ENABLED` before invoking automated behavior.
-Only the exact value `1` enables the integration.
+Agent orchestration is ready for default enablement over the stable task CLI boundary.
+The agent skill owns automated lifecycle behavior and direct human commands remain available independently.
+After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+
+`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
+Only the exact value `1` enables automation at the CLI boundary; an unset, empty, or other value disables it.
 `akagent integration inspect` reports the read-only state.
 Direct human commands, including explicit managed Pi task starts, are unaffected.
 
