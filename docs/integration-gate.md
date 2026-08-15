@@ -26,4 +26,5 @@ unset AKAGENT_ENABLED
 
 Integrations must check the gate before invoking automated `akagent` behavior.
 They must continue without the integration when the gate is disabled.
-The gate does not grant credentials, launch a managed agent, or change direct CLI behavior.
+The gate does not grant credentials or launch tasks by itself.
+An explicit direct CLI managed Pi start remains available regardless of the gate.

@@ -25,13 +25,14 @@ The local lifecycle currently provides:
 - Verified tmux attachment using fresh process identity and heartbeat observations.
 - Git branch and worktree ownership under the `worktree` policy.
 - Durable manifests, append-only events, repository and task locks.
+- Managed local Pi launch with durable target configuration, prompt-file stdin, safe environment construction, and requested-credential handling.
 - Git and process fact collection.
 - Compact TOON output and structured recovery errors.
 - Local credential requirements and non-secret warnings.
 - Archive and cleanup-preservation state with independent recovery debt.
 
-The current start operation creates a detached tmux shell.
-It does not launch a managed coding-agent executable.
+The current start operation creates a task-tagged tmux resource.
+It starts a shell by default or a managed local Pi process when requested.
 The default cleanup hooks do not delete worktrees or credentials.
 
 ## Phase 2: workflow integrations - gated foundation
@@ -39,38 +40,13 @@ The default cleanup hooks do not delete worktrees or credentials.
 Automated integrations have a default-disabled gate.
 They must require exactly `AKAGENT_ENABLED=1` and must continue without the integration otherwise.
 
-Future integrations may include shell helpers, native lifecycle hooks, a plugin, an installable skill, directory-scoped session context, and session-end result capture.
-Each integration must be opt-in, idempotent, independently removable, token-budgeted, and limited to CLI operations.
+Direct CLI commands, including managed Pi launch, remain available when the gate is disabled.
+Any integration must be opt-in, idempotent, independently removable, token-budgeted, and limited to CLI operations.
 
-## Phase 3: named remote worker - future
+## Deferred local behavior
 
-The first remote proof should use one explicitly selected worker without scheduling.
-
-Potential deliverables include:
-
-- Static named-worker configuration.
-- One remote command and attachment transport.
-- Artifact retrieval.
-- Capability and protocol negotiation.
-- Credential selection, protected transfer, installation, refresh, and cleanup.
-- Reconnection and lost-response tests.
-- Worker-local operation during operator disconnection.
-
-## Phase 4: discovery across workers and platforms - future
-
-A later local cache may provide compact observations across named workers.
-It should retain source attribution, stale and unreachable status, and live revalidation before mutation.
-
-## Deferred
-
-- Managed coding-agent launch.
-- Agent containers and container schedulers.
-- Automatic horizontal scaling.
-- Transparent task migration.
-- A central orchestration service.
-- A web dashboard.
-- Multi-tenant isolation.
-- General-purpose plugins inside the core executable.
+- Destructive worktree and credential cleanup hooks.
+- Broader workflow integrations beyond the stable CLI boundary.
 - Work-specific secrets and deployment behavior.
 
 ## Metrics that can change decisions
@@ -82,5 +58,5 @@ It should retain source attribution, stale and unreachable status, and live reva
 - Time to attach and recover after disconnect.
 - Disk use by worktrees, caches, logs, and archives.
 - Manual interventions per task.
-- Remote transport failures and safe retries.
+- Safe retries for task launch and lifecycle operations.
 - Credential warnings, expiration, rotation, and cleanup debt.
