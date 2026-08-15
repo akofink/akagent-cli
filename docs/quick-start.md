@@ -82,18 +82,22 @@ Unregister removes only the registration and is rejected while tasks still refer
 Start a task with a title and registered repository:
 
 ```bash
-akagent task start --title "Review the build" --repository demo
+akagent task start --title "Review the build" --repository demo \
+  --branch akofink/review-build
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 ```
 
 The command generates a UUIDv7 task ID when `--task-id` is omitted.
 It creates a durable manifest, a task branch, and an isolated Git worktree under the registered repository's worktree root when the policy is `worktree`.
+Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
+Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
 The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.
 The default task list shows actionable records only, while `--all` includes archived history.
 Actionable records include non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
 Use `--repository` and `--worktree` to compose deterministic exact-match filters.
 The command also creates a task-tagged tmux resource.
+Its display name is derived from the branch after removing the owner prefix, while the task ID remains in window metadata for lifecycle verification.
 
 By default, the local CLI starts a shell for direct human or shell-driven work.
 Use `--agent pi` to start a managed local Pi process instead.
@@ -103,7 +107,7 @@ A minimal managed-launch example uses only placeholder task data and a local pro
 
 ```bash
 akagent task start --title "Review the build" --repository demo \
-  --agent pi --prompt /path/to/prompt.txt --context "example"
+  --branch akofink/review-build --agent pi --prompt /path/to/prompt.txt --context "example"
 ```
 
 The prompt file must be a regular local file.

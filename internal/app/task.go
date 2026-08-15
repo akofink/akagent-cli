@@ -63,7 +63,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	case "start":
 		request, ok := parseStart(args[1:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task start --title <title> --repository <name> [--task-id <id>] [--agent pi --prompt <path>] [--context <value>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then start the task")
+			return writeError(stdout, "usage", "Usage: akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--agent pi --prompt <path>] [--context <value>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then start the task")
 		}
 		if request.ID == "" {
 			id, idErr := uuid.NewV7()

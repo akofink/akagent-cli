@@ -38,7 +38,8 @@ A minimal local flow is:
 ```bash
 akagent integration inspect
 akagent repository register demo /path/to/checkout
-akagent task start --title "Review the build" --repository demo
+akagent task start --title "Review the build" --repository demo \
+  --branch akofink/review-build
 akagent task list
 akagent task inspect <task-id>
 ```
@@ -48,6 +49,9 @@ The default repository policy creates an isolated branch and Git worktree for ea
 The `direct` policy permits the registered checkout itself when that is explicitly selected.
 
 `task start` creates a durable record, validates the repository inputs, creates the required branch and worktree, and starts a task-tagged tmux resource.
+Worktree-policy tasks require an explicit descriptive branch such as `akofink/51-task-labels`.
+Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
+Tmux displays the branch label without its owner prefix while retaining the task ID in window metadata for lifecycle verification.
 The local CLI can start either a detached shell for direct human work or a managed local Pi process.
 Use `--agent pi` to select the managed launch, `--prompt` to provide a local prompt file, and `--context` to provide one non-secret working-context value.
 Use `task attach` for verified human attachment and use `task publish` for durable condition and heartbeat updates.
@@ -59,6 +63,7 @@ It never deletes task state, branches, worktrees, windows, or terminal history.
 
 Pi must be installed and available as `pi` on `PATH`.
 The managed launch configuration resolves that command, the task worktree, an optional prompt-file reference, and an optional non-secret context before starting tmux.
+Worktree-policy managed launches require an explicit descriptive branch before the task worktree is created.
 The validated prompt-file reference is passed to Pi while standard input remains attached to the tmux terminal, preserving Pi's interactive mode.
 Prompt content is never placed in process arguments, task events, or protocol output.
 The pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible during execution.
@@ -66,7 +71,7 @@ A failed launch prints safe recovery guidance and remains retryable through the 
 
 ```bash
 akagent task start --title "Review the build" --repository demo \
-  --agent pi --prompt /path/to/prompt.txt --context "example"
+  --branch akofink/review-build --agent pi --prompt /path/to/prompt.txt --context "example"
 ```
 
 The start response includes the selected agent, resolved command, prompt reference, and working context.
