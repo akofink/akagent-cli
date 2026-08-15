@@ -1,7 +1,10 @@
-# Design index
+# akagent documentation
 
 `akagent` is a local-first orchestration protocol and CLI for coding tasks.
 It preserves direct Git worktree and tmux operation while adding stable identity, structured state, recovery, and optional integrations.
+
+Use the [quick start](quick-start.md) for installation and the public task lifecycle.
+This page indexes the design documentation and current decisions.
 
 The installed binary is `akagent`.
 `aka` is an optional interactive shell alias and is not a second protocol entry point.
@@ -22,6 +25,27 @@ The installed binary is `akagent`.
 - [`implementation-plan.md`](implementation-plan.md) records the public issue and delivery map.
 - [`storage.md`](storage.md) defines the worker-local state store layout, schema, permissions, locking, archive, and recovery.
 - [`handoff.md`](handoff.md) records current implementation status and the next public work.
+
+## Preview the documentation site
+
+The site is built with [MkDocs](https://www.mkdocs.org/) from the existing Markdown files in this directory.
+Install MkDocs in a virtual environment, then run the following commands from the repository root:
+
+```bash
+python3 -m venv .venv-docs
+. .venv-docs/bin/activate
+python -m pip install mkdocs==1.6.1
+mkdocs serve
+```
+
+Open the local URL printed by `mkdocs serve` to preview changes.
+Build the same site artifact used by CI with:
+
+```bash
+mkdocs build --strict --site-dir _site
+```
+
+The generated `_site/` directory is disposable and should not be committed.
 
 ## Current decisions
 
