@@ -107,6 +107,31 @@ func (s *Store) WriteManifest(taskID string, manifest Manifest) error {
 	})
 }
 
+// UpdateManifest serializes a read-modify-write mutation under the task lock.
+// The callback must only change durable task state and must not perform another
+// mutation on the same task.
+func (s *Store) UpdateManifest(taskID string, update func(*Manifest) error) (Manifest, error) {
+	if err := validateTaskID(taskID); err != nil {
+		return Manifest{}, err
+	}
+	var manifest Manifest
+	err := s.WithLock(taskID, func() error {
+		envelope, err := s.ReadManifest(taskID)
+		if err != nil {
+			return err
+		}
+		manifest, err = envelope.DecodeManifest()
+		if err != nil {
+			return err
+		}
+		if err := update(&manifest); err != nil {
+			return err
+		}
+		return s.writeManifestLocked(taskID, manifest)
+	})
+	return manifest, err
+}
+
 // ReadManifest reads and validates the task manifest envelope and its typed
 // payload. Use DecodeManifest on the result to obtain the payload again.
 func (s *Store) ReadManifest(taskID string) (Envelope, error) {

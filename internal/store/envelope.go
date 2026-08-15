@@ -30,19 +30,26 @@ type Envelope struct {
 
 // Manifest is the typed mutable payload of a task manifest.
 type Manifest struct {
-	Title        string    `json:"title"`
-	Worker       string    `json:"worker"`
-	Repository   string    `json:"repository,omitempty"`
-	Lifecycle    string    `json:"lifecycle"`
-	Condition    string    `json:"condition"`
-	Reason       string    `json:"reason,omitempty"`
-	Activity     string    `json:"activity,omitempty"`
-	HeartbeatAt  time.Time `json:"heartbeat_at,omitempty"`
-	TmuxWindow   string    `json:"tmux_window,omitempty"`
-	Requirements string    `json:"requirements,omitempty"`
-	Warnings     string    `json:"warnings,omitempty"`
-	Result       string    `json:"result,omitempty"`
-	CleanupDebt  bool      `json:"cleanup_debt,omitempty"`
+	Title             string    `json:"title"`
+	Worker            string    `json:"worker"`
+	Repository        string    `json:"repository,omitempty"`
+	Lifecycle         string    `json:"lifecycle"`
+	Condition         string    `json:"condition"`
+	Reason            string    `json:"reason,omitempty"`
+	Activity          string    `json:"activity,omitempty"`
+	HeartbeatAt       time.Time `json:"heartbeat_at,omitempty"`
+	TmuxWindow        string    `json:"tmux_window,omitempty"`
+	Requirements      string    `json:"requirements,omitempty"`
+	Warnings          string    `json:"warnings,omitempty"`
+	Result            string    `json:"result,omitempty"`
+	CleanupDebt       bool      `json:"cleanup_debt,omitempty"`
+	ProcessPID        int       `json:"process_pid,omitempty"`
+	ProcessStartTime  uint64    `json:"process_start_time,omitempty"`
+	ObservedPID       int       `json:"observed_pid,omitempty"`
+	ObservedStartTime uint64    `json:"observed_start_time,omitempty"`
+	ProcessPane       string    `json:"process_pane,omitempty"`
+	Observation       string    `json:"observation,omitempty"`
+	ObservationAt     time.Time `json:"observation_at,omitempty"`
 }
 
 // Event is the typed immutable payload of an append-only task event.

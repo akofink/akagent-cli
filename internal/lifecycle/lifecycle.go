@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,17 +16,44 @@ import (
 	"github.com/akofink/akagent-cli/internal/store"
 )
 
+const DefaultHeartbeatTimeout = 2 * time.Minute
+
+const (
+	ObservationFresh         = "fresh"
+	ObservationStale         = "stale"
+	ObservationMissing       = "missing"
+	ObservationReplaced      = "replaced"
+	ObservationContradictory = "contradictory"
+	ObservationUnavailable   = "unavailable"
+)
+
+// TmuxProcess is the non-secret identity observed for one task pane.
+// PID alone is deliberately insufficient because it can be reused.
+type TmuxProcess struct {
+	WindowID  string
+	PaneID    string
+	PID       int
+	StartTime uint64
+}
+
+type TmuxObservation struct {
+	Available bool
+	Processes []TmuxProcess
+}
+
 type Tmux interface {
-	Start(taskID string) (string, error)
-	Exists(taskID string) (bool, error)
+	Start(taskID string) (TmuxProcess, error)
+	Observe(taskID string) (TmuxObservation, error)
 	Stop(taskID string) error
 }
 
 type Manager struct {
-	Store       *store.Store
-	Tmux        Tmux
-	Credentials func() (*credential.Manifest, error)
-	Checker     *credential.Checker
+	Store            *store.Store
+	Tmux             Tmux
+	Credentials      func() (*credential.Manifest, error)
+	Checker          *credential.Checker
+	Now              func() time.Time
+	HeartbeatTimeout time.Duration
 }
 
 type StartRequest struct {
@@ -42,9 +70,11 @@ type StartResult struct {
 }
 
 func New(state *store.Store) *Manager {
-	return &Manager{Store: state, Tmux: commandTmux{}, Credentials: func() (*credential.Manifest, error) {
-		return credential.Load(credential.ConfigPath())
-	}, Checker: credential.NewChecker()}
+	return &Manager{
+		Store: state, Tmux: commandTmux{}, Credentials: func() (*credential.Manifest, error) {
+			return credential.Load(credential.ConfigPath())
+		}, Checker: credential.NewChecker(), Now: time.Now, HeartbeatTimeout: DefaultHeartbeatTimeout,
+	}
 }
 
 func (m *Manager) RegisterRepository(name, path, policy string) (store.Repository, error) {
@@ -92,7 +122,8 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 	if err != nil {
 		return StartResult{}, err
 	}
-	manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Lifecycle: "starting", Condition: "none", Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+	now := m.now()
+	manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Lifecycle: "starting", Condition: "none", HeartbeatAt: now, Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
 	if envelope, err := m.Store.ReadManifest(request.ID); err == nil {
 		existing, decodeErr := envelope.DecodeManifest()
 		if decodeErr != nil {
@@ -125,22 +156,31 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 }
 
 func (m *Manager) ensureStarted(id string, manifest *store.Manifest) error {
-	exists, err := m.Tmux.Exists(id)
-	if err != nil {
-		return err
-	}
-	if exists && manifest.Lifecycle == "running" {
+	if manifest.Lifecycle == "running" {
+		observation, err := m.Tmux.Observe(id)
+		if err != nil {
+			return err
+		}
+		if observation.Available {
+			applyObservation(manifest, observation, m.now(), m.heartbeatTimeout())
+			return m.Store.WriteManifest(id, *manifest)
+		}
 		return nil
 	}
-	if !exists {
-		window, err := m.Tmux.Start(id)
-		if err != nil {
-			_, _ = m.Store.AppendEvent(id, store.Event{Operation: "start", Outcome: "failed"})
-			return fmt.Errorf("start tmux task: %w", err)
-		}
-		manifest.TmuxWindow = window
+	process, err := m.Tmux.Start(id)
+	if err != nil {
+		_, _ = m.Store.AppendEvent(id, store.Event{Operation: "start", Outcome: "failed"})
+		return fmt.Errorf("start tmux task: %w", err)
 	}
 	manifest.Lifecycle = "running"
+	manifest.TmuxWindow = process.WindowID
+	manifest.ProcessPID = process.PID
+	manifest.ProcessStartTime = process.StartTime
+	manifest.ObservedPID = process.PID
+	manifest.ObservedStartTime = process.StartTime
+	manifest.ProcessPane = process.PaneID
+	manifest.Observation = processState(process)
+	manifest.ObservationAt = m.now()
 	if err := m.Store.WriteManifest(id, *manifest); err != nil {
 		return err
 	}
@@ -152,18 +192,18 @@ func (m *Manager) Publish(id, condition, reason, activity string) (store.Manifes
 	if !validCondition(condition) {
 		return store.Manifest{}, fmt.Errorf("condition must be active, waiting, blocked, failed, or none")
 	}
-	manifest, err := m.manifest(id)
+	var changed bool
+	manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
+		changed = manifest.Condition != condition || manifest.Reason != reason || manifest.Activity != activity
+		manifest.Condition, manifest.Reason, manifest.Activity, manifest.HeartbeatAt = condition, reason, activity, m.now()
+		return nil
+	})
 	if err != nil {
 		return store.Manifest{}, err
 	}
-	if manifest.Condition == condition && manifest.Reason == reason && manifest.Activity == activity {
-		return manifest, nil
+	if changed {
+		_, err = m.Store.AppendEvent(id, store.Event{Operation: "publish", Outcome: condition})
 	}
-	manifest.Condition, manifest.Reason, manifest.Activity, manifest.HeartbeatAt = condition, reason, activity, time.Now().UTC()
-	if err := m.Store.WriteManifest(id, manifest); err != nil {
-		return store.Manifest{}, err
-	}
-	_, err = m.Store.AppendEvent(id, store.Event{Operation: "publish", Outcome: condition})
 	return manifest, err
 }
 
@@ -171,25 +211,33 @@ func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
 	if outcome != "succeeded" && outcome != "failed" {
 		return store.Manifest{}, fmt.Errorf("finish outcome must be succeeded or failed")
 	}
-	manifest, err := m.manifest(id)
+	observation, err := m.Tmux.Observe(id)
 	if err != nil {
 		return store.Manifest{}, err
 	}
-	exists, err := m.Tmux.Exists(id)
-	if err != nil {
-		return store.Manifest{}, err
+	if !observation.Available {
+		return store.Manifest{}, fmt.Errorf("task process observation is unavailable")
 	}
-	if exists {
+	if len(observation.Processes) != 0 {
 		return store.Manifest{}, fmt.Errorf("task process is still running")
 	}
-	if manifest.Lifecycle == "finished" && manifest.Result == result && manifest.Condition == outcomeToCondition(outcome) {
-		return manifest, nil
-	}
-	manifest.Lifecycle, manifest.Condition, manifest.Result = "finished", outcomeToCondition(outcome), result
-	if err := m.Store.WriteManifest(id, manifest); err != nil {
+	var changed bool
+	manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
+		if manifest.Lifecycle == "finished" && manifest.Result == result && manifest.Condition == outcomeToCondition(outcome) {
+			return nil
+		}
+		changed = true
+		manifest.Lifecycle, manifest.Condition, manifest.Result = "finished", outcomeToCondition(outcome), result
+		manifest.Observation, manifest.ObservationAt = ObservationMissing, m.now()
+		manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
+		return nil
+	})
+	if err != nil {
 		return store.Manifest{}, err
 	}
-	_, err = m.Store.AppendEvent(id, store.Event{Operation: "finish", Outcome: outcome})
+	if changed {
+		_, err = m.Store.AppendEvent(id, store.Event{Operation: "finish", Outcome: outcome})
+	}
 	return manifest, err
 }
 
@@ -204,15 +252,27 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 	if err := m.Tmux.Stop(id); err != nil {
 		return store.Manifest{}, err
 	}
-	manifest.Lifecycle, manifest.Condition = "stopped", "none"
-	if err := m.Store.WriteManifest(id, manifest); err != nil {
+	var changed bool
+	manifest, err = m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
+		if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
+			return nil
+		}
+		changed = true
+		manifest.Lifecycle, manifest.Condition = "stopped", "none"
+		manifest.Observation, manifest.ObservationAt = ObservationMissing, m.now()
+		manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
+		return nil
+	})
+	if err != nil {
 		return store.Manifest{}, err
 	}
-	_, err = m.Store.AppendEvent(id, store.Event{Operation: "stop", Outcome: "succeeded"})
+	if changed {
+		_, err = m.Store.AppendEvent(id, store.Event{Operation: "stop", Outcome: "succeeded"})
+	}
 	return manifest, err
 }
 
-// Reconcile repairs only derived lifecycle observations. It never removes a window or worktree.
+// Reconcile repairs derived observations only. It never removes a window or worktree.
 func (m *Manager) Reconcile() ([]store.Manifest, error) {
 	if _, err := m.Store.Recover(); err != nil {
 		return nil, err
@@ -223,21 +283,26 @@ func (m *Manager) Reconcile() ([]store.Manifest, error) {
 	}
 	manifests := make([]store.Manifest, 0, len(ids))
 	for _, id := range ids {
-		manifest, err := m.manifest(id)
+		observation, err := m.Tmux.Observe(id)
 		if err != nil {
 			return nil, err
 		}
-		exists, err := m.Tmux.Exists(id)
-		if err != nil {
-			return nil, err
-		}
-		if manifest.Lifecycle == "running" && !exists {
-			manifest.Lifecycle = "stopped"
-			manifest.Condition = "none"
-			if err := m.Store.WriteManifest(id, manifest); err != nil {
-				return nil, err
+		var changed bool
+		manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
+			beforeObservation, beforeLifecycle := manifest.Observation, manifest.Lifecycle
+			legacyProcess := manifest.ProcessPID == 0 || manifest.ProcessStartTime == 0
+			applyObservation(manifest, observation, m.now(), m.heartbeatTimeout())
+			if legacyProcess && observation.Available && len(observation.Processes) == 0 && manifest.Lifecycle == "running" {
+				manifest.Lifecycle, manifest.Condition = "stopped", "none"
 			}
-			if _, err := m.Store.AppendEvent(id, store.Event{Operation: "reconcile", Outcome: "window_missing"}); err != nil {
+			changed = beforeObservation != manifest.Observation || beforeLifecycle != manifest.Lifecycle
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		if changed {
+			if _, err := m.Store.AppendEvent(id, store.Event{Operation: "reconcile", Outcome: observationOutcome(manifest.Observation)}); err != nil {
 				return nil, err
 			}
 		}
@@ -301,18 +366,35 @@ func (m *Manager) checkCredentials(required, optional []string) ([]string, error
 	return warnings, nil
 }
 
+func (m *Manager) now() time.Time {
+	if m.Now == nil {
+		return time.Now().UTC()
+	}
+	return m.Now().UTC()
+}
+
+func (m *Manager) heartbeatTimeout() time.Duration {
+	if m.HeartbeatTimeout <= 0 {
+		return DefaultHeartbeatTimeout
+	}
+	return m.HeartbeatTimeout
+}
+
 func sameStart(a, b store.Manifest) bool {
 	return a.Title == b.Title && a.Worker == b.Worker && a.Repository == b.Repository && a.Requirements == b.Requirements
 }
+
 func validCondition(value string) bool {
 	return value == "active" || value == "waiting" || value == "blocked" || value == "failed" || value == "none"
 }
+
 func outcomeToCondition(outcome string) string {
 	if outcome == "failed" {
 		return "failed"
 	}
 	return "none"
 }
+
 func unique(values []string) []string {
 	seen := map[string]bool{}
 	result := make([]string, 0, len(values))
@@ -328,38 +410,155 @@ func unique(values []string) []string {
 	return result
 }
 
+func processState(process TmuxProcess) string {
+	if process.PID == 0 && process.StartTime == 0 {
+		return ""
+	}
+	if process.PID <= 0 || process.StartTime == 0 {
+		return ObservationContradictory
+	}
+	return ObservationFresh
+}
+
+func applyObservation(manifest *store.Manifest, observation TmuxObservation, now time.Time, heartbeatTimeout time.Duration) {
+	manifest.ObservationAt = now
+	if !observation.Available {
+		manifest.Observation = ObservationUnavailable
+		manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
+		return
+	}
+	if len(observation.Processes) == 0 {
+		manifest.Observation = ObservationMissing
+		manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
+		return
+	}
+	if len(observation.Processes) != 1 || processState(observation.Processes[0]) != ObservationFresh {
+		manifest.Observation = ObservationContradictory
+		manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
+		return
+	}
+	process := observation.Processes[0]
+	manifest.TmuxWindow, manifest.ProcessPane = process.WindowID, process.PaneID
+	manifest.ObservedPID, manifest.ObservedStartTime = process.PID, process.StartTime
+	if manifest.ProcessPID == 0 || manifest.ProcessStartTime == 0 {
+		manifest.ProcessPID, manifest.ProcessStartTime = process.PID, process.StartTime
+	}
+	if manifest.ProcessPID == process.PID && manifest.ProcessStartTime == process.StartTime {
+		manifest.Observation = ObservationFresh
+		if !manifest.HeartbeatAt.IsZero() && now.Sub(manifest.HeartbeatAt) > heartbeatTimeout {
+			manifest.Observation = ObservationStale
+		}
+		return
+	}
+	manifest.Observation = ObservationReplaced
+}
+
+func observationOutcome(observation string) string {
+	if observation == ObservationMissing {
+		return "window_missing"
+	}
+	if observation == ObservationReplaced {
+		return "process_replaced"
+	}
+	return "observation_" + observation
+}
+
+// Status computes the protocol status from durable lifecycle state and the
+// latest verified observations. It never treats a PID without its start time
+// as a live task process.
+func Status(manifest store.Manifest, now time.Time, heartbeatTimeout time.Duration) string {
+	if manifest.Condition == "failed" {
+		return "failed"
+	}
+	switch manifest.Lifecycle {
+	case "starting":
+		return "starting"
+	case "stopped":
+		return "stopped"
+	case "finished":
+		if manifest.Observation == ObservationMissing {
+			return "finished"
+		}
+		return "unknown"
+	case "running":
+		if manifest.Observation == "" {
+			if manifest.Condition == "waiting" || manifest.Condition == "blocked" || manifest.Condition == "active" {
+				return manifest.Condition
+			}
+			return "running"
+		}
+		if manifest.Observation != ObservationFresh || manifest.HeartbeatAt.IsZero() || now.Sub(manifest.HeartbeatAt) > heartbeatTimeout {
+			return "unknown"
+		}
+		if manifest.Condition == "waiting" || manifest.Condition == "blocked" {
+			return manifest.Condition
+		}
+		return "active"
+	default:
+		return "unknown"
+	}
+}
+
 type commandTmux struct{}
 
-func (commandTmux) Start(id string) (string, error) {
+func (commandTmux) Start(id string) (TmuxProcess, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/sh"
 	}
 	output, err := exec.Command("tmux", "new-window", "-d", "-P", "-F", "#{window_id}", "-n", "akagent-"+id[:min(8, len(id))], shell).Output()
 	if err != nil {
-		return "", errors.New("tmux window could not be created")
+		return TmuxProcess{}, errors.New("tmux window could not be created")
 	}
 	window := strings.TrimSpace(string(output))
 	if window == "" {
-		return "", errors.New("tmux did not return a window ID")
+		return TmuxProcess{}, errors.New("tmux did not return a window ID")
 	}
 	if err := exec.Command("tmux", "set-option", "-w", "-t", window, "@akagent_task_id", id).Run(); err != nil {
-		return "", errors.New("tmux task metadata could not be set")
+		return TmuxProcess{}, errors.New("tmux task metadata could not be set")
 	}
-	return window, nil
-}
-func (commandTmux) Exists(id string) (bool, error) {
-	output, err := exec.Command("tmux", "list-windows", "-a", "-F", "#{@akagent_task_id}").Output()
+	observation, err := (commandTmux{}).Observe(id)
 	if err != nil {
-		return false, nil
+		return TmuxProcess{WindowID: window}, err
 	}
-	for _, value := range strings.Fields(string(output)) {
-		if value == id {
-			return true, nil
+	if observation.Available && len(observation.Processes) == 1 {
+		return observation.Processes[0], nil
+	}
+	return TmuxProcess{WindowID: window}, nil
+}
+
+func (commandTmux) Observe(id string) (TmuxObservation, error) {
+	output, err := exec.Command("tmux", "list-windows", "-a", "-F", "#{window_id}\t#{@akagent_task_id}").Output()
+	if err != nil {
+		return TmuxObservation{}, nil
+	}
+	observation := TmuxObservation{Available: true}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 2 || fields[1] != id {
+			continue
+		}
+		paneOutput, paneErr := exec.Command("tmux", "list-panes", "-t", fields[0], "-F", "#{window_id}\t#{pane_id}\t#{pane_pid}").Output()
+		if paneErr != nil {
+			observation.Processes = append(observation.Processes, TmuxProcess{WindowID: fields[0]})
+			continue
+		}
+		for _, paneLine := range strings.Split(strings.TrimSpace(string(paneOutput)), "\n") {
+			paneFields := strings.Split(paneLine, "\t")
+			if len(paneFields) != 3 {
+				continue
+			}
+			pid, parseErr := strconv.Atoi(paneFields[2])
+			startTime := uint64(0)
+			if parseErr == nil {
+				startTime, _ = processStartTime(pid)
+			}
+			observation.Processes = append(observation.Processes, TmuxProcess{WindowID: paneFields[0], PaneID: paneFields[1], PID: pid, StartTime: startTime})
 		}
 	}
-	return false, nil
+	return observation, nil
 }
+
 func (commandTmux) Stop(id string) error {
 	output, err := exec.Command("tmux", "list-windows", "-a", "-F", "#{window_id}\t#{@akagent_task_id}").Output()
 	if err != nil {
@@ -371,11 +570,25 @@ func (commandTmux) Stop(id string) error {
 			if err := exec.Command("tmux", "kill-window", "-t", fields[0]).Run(); err != nil {
 				return errors.New("tmux task window could not be stopped")
 			}
-			return nil
 		}
 	}
 	return nil
 }
+
+func processStartTime(pid int) (uint64, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err == nil {
+		end := strings.LastIndex(string(data), ")")
+		if end >= 0 {
+			fields := strings.Fields(string(data)[end+2:])
+			if len(fields) > 19 {
+				return strconv.ParseUint(fields[19], 10, 64)
+			}
+		}
+	}
+	return 0, errors.New("process start time is unavailable")
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
