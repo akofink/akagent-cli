@@ -83,13 +83,16 @@ Start a task with a title and registered repository:
 
 ```bash
 akagent task start --title "Review the build" --repository demo
-akagent task list
+akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 ```
 
 The command generates a UUIDv7 task ID when `--task-id` is omitted.
 It creates a durable manifest, a task branch, and an isolated Git worktree under the registered repository's worktree root when the policy is `worktree`.
 The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.
+The default task list shows actionable records only, while `--all` includes archived history.
+Actionable records include non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
+Use `--repository` and `--worktree` to compose deterministic exact-match filters.
 The command also creates a task-tagged tmux resource.
 
 By default, the local CLI starts a shell for direct human or shell-driven work.
@@ -122,7 +125,7 @@ Use TOON output as the protocol boundary rather than parsing human-oriented text
 
 ```bash
 akagent task inspect <task-id>
-akagent task list
+akagent task list [--all] [--repository <name>] [--worktree <path>]
 ```
 
 ## Publish, attach, and reconcile

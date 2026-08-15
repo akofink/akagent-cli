@@ -142,6 +142,10 @@ It does not make a declaration authoritative over contradictory process or Git o
 ### Inspect and list
 
 List views default to compact decision-relevant fields and include a definitive total.
+The default list includes actionable records: non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
+Only fully archived, fully cleaned, debt-free records are hidden by default.
+`task list --all` includes all durable task records.
+`--repository <name>` and `--worktree <path>` apply deterministic exact-match filters that compose with `--all`.
 Detail views include task identity, computed status, branch and worktree facts, conditions, results, and recovery fields when present.
 
 ```toon

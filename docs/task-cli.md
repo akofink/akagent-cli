@@ -58,7 +58,7 @@ repository:
 
 ```text
 akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--agent pi --prompt <path>] [--context <value>] [--require <credential>] [--optional <credential>]
-akagent task list
+akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 akagent task attach <task-id>
 akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
@@ -70,6 +70,13 @@ akagent task reconcile
 ```
 
 A task ID is generated when `--task-id` is omitted.
+
+The default task list shows actionable records only.
+It includes every non-archived task and every archived task with incomplete cleanup or recovery debt.
+A fully archived, fully cleaned, debt-free task is hidden from the default list.
+Use `--all` to include all durable task records.
+`--repository <name>` filters by registered repository name, and `--worktree <path>` filters by exact task worktree path.
+Filters compose as an intersection and results remain sorted by task ID.
 
 The default start creates a branch named `akagent/<task-id>` and an isolated worktree under the registered repository's worktree root.
 Explicit `--branch`, `--base`, and `--worktree` values are immutable task inputs.
