@@ -171,24 +171,23 @@ func taskCommand(args []string, stdout io.Writer) int {
 }
 
 func repositoryCommand(args []string, stdout io.Writer) int {
-	if len(args) < 1 || args[0] != "register" || len(args) < 3 {
-		return writeError(stdout, "usage", "Usage: akagent repository register <name> <path> [--policy <worktree|direct>]", false, "Register a local repository")
+	if len(args) == 0 {
+		return repositoryUsage(stdout)
 	}
-	policy := ""
-	if len(args) == 5 && args[3] == "--policy" {
-		policy = args[4]
-	} else if len(args) != 3 {
-		return writeError(stdout, "usage", "Usage: akagent repository register <name> <path> [--policy <worktree|direct>]", false, "Register a local repository")
+	switch args[0] {
+	case "register":
+		return repositoryRegisterCommand(args[1:], stdout)
+	case "list":
+		return repositoryListCommand(args[1:], stdout)
+	case "inspect":
+		return repositoryInspectCommand(args[1:], stdout)
+	case "update":
+		return repositoryUpdateCommand(args[1:], stdout)
+	case "unregister":
+		return repositoryUnregisterCommand(args[1:], stdout)
+	default:
+		return repositoryUsage(stdout)
 	}
-	state, err := store.Open()
-	if err != nil {
-		return lifecycleError(stdout, err)
-	}
-	repository, err := lifecycle.New(state).RegisterRepository(args[1], args[2], policy)
-	if err != nil {
-		return lifecycleError(stdout, err)
-	}
-	return write(stdout, repositoryView{Repository: repository})
 }
 
 func parseStart(args []string) (lifecycle.StartRequest, bool) {
@@ -281,8 +280,10 @@ func lifecycleError(stdout io.Writer, err error) int {
 	message := err.Error()
 	category, retryable, recovery := "internal", false, "Inspect the task state and retry"
 	var storeErr *store.Error
-	if errors.As(err, &storeErr) && (storeErr.Kind == store.KindPartial || storeErr.Kind == store.KindPreservation) {
-		recovery = storeErr.Recovery
+	if errors.As(err, &storeErr) && (storeErr.Kind == store.KindConflict || storeErr.Kind == store.KindPartial || storeErr.Kind == store.KindPreservation) {
+		if storeErr.Recovery != "" {
+			recovery = storeErr.Recovery
+		}
 		retryable = storeErr.Retryable
 	}
 	switch {
@@ -292,6 +293,8 @@ func lifecycleError(stdout io.Writer, err error) int {
 		category = "usage"
 	case store.IsKind(err, store.KindLocked):
 		category, retryable = "retryable", true
+	case store.IsKind(err, store.KindConflict):
+		category = "conflict"
 	case store.IsKind(err, store.KindPartial):
 		category, retryable = "partial", true
 	case store.IsKind(err, store.KindPreservation):

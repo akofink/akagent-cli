@@ -58,6 +58,7 @@ func Run(args []string, stdout io.Writer) int {
 				"credential <list|inspect|doctor>",
 				"id generate",
 				"repository register <name> <path> [--policy <worktree|direct>]",
+				"repository <list|inspect|update|unregister>",
 				"task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>",
 				"update [--source <path>]",
 				"worker inspect",

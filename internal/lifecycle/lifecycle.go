@@ -142,6 +142,87 @@ func (m *Manager) RegisterRepository(name, path, policy string) (store.Repositor
 	return repository, nil
 }
 
+// ListRepositories returns registrations in deterministic name order.
+func (m *Manager) ListRepositories() ([]store.Repository, error) {
+	names, err := m.Store.RepositoryNames()
+	if err != nil {
+		return nil, err
+	}
+	repositories := make([]store.Repository, 0, len(names))
+	for _, name := range names {
+		repository, err := m.Store.ReadRepository(name)
+		if err != nil {
+			return nil, err
+		}
+		repositories = append(repositories, repository)
+	}
+	return repositories, nil
+}
+
+// InspectRepository returns one durable repository registration.
+func (m *Manager) InspectRepository(name string) (store.Repository, error) {
+	return m.Store.ReadRepository(name)
+}
+
+// UpdateRepository changes only registration metadata. It never writes to the
+// Git checkout or any task record.
+func (m *Manager) UpdateRepository(name, path, policy string) (store.Repository, error) {
+	if _, err := m.Store.ReadRepository(name); err != nil {
+		return store.Repository{}, err
+	}
+	if path == "" && policy == "" {
+		return store.Repository{}, fmt.Errorf("repository path or policy update is required")
+	}
+	var resolvedPath string
+	if path != "" {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return store.Repository{}, fmt.Errorf("resolve repository path")
+		}
+		if err := m.validateRepositoryPath(abs); err != nil {
+			return store.Repository{}, err
+		}
+		resolvedPath = abs
+	}
+	return m.Store.UpdateRepository(name, func(repository *store.Repository) error {
+		if resolvedPath != "" {
+			repository.Path = resolvedPath
+		}
+		if policy != "" {
+			if policy != "worktree" && policy != "direct" {
+				return fmt.Errorf("repository policy must be worktree or direct")
+			}
+			repository.Policy = policy
+		}
+		if resolvedPath != "" || policy != "" {
+			repository.WorktreeRoot = ""
+			if repository.Policy == "worktree" {
+				repository.WorktreeRoot = filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
+			}
+			repository.Instructions = discoverInstructions(repository.Path)
+		}
+		return nil
+	})
+}
+
+// UnregisterRepository removes only the registration record. The registered
+// checkout, task files, and Git metadata remain untouched.
+func (m *Manager) UnregisterRepository(name string) error {
+	return m.Store.UnregisterRepository(name)
+}
+
+func (m *Manager) validateRepositoryPath(path string) error {
+	root, err := m.Git.RepositoryRoot(path)
+	if err != nil {
+		return fmt.Errorf("repository path is not a Git worktree")
+	}
+	root, err = filepath.Abs(root)
+	if err != nil || root != path {
+		return fmt.Errorf("repository path must be the Git worktree root")
+	}
+	return nil
+}
+
 func discoverPolicy(path string) string {
 	if _, err := os.Stat(filepath.Join(path, ".git")); err == nil {
 		return "worktree"
