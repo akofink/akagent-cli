@@ -16,26 +16,30 @@ import (
 )
 
 type fakeTmux struct {
-	mu             sync.Mutex
-	observation    TmuxObservation
-	starts         int
-	attaches       []string
-	observedIDs    []string
-	managedStarts  []store.LaunchConfig
-	managedFailure int
+	mu              sync.Mutex
+	observation     TmuxObservation
+	starts          int
+	attaches        []string
+	observedIDs     []string
+	managedStarts   []store.LaunchConfig
+	startBranches   []string
+	managedBranches []string
+	managedFailure  int
 }
 
-func (t *fakeTmux) Start(string) (TmuxProcess, error) {
+func (t *fakeTmux) Start(_ string, branch string) (TmuxProcess, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.starts++
+	t.startBranches = append(t.startBranches, branch)
 	t.observation = TmuxObservation{Available: true, Processes: []TmuxProcess{{WindowID: "@1", PaneID: "%1", PID: 42, StartTime: 100}}}
 	return t.observation.Processes[0], nil
 }
-func (t *fakeTmux) StartManaged(_ string, launch store.LaunchConfig) (TmuxProcess, error) {
+func (t *fakeTmux) StartManaged(_ string, branch string, launch store.LaunchConfig) (TmuxProcess, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.managedStarts = append(t.managedStarts, launch)
+	t.managedBranches = append(t.managedBranches, branch)
 	if t.managedFailure > 0 {
 		t.managedFailure--
 		return TmuxProcess{}, errors.New("managed launch window failed")
@@ -119,6 +123,9 @@ func TestManagedStartPersistsExplicitLaunchConfiguration(t *testing.T) {
 	}
 	if len(tmux.managedStarts) != 1 || tmux.managedStarts[0].WorkingDirectory != result.Manifest.WorktreePath {
 		t.Fatalf("managed starts = %#v, want task worktree launch", tmux.managedStarts)
+	}
+	if len(tmux.managedBranches) != 1 || tmux.managedBranches[0] != result.Manifest.Branch {
+		t.Fatalf("managed branches = %#v, want direct repository branch %q", tmux.managedBranches, result.Manifest.Branch)
 	}
 	if result.Manifest.ProcessPID != 52 || result.Manifest.ProcessStartTime != 120 {
 		t.Fatalf("process identity = %d/%d, want managed process identity", result.Manifest.ProcessPID, result.Manifest.ProcessStartTime)
@@ -416,6 +423,43 @@ esac
 	}
 }
 
+func TestCommandTmuxStartUsesBranchDisplayNameAndTaskMetadata(t *testing.T) {
+	bin := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := filepath.Join(bin, "tmux")
+	const script = `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$AKAGENT_TEST_TMUX_LOG"
+case "$1" in
+  new-window) printf '@1\n' ;;
+  set-option) : ;;
+  list-windows) printf '@1\ttask-51\n' ;;
+  list-panes) printf '%s\t%s\t%s\n' '@1' '%1' '0' ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AKAGENT_TEST_TMUX_LOG", logPath)
+	t.Setenv("SHELL", "/bin/sh")
+	if _, err := (commandTmux{}).Start("task-51", "akofink/51-task-labels"); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(calls) < 2 || calls[0] != "new-window -d -P -F #{window_id} -n 51-task-labels /bin/sh" {
+		t.Fatalf("tmux start calls = %q, want descriptive window name", calls)
+	}
+	if calls[1] != "set-option -w -t @1 @akagent_task_id task-51" {
+		t.Fatalf("tmux metadata call = %q, want task ID metadata", calls[1])
+	}
+}
+
 func TestReconcileRecordsMissingObservationWithoutDeletingTask(t *testing.T) {
 	manager, tmux := newTestManager(t)
 	if _, err := manager.Start(StartRequest{ID: "task-2", Title: "Recover", Repository: "demo"}); err != nil {
@@ -606,7 +650,7 @@ func TestManagedWorktreeReconcileDoesNotCreateMismatchDebt(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.ResolveAgent = func(string) (string, error) { return "/usr/local/bin/pi", nil }
-	if _, err := manager.Start(StartRequest{ID: "managed-worktree-task", Title: "Managed worktree", Repository: "managed-worktree", Agent: "pi", PromptReference: prompt}); err != nil {
+	if _, err := manager.Start(StartRequest{ID: "managed-worktree-task", Title: "Managed worktree", Repository: "managed-worktree", Branch: "akofink/managed-worktree", Agent: "pi", PromptReference: prompt}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := manager.Reconcile(); err != nil {
@@ -624,7 +668,7 @@ func TestManagedWorktreeReconcileDoesNotCreateMismatchDebt(t *testing.T) {
 func TestShellWorktreeReconcileDoesNotCreateMismatchDebt(t *testing.T) {
 	manager, _ := newTestManager(t)
 	registerWorktreeRepository(t, manager, "shell-worktree")
-	result, err := manager.Start(StartRequest{ID: "shell-worktree-task", Title: "Shell worktree", Repository: "shell-worktree"})
+	result, err := manager.Start(StartRequest{ID: "shell-worktree-task", Title: "Shell worktree", Repository: "shell-worktree", Branch: "akofink/shell-worktree"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,7 +697,7 @@ func TestReconcilePreservesWorktreeMismatchDetection(t *testing.T) {
 	t.Run("wrong path", func(t *testing.T) {
 		manager, _ := newTestManager(t)
 		registerWorktreeRepository(t, manager, "wrong-path")
-		if _, err := manager.Start(StartRequest{ID: "wrong-path-task", Title: "Wrong path", Repository: "wrong-path"}); err != nil {
+		if _, err := manager.Start(StartRequest{ID: "wrong-path-task", Title: "Wrong path", Repository: "wrong-path", Branch: "akofink/wrong-path"}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := manager.Store.UpdateManifest("wrong-path-task", func(manifest *store.Manifest) error {
@@ -677,7 +721,7 @@ func TestReconcilePreservesWorktreeMismatchDetection(t *testing.T) {
 	t.Run("wrong branch", func(t *testing.T) {
 		manager, _ := newTestManager(t)
 		registerWorktreeRepository(t, manager, "wrong-branch")
-		result, err := manager.Start(StartRequest{ID: "wrong-branch-task", Title: "Wrong branch", Repository: "wrong-branch"})
+		result, err := manager.Start(StartRequest{ID: "wrong-branch-task", Title: "Wrong branch", Repository: "wrong-branch", Branch: "akofink/wrong-branch"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -699,7 +743,7 @@ func TestReconcilePreservesWorktreeMismatchDetection(t *testing.T) {
 	t.Run("wrong base", func(t *testing.T) {
 		manager, _ := newTestManager(t)
 		registerWorktreeRepository(t, manager, "wrong-base")
-		result, err := manager.Start(StartRequest{ID: "wrong-base-task", Title: "Wrong base", Repository: "wrong-base"})
+		result, err := manager.Start(StartRequest{ID: "wrong-base-task", Title: "Wrong base", Repository: "wrong-base", Branch: "akofink/wrong-base"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -733,6 +777,46 @@ func TestReconcilePreservesWorktreeMismatchDetection(t *testing.T) {
 			t.Fatalf("recovery debt = %q, want base mismatch", manifest.RecoveryDebt)
 		}
 	})
+}
+
+func TestWorktreeStartRequiresExplicitDescriptiveBranch(t *testing.T) {
+	manager, _ := newTestManager(t)
+	registerWorktreeRepository(t, manager, "requires-branch")
+	_, err := manager.Start(StartRequest{ID: "requires-branch-task", Title: "Requires branch", Repository: "requires-branch"})
+	if !store.IsKind(err, store.KindUsage) || !strings.Contains(err.Error(), "explicit descriptive --branch") {
+		t.Fatalf("Start() error = %v, want explicit branch usage error", err)
+	}
+}
+
+func TestDirectStartKeepsCurrentBranchWhenBranchIsOmitted(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	result, err := manager.Start(StartRequest{ID: "direct-branch", Title: "Direct branch", Repository: "demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentBranch, err := manager.Git.Branch(repository.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Manifest.Branch != currentBranch || len(tmux.startBranches) != 1 || tmux.startBranches[0] != currentBranch {
+		t.Fatalf("direct start branches = %#v and manifest branch %q, want current branch %q", tmux.startBranches, result.Manifest.Branch, currentBranch)
+	}
+}
+
+func TestTmuxWindowNameRemovesOwnerPrefix(t *testing.T) {
+	for branch, want := range map[string]string{
+		"akofink/51-task-labels": "51-task-labels",
+		"feature/review-build":   "review-build",
+		"main":                   "main",
+	} {
+		if got := tmuxWindowName(branch); got != want {
+			t.Errorf("tmuxWindowName(%q) = %q, want %q", branch, got, want)
+		}
+	}
 }
 
 func TestWorktreeStartOwnsImmutableGitInputs(t *testing.T) {
@@ -787,7 +871,7 @@ func TestConcurrentWorktreeStartsAreSerializedByRepositoryLock(t *testing.T) {
 		wait.Add(1)
 		go func(index int) {
 			defer wait.Done()
-			_, startErr := manager.Start(StartRequest{ID: fmt.Sprintf("task-concurrent-%d", index), Title: "Concurrent", Repository: "demo-concurrent"})
+			_, startErr := manager.Start(StartRequest{ID: fmt.Sprintf("task-concurrent-%d", index), Title: "Concurrent", Repository: "demo-concurrent", Branch: fmt.Sprintf("akofink/concurrent-%d", index)})
 			errors <- startErr
 		}(i)
 	}
@@ -812,7 +896,7 @@ func TestReconcileReportsWorktreeRecoveryAndGitFacts(t *testing.T) {
 	if _, err := manager.Store.RegisterRepository(repository); err != nil {
 		t.Fatal(err)
 	}
-	result, err := manager.Start(StartRequest{ID: "task-facts", Title: "Facts", Repository: "demo-facts"})
+	result, err := manager.Start(StartRequest{ID: "task-facts", Title: "Facts", Repository: "demo-facts", Branch: "akofink/task-facts"})
 	if err != nil {
 		t.Fatal(err)
 	}

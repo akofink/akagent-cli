@@ -78,9 +78,11 @@ Use `--all` to include all durable task records.
 `--repository <name>` filters by registered repository name, and `--worktree <path>` filters by exact task worktree path.
 Filters compose as an intersection and results remain sorted by task ID.
 
-The default start creates a branch named `akagent/<task-id>` and an isolated worktree under the registered repository's worktree root.
+The `worktree` policy requires an explicit descriptive `--branch` value, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`, and creates an isolated worktree under the registered repository's worktree root.
 Explicit `--branch`, `--base`, and `--worktree` values are immutable task inputs.
-The start operation creates a task-tagged tmux resource.
+The `direct` policy deliberately permits an omitted branch and uses the registered checkout's current branch.
+The start operation creates a task-tagged tmux resource whose display name is derived from the branch after removing its owner prefix.
+The task ID remains in tmux window metadata for lifecycle verification, not in the operator-facing window name.
 Without managed-launch options, that resource runs the user's shell for direct work.
 
 `--agent pi` selects the supported managed local Pi target.
@@ -136,7 +138,7 @@ task:
   title: Inspect local reconciliation
   status: active
   worker: local
-  branch: akagent/019fe8f2-ac67-7406-a6e6-2717b2cd31c6
+  branch: akofink/51-task-labels
   worktree_path: /path/to/.akagent/worktrees/demo/019fe8f2-ac67-7406-a6e6-2717b2cd31c6
   condition: none
   committed: false
@@ -151,7 +153,7 @@ The list schema uses a compact tabular array and includes the definitive total.
 
 ```toon
 tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:
-  019fe8f2-ac67-7406-a6e6-2717b2cd31c6,Inspect local reconciliation,active,local,akagent/019fe8f2-ac67-7406-a6e6-2717b2cd31c6,"0000000000000000000000000000000000000001",/path/to/.akagent/worktrees/demo/019fe8f2-ac67-7406-a6e6-2717b2cd31c6,none,false,false,false
+  019fe8f2-ac67-7406-a6e6-2717b2cd31c6,Inspect local reconciliation,active,local,akofink/51-task-labels,"0000000000000000000000000000000000000001",/path/to/.akagent/worktrees/demo/019fe8f2-ac67-7406-a6e6-2717b2cd31c6,none,false,false,false
 total: 1
 ```
 

@@ -69,7 +69,7 @@ type Git interface {
 }
 
 type Tmux interface {
-	Start(taskID string) (TmuxProcess, error)
+	Start(taskID, branch string) (TmuxProcess, error)
 	Observe(taskID string) (TmuxObservation, error)
 	Attach(taskID, windowID string) error
 	Stop(taskID string) error
@@ -78,7 +78,7 @@ type Tmux interface {
 // ManagedTmux starts a task with an explicit launch configuration. The legacy
 // Tmux.Start path remains available for tasks that intentionally launch a shell.
 type ManagedTmux interface {
-	StartManaged(taskID string, launch store.LaunchConfig) (TmuxProcess, error)
+	StartManaged(taskID, branch string, launch store.LaunchConfig) (TmuxProcess, error)
 }
 
 type Manager struct {
@@ -395,7 +395,11 @@ func (m *Manager) startInputs(request StartRequest, repository store.Repository)
 				return "", "", "", fmt.Errorf("inspect the repository branch")
 			}
 		} else {
-			branch = "akagent/" + request.ID
+			return "", "", "", &store.Error{
+				Kind:     store.KindUsage,
+				Message:  "worktree repository tasks require an explicit descriptive --branch",
+				Recovery: "Retry with `--branch akofink/<issue-or-ticket>-<description>`",
+			}
 		}
 	}
 	if !validBranch(branch) {
@@ -528,9 +532,9 @@ func (m *Manager) ensureStarted(id string, manifest *store.Manifest) error {
 		if !ok {
 			return fmt.Errorf("tmux implementation does not support managed launch")
 		}
-		process, err = managed.StartManaged(id, *manifest.Launch)
+		process, err = managed.StartManaged(id, manifest.Branch, *manifest.Launch)
 	} else {
-		process, err = m.Tmux.Start(id)
+		process, err = m.Tmux.Start(id, manifest.Branch)
 	}
 	if err != nil {
 		_, _ = m.Store.AppendEvent(id, store.Event{Operation: "start", Outcome: "failed"})
@@ -1271,25 +1275,25 @@ func (g commandGit) RemoveWorktree(repository, path string) error {
 
 type commandTmux struct{}
 
-func (commandTmux) Start(id string) (TmuxProcess, error) {
+func (commandTmux) Start(id, branch string) (TmuxProcess, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/sh"
 	}
-	return startTmuxWindow(id, "", shell)
+	return startTmuxWindow(id, branch, "", shell)
 }
 
-func (commandTmux) StartManaged(id string, launch store.LaunchConfig) (TmuxProcess, error) {
+func (commandTmux) StartManaged(id, branch string, launch store.LaunchConfig) (TmuxProcess, error) {
 	executable, err := os.Executable()
 	if err != nil || executable == "" {
 		return TmuxProcess{}, errors.New("akagent executable could not be resolved")
 	}
 	command := shellQuote(executable) + " worker launch " + shellQuote(id)
-	return startTmuxWindow(id, launch.WorkingDirectory, command)
+	return startTmuxWindow(id, branch, launch.WorkingDirectory, command)
 }
 
-func startTmuxWindow(id, directory, command string) (TmuxProcess, error) {
-	args := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-n", "akagent-" + id[:min(8, len(id))]}
+func startTmuxWindow(id, branch, directory, command string) (TmuxProcess, error) {
+	args := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-n", tmuxWindowName(branch)}
 	if directory != "" {
 		args = append(args, "-c", directory)
 	}
@@ -1313,6 +1317,16 @@ func startTmuxWindow(id, directory, command string) (TmuxProcess, error) {
 		return observation.Processes[0], nil
 	}
 	return TmuxProcess{WindowID: window}, nil
+}
+
+func tmuxWindowName(branch string) string {
+	if _, name, ok := strings.Cut(branch, "/"); ok && name != "" {
+		return name
+	}
+	if branch != "" {
+		return branch
+	}
+	return "task"
 }
 
 func shellQuote(value string) string {
@@ -1394,11 +1408,4 @@ func processStartTime(pid int) (uint64, error) {
 		}
 	}
 	return 0, errors.New("process start time is unavailable")
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

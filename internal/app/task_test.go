@@ -79,6 +79,21 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 }
 
+func TestWorktreeTaskStartRequiresDescriptiveBranch(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "worktree"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	result := runCommand(t, []string{"task", "start", "--task-id", "missing-branch", "--title", "Missing branch", "--repository", "demo"})
+	if result.code != 2 || !strings.Contains(result.stdout, "category: usage") || !strings.Contains(result.stdout, "explicit descriptive --branch") {
+		t.Fatalf("worktree task start = (%d, %q), want explicit branch usage error", result.code, result.stdout)
+	}
+}
+
 func TestTaskListEmptyCommandContract(t *testing.T) {
 	setupTaskCommandTest(t)
 

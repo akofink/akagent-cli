@@ -23,6 +23,9 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 ## Current workflow
 
 `task start` creates a durable record, creates or validates the task Git worktree, and starts either a detached shell or a managed local Pi process in a task-tagged tmux window.
+Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
+Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
+Tmux derives its display name from the branch without the owner prefix and keeps the task ID only in window metadata for lifecycle verification.
 Managed launch persists the resolved `pi` command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
 The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive and a failed launch remains retryable with the same immutable inputs.
 

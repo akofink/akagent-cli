@@ -167,7 +167,7 @@ func TestArchiveAndCleanRefuseLiveTask(t *testing.T) {
 func TestApprovedWorktreeCleanupPreservesArchiveAndReconcileRecovery(t *testing.T) {
 	manager, _ := newTestManager(t)
 	repository := registerWorktreeRepository(t, manager, "cleanup-worktree")
-	result, err := manager.Start(StartRequest{ID: "cleanup-worktree-task", Title: "Cleanup worktree", Repository: repository.Name})
+	result, err := manager.Start(StartRequest{ID: "cleanup-worktree-task", Title: "Cleanup worktree", Repository: repository.Name, Branch: "akofink/cleanup-worktree"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestApprovedWorktreeCleanupPreservesArchiveAndReconcileRecovery(t *testing.
 func TestWorktreeCleanupRejectsUnsafeOwnership(t *testing.T) {
 	manager, _ := newTestManager(t)
 	repository := registerWorktreeRepository(t, manager, "unsafe-cleanup")
-	result, err := manager.Start(StartRequest{ID: "unsafe-cleanup-task", Title: "Unsafe cleanup", Repository: repository.Name})
+	result, err := manager.Start(StartRequest{ID: "unsafe-cleanup-task", Title: "Unsafe cleanup", Repository: repository.Name, Branch: "akofink/unsafe-cleanup"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestWorktreeCleanupRejectsUnsafeOwnership(t *testing.T) {
 func TestConcurrentApprovedWorktreeCleanupIsIdempotent(t *testing.T) {
 	manager, _ := newTestManager(t)
 	repository := registerWorktreeRepository(t, manager, "concurrent-cleanup")
-	result, err := manager.Start(StartRequest{ID: "concurrent-cleanup-task", Title: "Concurrent cleanup", Repository: repository.Name})
+	result, err := manager.Start(StartRequest{ID: "concurrent-cleanup-task", Title: "Concurrent cleanup", Repository: repository.Name, Branch: "akofink/concurrent-cleanup"})
 	if err != nil {
 		t.Fatal(err)
 	}

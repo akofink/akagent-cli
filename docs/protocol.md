@@ -111,6 +111,9 @@ akagent worker inspect
 ```
 
 The local task start operation validates the repository and credential requirements, persists a manifest, creates the requested branch and Git worktree when needed, and starts either a detached shell or the selected managed Pi process in a task-tagged tmux window.
+Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
+Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
+The tmux display name is derived from the branch after removing its owner prefix, while the task ID remains in the window metadata used for lifecycle verification.
 For managed launch, the configuration is persisted before tmux starts and the launcher replaces itself with Pi so the durable process identity refers to the managed process.
 The launcher prints a non-secret startup line in the owned pane, and Pi's interactive status and tool views remain visible during execution.
 A launch failure prints a safe recovery message in the pane, remains in recoverable `starting` state, and records recovery debt.
@@ -123,7 +126,7 @@ The operator surface generates a task ID when omitted.
 A start is recoverable and records these steps:
 
 1. Resolve and lock the repository.
-2. Validate policy and requested base.
+2. Validate policy, requested branch, and requested base.
 3. Create or validate the branch and worktree.
 4. Check named required and optional credential capabilities.
 5. Persist the task manifest and start event.
