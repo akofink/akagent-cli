@@ -25,7 +25,7 @@ The local lifecycle currently provides:
 - Verified tmux attachment using fresh process identity and heartbeat observations.
 - Git branch and worktree ownership under the `worktree` policy.
 - Durable manifests, append-only events, repository and task locks.
-- Managed local Pi launch with durable target configuration, prompt-file stdin, safe environment construction, and requested-credential handling.
+- Managed local Pi launch with durable target configuration, interactive prompt-file references, safe environment construction, and requested-credential handling.
 - Git and process fact collection.
 - Compact TOON output and structured recovery errors.
 - Local credential requirements and non-secret warnings.

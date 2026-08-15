@@ -93,6 +93,7 @@ type Manager struct {
 	CleanupWorktree    func(store.Manifest, store.GitFacts) error
 	CleanupCredentials func(store.Manifest) error
 	ResolveAgent       func(string) (string, error)
+	ExecAgent          func(string, []string, []string) error
 	operationMu        sync.Mutex
 }
 
@@ -125,6 +126,7 @@ func New(state *store.Store) *Manager {
 		TerminalHistory:    func(string) (string, error) { return "", nil },
 		CleanupWorktree:    func(store.Manifest, store.GitFacts) error { return nil },
 		CleanupCredentials: func(store.Manifest) error { return nil },
+		ExecAgent:          syscall.Exec,
 	}
 }
 
@@ -741,10 +743,13 @@ func attachStateError(id, reason, recovery string) error {
 func (m *Manager) Inspect(id string) (store.Manifest, error) { return m.manifest(id) }
 
 // Launch is the short-lived worker entrypoint used by tmux. It reconstructs a
-// minimal environment from durable task inputs, opens the prompt by reference,
-// and replaces itself with the selected agent so the recorded PID remains the
-// agent PID. It returns only redaction-safe errors because it runs in a tmux pane.
+// minimal environment from durable task inputs and replaces itself with the
+// selected agent so the recorded PID remains the agent PID. Prompt files are
+// passed as Pi file references, which keeps stdin attached to the tmux tty for
+// interactive use. It returns only redaction-safe errors because it runs in a
+// tmux pane.
 func (m *Manager) Launch(id string) error {
+	fmt.Fprintf(os.Stderr, "akagent: starting managed Pi task %s\n", id)
 	manifest, err := m.manifest(id)
 	if err != nil {
 		return err
@@ -770,26 +775,24 @@ func (m *Manager) Launch(id string) error {
 	if err := os.Chdir(manifest.Launch.WorkingDirectory); err != nil {
 		return m.markLaunchFailure(id, "task worktree unavailable")
 	}
-	var input *os.File
-	if manifest.Launch.PromptReference != "" {
-		input, err = os.Open(manifest.Launch.PromptReference)
-		if err != nil {
+	if prompt := manifest.Launch.PromptReference; prompt != "" {
+		info, statErr := os.Lstat(prompt)
+		if statErr != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 			return m.markLaunchFailure(id, "prompt reference unavailable")
 		}
-		defer input.Close()
 	}
-	if input != nil {
-		if err := syscall.Dup2(int(input.Fd()), int(os.Stdin.Fd())); err != nil {
-			return m.markLaunchFailure(id, "prompt input could not be prepared")
-		}
+	execAgent := m.ExecAgent
+	if execAgent == nil {
+		execAgent = syscall.Exec
 	}
-	if err := syscall.Exec(manifest.Launch.Command, []string{manifest.Launch.Command}, environment); err != nil {
+	if err := execAgent(manifest.Launch.Command, managedAgentArgs(manifest.Launch.Command, manifest.Launch.PromptReference), environment); err != nil {
 		return m.markLaunchFailure(id, "agent process could not be started")
 	}
 	return nil
 }
 
 func (m *Manager) markLaunchFailure(id, detail string) error {
+	fmt.Fprintf(os.Stderr, "akagent: managed Pi task %s failed to start: %s. Retry the same task start command.\n", id, detail)
 	_, updateErr := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
 		manifest.Lifecycle = "starting"
 		manifest.Observation = ObservationMissing
@@ -805,6 +808,14 @@ func (m *Manager) markLaunchFailure(id, detail string) error {
 		return errors.New("managed launch failed and recovery event could not be recorded")
 	}
 	return errors.New("managed agent launch failed; retry the task start")
+}
+
+func managedAgentArgs(command, promptReference string) []string {
+	args := []string{command}
+	if promptReference != "" {
+		args = append(args, "@"+promptReference)
+	}
+	return args
 }
 
 func splitRequirements(value string) []string {

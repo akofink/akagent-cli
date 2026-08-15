@@ -80,12 +80,14 @@ Without managed-launch options, that resource runs the user's shell for direct w
 The `pi` executable must be available on `PATH`, and its resolved command path is stored in the task launch configuration.
 
 `--prompt` stores a reference to a regular local prompt file.
-The launcher opens that file as Pi's standard input, and the prompt content is never placed in process arguments, tmux commands, events, or protocol output.
+The launcher passes only the validated file reference to Pi and leaves standard input attached to the tmux terminal.
+This preserves Pi's interactive mode while keeping prompt content out of process arguments, tmux commands, events, and protocol output.
 
 `--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
 
 The selected launch target, command path, task worktree, prompt reference, and working context are persisted before tmux starts.
-A failed managed launch leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same immutable inputs.
+The owned pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible while work runs.
+A failed managed launch shows safe recovery guidance in the pane, leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same immutable inputs.
 
 Equivalent repeated starts, publications, finishes, stops, archives, and completed cleans are successful no-ops.
 A start with different immutable inputs returns a `conflict` error.

@@ -58,7 +58,8 @@ The task record stores the capability ID and readiness information without stori
 ### Managed launch
 
 A managed launch selects the local `pi` executable and persists its resolved command, task worktree, optional prompt-file reference, and optional non-secret working context.
-The prompt reference identifies a regular local file whose contents are provided to Pi on standard input.
+The prompt reference identifies a regular local file whose path is passed to Pi as a file reference.
+The launcher keeps standard input attached to the tmux terminal so Pi remains interactive.
 The prompt contents are not copied into process arguments, task events, or protocol output.
 
 The managed process receives a minimal safe runtime environment, `AKAGENT_TASK_ID`, and only requested environment credentials that passed readiness checks.
@@ -111,6 +112,8 @@ akagent worker inspect
 
 The local task start operation validates the repository and credential requirements, persists a manifest, creates the requested branch and Git worktree when needed, and starts either a detached shell or the selected managed Pi process in a task-tagged tmux window.
 For managed launch, the configuration is persisted before tmux starts and the launcher replaces itself with Pi so the durable process identity refers to the managed process.
+The launcher prints a non-secret startup line in the owned pane, and Pi's interactive status and tool views remain visible during execution.
+A launch failure prints a safe recovery message in the pane, remains in recoverable `starting` state, and records recovery debt.
 
 ## Lifecycle operations
 

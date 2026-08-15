@@ -101,8 +101,12 @@ akagent task start --title "Review the build" --repository demo \
 ```
 
 The prompt file must be a regular local file.
-Its contents are opened as Pi's standard input and are not copied into process arguments, tmux commands, task events, or TOON output.
+Only the validated prompt-file reference is passed to Pi, and standard input remains attached to the tmux terminal.
+This keeps Pi interactive while prompt contents stay out of process arguments, tmux commands, task events, and TOON output.
 The task manifest stores the selected target, resolved command path, prompt reference, worktree, and non-secret context before tmux starts.
+The owned pane shows a non-secret startup line before Pi initializes.
+Pi's interactive status and tool views remain visible while the managed task works.
+A failed launch prints safe recovery guidance in the pane and remains retryable through the same task start command.
 The managed process receives a minimal safe environment plus `AKAGENT_TASK_ID` and the requested environment credentials that passed readiness checks.
 Optional credentials produce non-secret warnings and are not injected.
 File credentials can be checked for readiness but cannot be injected into the managed environment.

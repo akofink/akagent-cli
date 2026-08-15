@@ -37,7 +37,7 @@ The local lifecycle implementation established:
 - Archive capture and cleanup-preservation policy.
 - Independent archive, worktree-cleanup, credential-cleanup, and recovery-debt state.
 - Default-disabled automated integration gating.
-- Managed local Pi launch with durable configuration, prompt-file stdin, safe environment construction, process identity, retry, and recovery behavior.
+- Managed local Pi launch with durable configuration, interactive prompt-file references, safe environment construction, process identity, retry, and recovery behavior.
 
 The current CLI starts a shell for direct human or shell-driven work by default and starts managed Pi when `--agent pi` is selected.
 Destructive cleanup hooks are not part of the current implementation.
