@@ -61,6 +61,7 @@ type field struct {
 type value struct {
 	k      kind
 	fields []field
+	order  []string
 	arr    []*value
 	sk     scalarKind
 	s      string // raw string (scalarString) or canonical token (bool/number)
@@ -194,6 +195,7 @@ func normalizeStruct(rv reflect.Value) (*value, error) {
 				}
 			}
 		}
+		out.order = append(out.order, name)
 		fv := rv.Field(i)
 		if omitEmpty && fv.IsZero() {
 			continue
@@ -343,9 +345,9 @@ func allScalar(arr []*value) bool {
 }
 
 func renderTabularArray(b *strings.Builder, indent, key string, hasKey bool, v *value, rowDepth int) error {
-	// Every element must be a non-empty object with the same key set and only
-	// scalar leaves. Anything else (mixed arrays, arrays of arrays, nested
-	// objects, non-uniform key sets) is outside the supported subset.
+	// Every element must be a non-empty object with scalar leaves. Missing
+	// fields are rendered as null so optional fields can vary between rows
+	// while the tabular schema remains deterministic.
 	names, err := tabularFields(v.arr)
 	if err != nil {
 		return err
@@ -385,13 +387,16 @@ func fieldValue(obj *value, name string) *value {
 	return &value{k: kindScalar, sk: scalarNull}
 }
 
-// tabularFields returns the ordered field names if the array is a uniform
-// array of scalar objects, or an error for any other shape.
+// tabularFields returns the ordered union of field names if the array is
+// composed of non-empty objects with scalar fields, or an error for any other
+// shape. Struct-based rows use their declaration order, while map-based rows
+// use first appearance.
 func tabularFields(arr []*value) ([]string, error) {
 	if len(arr) == 0 {
 		return nil, fmt.Errorf("%w: empty tabular array", ErrUnsupported)
 	}
-	var names []string
+	names := make([]string, 0)
+	seenNames := make(map[string]bool)
 	for i, e := range arr {
 		if e.k != kindObject {
 			return nil, fmt.Errorf("%w: tabular row %d is not an object", ErrUnsupported, i)
@@ -399,7 +404,6 @@ func tabularFields(arr []*value) ([]string, error) {
 		if len(e.fields) == 0 {
 			return nil, fmt.Errorf("%w: tabular row %d is an empty object", ErrUnsupported, i)
 		}
-		keys := make([]string, 0, len(e.fields))
 		seen := make(map[string]bool, len(e.fields))
 		for _, f := range e.fields {
 			if f.val.k != kindScalar {
@@ -409,20 +413,31 @@ func tabularFields(arr []*value) ([]string, error) {
 				return nil, fmt.Errorf("%w: duplicate tabular field %q at row %d", ErrUnsupported, f.name, i)
 			}
 			seen[f.name] = true
-			keys = append(keys, f.name)
-		}
-		if i == 0 {
-			names = keys
-			continue
-		}
-		if len(keys) != len(names) {
-			return nil, fmt.Errorf("%w: tabular rows have differing key sets", ErrUnsupported)
-		}
-		for j := range keys {
-			if keys[j] != names[j] {
-				return nil, fmt.Errorf("%w: tabular rows have differing key sets", ErrUnsupported)
+			if !seenNames[f.name] {
+				names = append(names, f.name)
+				seenNames[f.name] = true
 			}
 		}
+	}
+	if len(arr) > 0 && len(arr[0].order) > 0 {
+		present := make(map[string]bool, len(names))
+		for _, name := range names {
+			present[name] = true
+		}
+		ordered := make([]string, 0, len(names))
+		seen := make(map[string]bool, len(names))
+		for _, name := range arr[0].order {
+			if present[name] && !seen[name] {
+				ordered = append(ordered, name)
+				seen[name] = true
+			}
+		}
+		for _, name := range names {
+			if !seen[name] {
+				ordered = append(ordered, name)
+			}
+		}
+		names = ordered
 	}
 	return names, nil
 }

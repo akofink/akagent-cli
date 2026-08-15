@@ -79,6 +79,51 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 }
 
+func TestTaskListEmptyCommandContract(t *testing.T) {
+	setupTaskCommandTest(t)
+
+	result := runCommand(t, []string{"task", "list"})
+	want := "tasks: []\ntotal: 0\n"
+	if result.code != 0 || result.stdout != want {
+		t.Fatalf("empty task list = (%d, %q), want (0, %q)", result.code, result.stdout, want)
+	}
+}
+
+func TestTaskListHeterogeneousRowsCommandContract(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "start", "--task-id", "a-14", "--title", "Stopped", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("stopped task start = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", "a-14"}); result.code != 0 {
+		t.Fatalf("stopped task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "start", "--task-id", "b-14", "--title", "Finished", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("finished task start = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "publish", "b-14", "--condition", "active", "--reason", "coding", "--activity", "tests"}); result.code != 0 {
+		t.Fatalf("finished task publish = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", "b-14"}); result.code != 0 {
+		t.Fatalf("finished task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "finish", "b-14", "succeeded", "done"}); result.code != 0 {
+		t.Fatalf("finished task finish = (%d, %q)", result.code, result.stdout)
+	}
+
+	result := runCommand(t, []string{"task", "list"})
+	want := fmt.Sprintf("tasks[2]{id,title,status,worker,branch,base_revision,worktree_path,condition,reason,activity,result,committed,dirty,untracked}:\n  a-14,Stopped,stopped,local,main,\"0000000000000000000000000000000000000001\",%s,none,null,null,null,true,false,false\n  b-14,Finished,finished,local,main,\"0000000000000000000000000000000000000001\",%s,none,coding,tests,done,true,false,false\ntotal: 2\n", repositoryPath, repositoryPath)
+	if result.code != 0 || result.stdout != want {
+		t.Fatalf("heterogeneous task list = (%d, %q), want (0, %q)", result.code, result.stdout, want)
+	}
+}
+
 func TestTaskReconcileCommandContract(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
@@ -99,6 +144,19 @@ func TestTaskReconcileCommandContract(t *testing.T) {
 	want := fmt.Sprintf("tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:\n  reconcile-14,Reconcile,stopped,local,main,\"0000000000000000000000000000000000000001\",%s,none,true,false,false\ntotal: 1\n", repositoryPath)
 	if result.code != 0 || result.stdout != want {
 		t.Fatalf("task reconcile = (%d, %q), want (0, %q)", result.code, result.stdout, want)
+	}
+}
+
+func TestSerializationFailureHasStructuredCategory(t *testing.T) {
+	var stdout bytes.Buffer
+	value := map[string]any{"items": []any{map[string]any{"id": "one"}, []any{"nested"}}}
+
+	if code := write(&stdout, value); code != 1 {
+		t.Fatalf("write() exit = %d, want 1", code)
+	}
+	want := "error:\n  category: internal\n  message: Failed to serialize protocol output\n  retryable: false\n  recovery: Retry the command\n"
+	if stdout.String() != want {
+		t.Fatalf("serialization failure = %q, want %q", stdout.String(), want)
 	}
 }
 

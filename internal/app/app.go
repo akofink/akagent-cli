@@ -186,6 +186,9 @@ func formatArgs(args []string) string {
 
 func write(stdout io.Writer, value any) int {
 	if err := output.Write(stdout, value); err != nil {
+		if output.WriteError(stdout, "internal", "Failed to serialize protocol output", false, "Retry the command") != nil {
+			return 1
+		}
 		return 1
 	}
 	return 0
