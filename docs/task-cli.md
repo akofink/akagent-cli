@@ -57,7 +57,7 @@ repository:
 ## Task commands
 
 ```text
-akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]
+akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--agent pi --prompt <path>] [--context <value>] [--require <credential>] [--optional <credential>]
 akagent task list
 akagent task inspect <task-id>
 akagent task attach <task-id>
@@ -73,8 +73,15 @@ A task ID is generated when `--task-id` is omitted.
 
 The default start creates a branch named `akagent/<task-id>` and an isolated worktree under the registered repository's worktree root.
 Explicit `--branch`, `--base`, and `--worktree` values are immutable task inputs.
-The start operation also creates a detached tmux shell tagged with the task ID.
-It does not launch a managed coding-agent executable.
+The start operation creates a detached tmux shell tagged with the task ID unless a managed agent target is selected.
+
+`--agent pi` selects the first managed coding-agent target.
+
+`--prompt` stores a local prompt-file reference and the prompt content is never placed in process arguments, tmux commands, events, or protocol output.
+
+`--context` stores one non-secret working-context value for the managed process.
+
+The selected launch target, command path, prompt reference, and working context are persisted before tmux starts.
 
 Equivalent repeated starts, publications, finishes, stops, archives, and completed cleans are successful no-ops.
 A start with different immutable inputs returns a `conflict` error.
