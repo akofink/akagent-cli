@@ -599,6 +599,7 @@ func (s *Store) ensureRoot() error {
 	}{
 		{s.root, "state root"},
 		{s.tasksDir(), "tasks directory"},
+		{s.repositoriesDir(), "repositories directory"},
 		{s.locksDir(), "locks directory"},
 	} {
 		if err := s.ensureDir(entry.dir, entry.label); err != nil {
@@ -1046,8 +1047,9 @@ func randomTempName() (string, error) {
 
 // ---- paths ----
 
-func (s *Store) tasksDir() string { return filepath.Join(s.root, "tasks") }
-func (s *Store) locksDir() string { return filepath.Join(s.root, "locks") }
+func (s *Store) tasksDir() string        { return filepath.Join(s.root, "tasks") }
+func (s *Store) repositoriesDir() string { return filepath.Join(s.root, "repositories") }
+func (s *Store) locksDir() string        { return filepath.Join(s.root, "locks") }
 
 func (s *Store) taskDir(taskID string) string   { return filepath.Join(s.tasksDir(), taskID) }
 func (s *Store) eventsDir(taskID string) string { return filepath.Join(s.taskDir(taskID), "events") }
@@ -1055,6 +1057,9 @@ func (s *Store) manifestPath(taskID string) string {
 	return filepath.Join(s.taskDir(taskID), "manifest.json")
 }
 func (s *Store) lockPath(taskID string) string { return filepath.Join(s.locksDir(), taskID+".lock") }
+func (s *Store) repositoryPath(name string) string {
+	return filepath.Join(s.repositoriesDir(), name+".json")
+}
 
 func (s *Store) eventPath(taskID string, sequence int) string {
 	return filepath.Join(s.eventsDir(taskID), fmt.Sprintf("%0*d.json", eventSequenceWidth, sequence))
