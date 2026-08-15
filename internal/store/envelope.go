@@ -30,11 +30,19 @@ type Envelope struct {
 
 // Manifest is the typed mutable payload of a task manifest.
 type Manifest struct {
-	Title      string `json:"title"`
-	Worker     string `json:"worker"`
-	Repository string `json:"repository,omitempty"`
-	Lifecycle  string `json:"lifecycle"`
-	Condition  string `json:"condition"`
+	Title        string    `json:"title"`
+	Worker       string    `json:"worker"`
+	Repository   string    `json:"repository,omitempty"`
+	Lifecycle    string    `json:"lifecycle"`
+	Condition    string    `json:"condition"`
+	Reason       string    `json:"reason,omitempty"`
+	Activity     string    `json:"activity,omitempty"`
+	HeartbeatAt  time.Time `json:"heartbeat_at,omitempty"`
+	TmuxWindow   string    `json:"tmux_window,omitempty"`
+	Requirements string    `json:"requirements,omitempty"`
+	Warnings     string    `json:"warnings,omitempty"`
+	Result       string    `json:"result,omitempty"`
+	CleanupDebt  bool      `json:"cleanup_debt,omitempty"`
 }
 
 // Event is the typed immutable payload of an append-only task event.

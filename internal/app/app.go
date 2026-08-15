@@ -57,6 +57,8 @@ func Run(args []string, stdout io.Writer) int {
 			Commands: []string{
 				"credential <list|inspect|doctor>",
 				"id generate",
+				"repository register <name> <path>",
+				"task <start|list|inspect|publish|finish|stop|reconcile>",
 				"update [--source <path>]",
 				"worker inspect",
 			},
@@ -74,6 +76,10 @@ func Run(args []string, stdout io.Writer) int {
 			}
 			return write(stdout, identifierView{ID: id.String()})
 		}
+	case "repository":
+		return repositoryCommand(args[1:], stdout)
+	case "task":
+		return taskCommand(args[1:], stdout)
 	case "worker":
 		if len(args) == 2 && args[1] == "inspect" {
 			return write(stdout, workerView{Worker: inspectWorker(exec.LookPath)})

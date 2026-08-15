@@ -8,8 +8,8 @@ The installed binary is `akagent`, and `aka` may be configured as a short shell 
 
 ## Status
 
-This repository currently contains the protocol foundation spike.
-It intentionally does not yet create tasks or mutate tmux and Git worktrees.
+This repository provides the protocol foundation and initial local task lifecycle.
+Task manifests and append-only events are durable state; tmux is an observed interaction surface.
 
 Implemented commands:
 
@@ -17,12 +17,29 @@ Implemented commands:
 akagent
 akagent credential <list|inspect|doctor>
 akagent id generate
+akagent repository register <name> <path> [--policy <worktree|direct>]
+akagent task <start|list|inspect|publish|finish|stop|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
 
 Stdout uses TOON because coding agents are the primary machine consumers.
 The TOON output contract is pinned to specification version 4.1 with a validated encoder and official conformance fixtures; see [`docs/toon.md`](docs/toon.md).
+
+## Local tasks
+
+Register a local repository before starting a task.
+
+```bash
+akagent repository register akagent-cli ~/dev/repos/akagent-cli
+akagent task start --title "Implement lifecycle" --repository akagent-cli
+```
+
+`task start` creates a durable task record before creating its detached tmux window.
+Repeated equivalent starts are no-ops, while conflicting task inputs are rejected.
+`task publish` persists an agent condition, reason, activity, and heartbeat without exposing credential values.
+`task reconcile` compares durable task records with tmux observations and records missing windows as stopped; it never deletes task state, worktrees, or terminal history.
+Required credential IDs passed with `--require` must be ready; unavailable `--optional` IDs are reported as non-secret warnings.
 
 ## Credentials
 
