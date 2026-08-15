@@ -18,7 +18,7 @@ akagent
 akagent credential <list|inspect|doctor>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>
+akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -41,6 +41,13 @@ akagent task start --title "Implement lifecycle" --repository akagent-cli
 Use `--branch`, `--base`, and `--worktree` to provide explicit immutable Git inputs.
 Repeated equivalent starts are no-ops, while conflicting task inputs are rejected.
 `task publish` persists an agent condition, reason, activity, and heartbeat without exposing credential values.
+`task attach <task-id>` resolves the durable task record, verifies a fresh process observation and the tmux `@akagent_task_id` window option, then attaches by verified window ID.
+It refuses missing, stale, contradictory, stopped, and finished observations and never creates, kills, renames, or mutates tmux resources.
+
+```bash
+akagent task attach 019fe8f2-ac67-7406-a6e6-2717b2cd31c6
+```
+
 `task reconcile` compares durable task records with tmux and Git observations, reports dirty or untracked work and recovery debt, and never deletes task state, worktrees, branches, or terminal history.
 Required credential IDs passed with `--require` must be ready; unavailable `--optional` IDs are reported as non-secret warnings.
 

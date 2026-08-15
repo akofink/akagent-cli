@@ -53,7 +53,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
 	case "start":
@@ -99,6 +99,14 @@ func taskCommand(args []string, stdout io.Writer) int {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
+	case "attach":
+		if len(args) != 2 {
+			return writeError(stdout, "usage", "Usage: akagent task attach <task-id>", false, "Run `akagent task list`")
+		}
+		if err := manager.Attach(args[1]); err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return 0
 	case "publish":
 		if len(args) < 4 {
 			return writeError(stdout, "usage", "Usage: akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]", false, "Publish active, waiting, blocked, failed, or none")
@@ -259,7 +267,7 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 func view(id string, manifest store.Manifest) taskView {
 	return taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}

@@ -19,6 +19,8 @@ type fakeTmux struct {
 	mu          sync.Mutex
 	observation TmuxObservation
 	starts      int
+	attaches    []string
+	observedIDs []string
 }
 
 func (t *fakeTmux) Start(string) (TmuxProcess, error) {
@@ -28,10 +30,17 @@ func (t *fakeTmux) Start(string) (TmuxProcess, error) {
 	t.observation = TmuxObservation{Available: true, Processes: []TmuxProcess{{WindowID: "@1", PaneID: "%1", PID: 42, StartTime: 100}}}
 	return t.observation.Processes[0], nil
 }
-func (t *fakeTmux) Observe(string) (TmuxObservation, error) {
+func (t *fakeTmux) Observe(id string) (TmuxObservation, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.observedIDs = append(t.observedIDs, id)
 	return t.observation, nil
+}
+func (t *fakeTmux) Attach(_ string, windowID string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.attaches = append(t.attaches, windowID)
+	return nil
 }
 func (t *fakeTmux) Stop(string) error {
 	t.mu.Lock()
@@ -101,6 +110,176 @@ func TestStartPersistsProcessIdentityAndIsIdempotent(t *testing.T) {
 	}
 	if len(events) != 2 {
 		t.Fatalf("events = %d, want 2", len(events))
+	}
+}
+
+func TestAttachUsesOnlyVerifiedTaskWindow(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	if _, err := manager.Start(StartRequest{ID: "task-attach", Title: "Attach", Repository: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := manager.Inspect("task-attach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Attach("task-attach"); err != nil {
+		t.Fatal(err)
+	}
+	after, err := manager.Inspect("task-attach")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatalf("Attach() mutated durable state: before=%#v after=%#v", before, after)
+	}
+	if len(tmux.attaches) != 1 || tmux.attaches[0] != "@1" {
+		t.Fatalf("tmux attaches = %#v, want one verified window", tmux.attaches)
+	}
+	if len(tmux.observedIDs) != 1 || tmux.observedIDs[0] != "task-attach" {
+		t.Fatalf("tmux observed IDs = %#v, want task ID verification", tmux.observedIDs)
+	}
+}
+
+func TestAttachRejectsUnverifiedTaskStateWithoutMutation(t *testing.T) {
+	cases := []struct {
+		name   string
+		setup  func(*Manager, *fakeTmux) error
+		reason string
+	}{
+		{
+			name: "missing window",
+			setup: func(_ *Manager, tmux *fakeTmux) error {
+				tmux.observation = TmuxObservation{Available: true}
+				return nil
+			},
+			reason: "window is missing",
+		},
+		{
+			name: "contradictory windows",
+			setup: func(_ *Manager, tmux *fakeTmux) error {
+				tmux.observation.Processes = append(tmux.observation.Processes, TmuxProcess{WindowID: "@2", PaneID: "%2", PID: 43, StartTime: 200})
+				return nil
+			},
+			reason: "observation is contradictory",
+		},
+		{
+			name: "stale heartbeat",
+			setup: func(manager *Manager, _ *fakeTmux) error {
+				fixed := time.Date(2026, time.January, 1, 12, 0, 0, 0, time.UTC)
+				manager.Now = func() time.Time { return fixed.Add(DefaultHeartbeatTimeout + time.Second) }
+				return nil
+			},
+			reason: "heartbeat is stale",
+		},
+		{
+			name: "stopped task",
+			setup: func(manager *Manager, _ *fakeTmux) error {
+				_, err := manager.Stop("task-attach")
+				return err
+			},
+			reason: "task is stopped",
+		},
+		{
+			name: "finished task",
+			setup: func(manager *Manager, _ *fakeTmux) error {
+				if _, err := manager.Stop("task-attach"); err != nil {
+					return err
+				}
+				_, err := manager.Finish("task-attach", "succeeded", "done")
+				return err
+			},
+			reason: "task is finished",
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			manager, tmux := newTestManager(t)
+			fixed := time.Date(2026, time.January, 1, 12, 0, 0, 0, time.UTC)
+			if test.name == "stale heartbeat" {
+				manager.Now = func() time.Time { return fixed }
+			}
+			if _, err := manager.Start(StartRequest{ID: "task-attach", Title: "Attach", Repository: "demo"}); err != nil {
+				t.Fatal(err)
+			}
+			if test.name == "stale heartbeat" {
+				manager.Now = func() time.Time { return fixed.Add(DefaultHeartbeatTimeout + time.Second) }
+			}
+			if err := test.setup(manager, tmux); err != nil {
+				t.Fatal(err)
+			}
+			before, err := manager.Inspect("task-attach")
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = manager.Attach("task-attach")
+			if err == nil || !strings.Contains(err.Error(), test.reason) || !store.IsKind(err, store.KindConflict) {
+				t.Fatalf("Attach() error = %v, want conflict containing %q", err, test.reason)
+			}
+			after, inspectErr := manager.Inspect("task-attach")
+			if inspectErr != nil {
+				t.Fatal(inspectErr)
+			}
+			if before != after {
+				t.Fatalf("failed Attach() mutated durable state: before=%#v after=%#v", before, after)
+			}
+			if len(tmux.attaches) != 0 {
+				t.Fatalf("failed Attach() attached to tmux window: %#v", tmux.attaches)
+			}
+		})
+	}
+}
+
+func TestCommandTmuxAttachVerifiesTaskOptionBeforeAttaching(t *testing.T) {
+	bin := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := filepath.Join(bin, "tmux")
+	const script = `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$AKAGENT_TEST_TMUX_LOG"
+case "$1" in
+  display-message) printf '%s\n' "$AKAGENT_TEST_TMUX_OPTION" ;;
+  attach-session) : ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AKAGENT_TEST_TMUX_LOG", logPath)
+	for _, test := range []struct {
+		name     string
+		option   string
+		wantErr  bool
+		wantCall string
+	}{
+		{name: "matching option", option: "task-attach", wantCall: "display-message -p -t @1 #{@akagent_task_id}"},
+		{name: "wrong option", option: "other-task", wantErr: true, wantCall: "display-message -p -t @1 #{@akagent_task_id}"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.WriteFile(logPath, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("AKAGENT_TEST_TMUX_OPTION", test.option)
+			err := (commandTmux{}).Attach("task-attach", "@1")
+			if (err != nil) != test.wantErr {
+				t.Fatalf("Attach() error = %v, wantErr %v", err, test.wantErr)
+			}
+			content, readErr := os.ReadFile(logPath)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			calls := strings.Split(strings.TrimSpace(string(content)), "\n")
+			if calls[0] != test.wantCall {
+				t.Fatalf("first tmux call = %q, want %q", calls[0], test.wantCall)
+			}
+			if test.wantErr && len(calls) != 1 {
+				t.Fatalf("tmux calls = %q, want no attach after failed verification", calls)
+			}
+			if !test.wantErr && (len(calls) != 2 || calls[1] != "attach-session -t @1") {
+				t.Fatalf("tmux calls = %q, want verified attach", calls)
+			}
+		})
 	}
 }
 

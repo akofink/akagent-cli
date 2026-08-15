@@ -156,6 +156,8 @@ func TestLifecycleMalformedFlagsReturnUsage(t *testing.T) {
 		{"repository", "register", "demo", t.TempDir(), "--bogus", "value"},
 		{"task", "list", "--bogus"},
 		{"task", "inspect", "task-14", "--bogus"},
+		{"task", "attach"},
+		{"task", "attach", "task-14", "--bogus"},
 		{"task", "publish", "task-14", "--condition", "active", "--bogus", "value"},
 		{"task", "finish", "task-14", "succeeded"},
 		{"task", "stop", "task-14", "--bogus"},

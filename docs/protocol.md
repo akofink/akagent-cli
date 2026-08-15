@@ -128,8 +128,15 @@ Detail views preview large fields and offer `--full` only when content is trunca
 
 ### Attach
 
-Attachment resolves a task ID to a verified tmux target.
-It checks the window task-ID option instead of trusting the window name.
+Attachment first resolves the durable task record by task ID.
+It only proceeds for a running task with a fresh heartbeat, a fresh process observation, and an exact match between the durable process identity and the current observation.
+
+Tmux discovery filters windows by the `@akagent_task_id` window option and requires exactly one verified task process.
+A similarly named window is never a valid target.
+Immediately before attaching, the command rechecks that option on the selected window ID, then runs `tmux attach-session` against that verified window ID.
+
+Missing, stale, contradictory, stopped, and finished observations are rejected with structured recovery guidance.
+Attachment does not write durable state and never creates, kills, or renames tmux resources.
 
 ### Stop
 
