@@ -19,6 +19,7 @@ The store lives under the XDG state root for the `akagent` application:
 
 ```text
 <root>/
+  repositories/<name>.json
   tasks/<task-id>/manifest.json
   tasks/<task-id>/events/000001.json
   tasks/<task-id>/events/000002.json
@@ -140,5 +141,6 @@ Reconciliation does not invoke either destructive operation.
 
 ## Out of scope
 
-Starting or stopping agents, repository registration, task lifecycle commands, credentials, tmux, and Git remain outside this package.
-The lifecycle package supplies the archive and cleanup policy while this package supplies only their durable records.
+Starting or stopping task shells, task lifecycle commands, credentials, tmux, and Git remain outside this package.
+The store also persists repository registration records, while the lifecycle package supplies repository validation and archive and cleanup policy.
+The default local cleanup hooks do not remove worktrees or credentials.

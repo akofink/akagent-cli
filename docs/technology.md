@@ -56,14 +56,11 @@ Weak structured-data handling, locking, signal control, quoting, and partial-fai
 - Add remote transport only after local semantics stabilize.
 - Avoid a daemon, RPC framework, embedded database, dependency-injection framework, or core plugin loader initially.
 
-## Required technical validation
+## Validation status and remaining work
 
-- Check the selected Go TOON library against an exact specification version and official tests.
-- Measure representative TOON output against JSON rather than relying on generic savings claims.
-- Prove tmux launch, identity, attachment, terminal resize, and process-exit behavior.
-- Prove concurrent state publication and inspection under locks.
-- Prove atomic manifest replacement and recoverable event recording.
-- Prove graceful cancellation and timeout distinction.
-- Cross-compile for the operator platform and Linux ARM64.
-- Decide whether TOON is safe and ergonomic for manifests or should remain output-only.
-- Test secret-bearing operations for argv, environment, log, and error leakage.
+- TOON 4.1 output is validated against official fixtures and representative token measurements.
+- Tmux launch, task identity, verified attachment, stop, and process observation have focused tests.
+- Concurrent state publication and inspection use per-task locks and race-enabled tests.
+- Atomic manifest replacement and recoverable event recording have focused tests.
+- Credential readiness checks avoid reading or printing source values.
+- Managed agent launch, terminal resize, remote transport, and cross-compilation remain future validation work.

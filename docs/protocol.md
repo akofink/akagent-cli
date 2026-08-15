@@ -2,16 +2,16 @@
 
 ## Scope
 
-The protocol is the stable contract between operator commands, worker commands, agents, integrations, and future transports.
-It covers command behavior, identity, records, lifecycle semantics, output, errors, compatibility, and reconciliation.
+The protocol is the stable contract between direct commands, local tasks, integrations, and future transports.
+It covers identity, records, lifecycle semantics, output, errors, compatibility, and reconciliation.
 
-It does not standardize cloud provisioning or imply that all workers have identical capabilities.
+It does not standardize cloud provisioning, managed agent launch, or imply that all workers have identical capabilities.
 
 ## Resources
 
 ### Worker
 
-A worker is a named machine on which `akagent worker` can operate.
+A worker is a named machine on which local worker inspection can operate.
 
 ```toon
 worker:
@@ -20,10 +20,10 @@ worker:
   architecture: arm64
   operating_system: linux
   features[2]: tmux,git-worktree
-  max_tasks: 4
 ```
 
 Capabilities include architecture, operating system, execution features, capacity, protocol version, and image or configuration version where relevant.
+The current CLI exposes `akagent worker inspect` for the implicit local worker.
 
 ### Task
 
@@ -32,7 +32,7 @@ A task has an immutable ID, operator request, and mutable execution record.
 ```toon
 task:
   id: 019fe8f2-ac67-7406-a6e6-2717b2cd31c6
-  title: Implement local reconciliation
+  title: Inspect local reconciliation
   worker: local
   repository: example
 ```
@@ -44,14 +44,15 @@ Titles, branches, tickets, tmux names, and prompts are attributes rather than id
 
 ### Repository
 
-A repository registration resolves a stable name to a clone and policy.
+A repository registration resolves a stable name to a local Git checkout and policy.
 
-Policy covers worktree requirements, branch naming, direct-branch exceptions, default base, commit expectations, and repository instruction discovery.
+The `worktree` policy creates an isolated task branch and worktree under the registration's worktree root.
+The `direct` policy uses the registered checkout and requires its base revision to match.
 
 ### Credential capability
 
-A credential capability is a named permission needed by a worker or task.
-The task record stores the capability ID, source type, scope, fingerprint, expiration, and installation status without storing the value.
+A credential capability is a named permission needed by a task.
+The task record stores the capability ID and readiness information without storing the value.
 
 ## State model
 
@@ -67,159 +68,164 @@ Agent-declared condition:
 active | waiting | blocked | failed | none
 ```
 
-Observed facts include tmux window existence, process identity and start time, heartbeat, exit status, Git status, HEAD, archive status, cleanup status, and credential expiration.
+Observed facts include tmux window existence, process identity and start time, heartbeat, Git status, HEAD, archive status, cleanup status, and credential readiness.
 
 The compact `status` field is a computed view:
 
-1. `unknown` when required observations are unavailable or contradictory.
-2. `failed` when launch or finish recorded failure.
-3. `waiting` or `blocked` when the process exists and a matching declaration has a fresh heartbeat.
-4. `active` when the process exists and no stronger condition applies.
+1. `starting` while recoverable startup is incomplete.
+2. `failed` when the condition or finish outcome records failure.
+3. `waiting` or `blocked` when a fresh process observation has that condition.
+4. `active` when a fresh task process exists without a stronger condition.
 5. `finished` when finish recorded an outcome and no process remains.
 6. `stopped` when stop completed without a finish outcome.
-7. `starting` while recoverable startup is incomplete.
+7. `unknown` when required observations are unavailable, stale, or contradictory.
 
-Verification is current activity rather than lifecycle state.
-Committed and dirty are Git facts.
-Abandonment is an operator disposition.
+`committed`, `dirty`, and `untracked` are Git facts.
+Archive and cleanup state are independent recovery facts.
+
+## Current local commands
+
+The current executable exposes:
+
+```text
+akagent
+akagent credential <list|inspect|doctor>
+akagent integration inspect
+akagent id generate
+akagent repository <register|list|inspect|update|unregister>
+akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent update [--source <path>]
+akagent worker inspect
+```
+
+The local task start operation validates the repository and credential requirements, persists a manifest, creates the requested branch and Git worktree when needed, creates a detached tmux shell, and records the observed process identity.
+It does not launch a managed coding-agent executable.
 
 ## Lifecycle operations
 
 ### Start
 
 The operator surface generates a task ID when omitted.
-Direct `akagent worker task start` requires `--task-id`, and `akagent id generate` exposes the same generation algorithm.
+A start is recoverable and records these steps:
 
-Startup recoverably records these steps:
-
-1. Reserve the task ID.
-2. Resolve and lock the repository.
-3. Validate policy and requested base.
-4. Create or validate branch and worktree.
-5. Resolve and validate credential requirements.
-6. Persist prompt and launch configuration.
-7. Install task-scoped credentials when required.
-8. Create the tmux window.
-9. Launch the agent process.
-10. Record process identity and success.
+1. Resolve and lock the repository.
+2. Validate policy and requested base.
+3. Create or validate the branch and worktree.
+4. Check named required and optional credential capabilities.
+5. Persist the task manifest and start event.
+6. Create a detached tmux shell tagged with the task ID.
+7. Record the tmux window, pane, process identity, and successful start.
 
 Repeated equivalent starts return the existing task with exit code `0`.
 Conflicting immutable inputs return a structured conflict.
 
 ### Publish state
 
-Agents and integrations may publish condition, concise reason, current activity, requested operator action, and heartbeat.
-Repeating the current value is a successful no-op.
-
-Publication updates the durable task record and mirrors immediate condition into tmux when available.
+A trusted local integration or shell may publish `active`, `waiting`, `blocked`, `failed`, or `none` with a concise reason and activity.
+Publication updates the durable task record and heartbeat.
+It does not make a declaration authoritative over contradictory process or Git observations.
 
 ### Inspect and list
 
-List views default to three or four decision-relevant fields:
+List views default to compact decision-relevant fields and include a definitive total.
+Detail views include task identity, computed status, branch and worktree facts, conditions, results, and recovery fields when present.
 
 ```toon
-tasks[2]{id,title,status,worker}:
-  019f...,Fix bootstrap,active,local
-  01a0...,Review cleanup,waiting,local
+tasks[1]{id,title,status,worker,condition}:
+  019f...,Inspect reconciliation,active,local,none
+total: 1
 ```
-
-Lists report a definitive total and support `--fields`.
-Detail views preview large fields and offer `--full` only when content is truncated.
 
 ### Attach
 
 Attachment first resolves the durable task record by task ID.
-It only proceeds for a running task with a fresh heartbeat, a fresh process observation, and an exact match between the durable process identity and the current observation.
+It proceeds only for a running task with a fresh heartbeat, a fresh process observation, exactly one matching process, and a matching `@akagent_task_id` tmux window.
 
-Tmux discovery filters windows by the `@akagent_task_id` window option and requires exactly one verified task process.
-A similarly named window is never a valid target.
-Immediately before attaching, the command rechecks that option on the selected window ID, then runs `tmux attach-session` against that verified window ID.
+The command rechecks the task option on the selected window immediately before running `tmux attach-session` against that verified window ID.
 
 Missing, stale, contradictory, stopped, and finished observations are rejected with structured recovery guidance.
-Attachment does not write durable state and never creates, kills, or renames tmux resources.
+Attachment does not write durable state and never creates, kills, renames, or retargets tmux resources.
 
 ### Stop
 
-Stop verifies process identity using more than a PID, requests graceful termination, waits for a bounded interval, and records the outcome.
-It preserves worktree, task record, logs, credentials needed for later recovery, and tmux history according to policy.
-Stopping an already stopped task is a successful no-op.
+Stop verifies the task through the tagged tmux resource and terminates its task window.
+It preserves the durable task record and Git worktree, then records `stopped` without claiming a successful outcome.
+Terminal history may no longer be available after the window is stopped, so archive it before stopping when terminal capture matters.
+Stopping an already stopped or finished task is a successful no-op.
 
 ### Finish
 
-Finish records `succeeded` or `failed`, a concise result, and artifact declarations.
-It moves lifecycle to `finished` after process exit.
+Finish accepts `succeeded` or `failed` and a concise result after the task process has exited.
+It moves lifecycle to `finished` and refreshes Git facts.
 
-An agent declaration does not prove verification passed, changes were committed, or the worktree is clean.
+The current command records the result string only.
+It does not infer verification success, commit state, or worktree cleanliness from the result.
 
 ### Archive
 
-Archive captures manifest, events, prompt, result, terminal output, Git facts, artifacts, and tool and worker versions.
-It reports artifacts that could not be captured and does not claim worker-replacement durability unless stored elsewhere.
+Archive accepts stopped or finished tasks after confirming no task process is live.
+It captures the manifest, event history, non-secret Git facts, and terminal history when available.
+Unavailable terminal history is recorded as a warning.
+Partial archive attempts remain retryable, and equivalent archives are idempotent.
 
 ### Clean
 
-Clean refuses destructive action while the verified process runs.
-It captures Git facts and refuses to discard uncommitted or untracked work without explicit authorization.
-Credential cleanup is recorded independently so partial cleanup can be retried safely.
+Clean archives first and refuses destructive action while a verified task process runs.
+It preserves committed, dirty, and untracked Git facts unless the operator explicitly supplies `--allow-committed`, `--allow-dirty`, and `--allow-untracked` for the corresponding categories.
+
+Worktree and credential cleanup state are recorded independently so partial cleanup can be retried.
+The default local cleanup hooks do not remove worktrees or credentials.
 
 ### Reconcile
 
-Reconciliation compares declarations with tmux, process, Git, filesystem, credential, and artifact facts.
-It repairs safe derived metadata and reports ambiguous conditions.
-
-It detects missing windows, replaced processes, PID reuse, stale heartbeats, worktree mismatches, orphaned resources, partial operations, expired credentials, and dangerous disk pressure.
-It never deletes resources merely because they appear stale.
+Reconciliation compares durable records with tmux, process, Git, and store observations.
+It repairs safe derived metadata, records changes, and reports stale, missing, replaced, or contradictory observations.
+It never deletes task state, branches, worktrees, windows, or terminal history.
 
 ## Output
 
 Agent-consumed stdout uses conforming TOON by default.
 Internal logic uses typed records and encodes TOON at the boundary.
 
-The implementation pins an exact supported TOON specification version and a constrained output subset; see [`docs/toon.md`](toon.md) for the pinned version, supported forms, known deviations, encoder decision, and token measurements. Output is validated by the official conformance fixtures under `internal/output/testdata/conformance/`.
+The implementation pins an exact supported TOON specification version and a constrained output subset.
+See [`toon.md`](toon.md) for the pinned version, supported forms, known deviations, encoder decision, and token measurements.
 Protocol compatibility is defined by `akagent` schemas and semantics, not by TOON alone.
-
-Token-efficiency rules:
-
-- Keep default list schemas small.
-- Use tabular arrays for uniform records.
-- Preview rather than silently omit large text.
-- Offer `--fields` and `--full` escape hatches.
-- Make no-argument output compact live content rather than a manual.
-- Include contextual help only when it avoids a likely discovery call.
-- Give session hooks a stricter budget than interactive commands.
 
 ## Errors
 
 Structured successes and errors go to stdout.
-Opt-in diagnostics and progress go to stderr.
+Diagnostics and progress do not mix with protocol output.
 
 ```toon
 error:
   category: conflict
   message: Task inputs conflict with the existing task
   retryable: false
-  recovery: akagent task inspect <task-id> --full
+  recovery: akagent task inspect <task-id>
 ```
 
-Categories begin with `usage`, `not_found`, `conflict`, `retryable`, `partial`, `preservation_required`, `capability`, and `internal`.
+Categories include `usage`, `not_found`, `conflict`, `retryable`, `partial`, `preservation_required`, `capability`, and `internal`.
+Exit code `0` means success or no-op.
+Exit code `1` means the requested operation could not be completed.
+Exit code `2` means the command or its arguments are invalid.
 
-Exit codes are `0` for success and no-op, `1` when intent cannot be satisfied, and `2` for usage errors.
-Unknown flags fail before side effects.
+## Integration gate
+
+Automated integrations must treat a missing `AKAGENT_ENABLED` signal or any value other than `1` as disabled.
+`akagent integration inspect` reports the read-only state.
+Direct human commands remain available regardless of the gate.
 
 ## Concurrency and consistency
 
-- Task mutation uses a per-task lock.
-- Repository mutation uses a per-repository lock.
-- Manifest replacement uses atomic rename and appropriate synchronization.
-- Task ID and operation name form the default idempotency identity.
-- Remote retries do not assume a lost response means failure.
-- Reads identify observation time and tolerate concurrent change.
-
-No distributed lock is required while one worker owns its filesystem and repositories.
+Task mutation uses a per-task lock.
+Repository mutation uses a per-repository lock.
+Manifest replacement uses atomic rename and synchronization.
+Task ID and operation name form the default idempotency identity.
+Reads identify observation time and tolerate concurrent change.
 
 ## Compatibility
 
-Cross-worker responses include protocol version metadata.
+Cross-worker responses include protocol version metadata when remote transport exists.
 Adding optional fields is compatible.
 Removing fields, changing meanings, or changing lifecycle semantics requires a protocol version change.
 Human-readable text is not a stable parsing interface.
