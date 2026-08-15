@@ -18,7 +18,7 @@ The installed binary is `akagent`.
 - [`credentials.md`](credentials.md) defines local credential sources, requirements, validation, and current limitations.
 - [`integration-gate.md`](integration-gate.md) defines the default-disabled signal for automated integrations.
 - [`technology.md`](technology.md) compares the implementation options.
-- [`roadmap.md`](roadmap.md) separates completed local work from future integrations, remote execution, and discovery.
+- [`roadmap.md`](roadmap.md) separates completed local work from the remaining local integration work.
 - [`implementation-plan.md`](implementation-plan.md) records the public issue and delivery map.
 - [`storage.md`](storage.md) defines the worker-local state store layout, schema, permissions, locking, archive, and recovery.
 - [`handoff.md`](handoff.md) records current implementation status and the next public work.
@@ -26,16 +26,14 @@ The installed binary is `akagent`.
 ## Current decisions
 
 1. Use one executable with direct human commands and a directly inspectable local worker.
-2. Keep the CLI as the permanent boundary for humans, agents, integrations, plugins, skills, and future transports.
-3. Prove local task lifecycle, tmux integration, Git worktrees, status, reconciliation, archive, and safe cleanup before remote transport.
-4. Use one implicit local worker and no scheduler.
-5. Defer containers, automatic placement, and a central service.
+2. Keep the CLI as the permanent boundary for humans, agents, integrations, plugins, and skills.
+3. Prove local task lifecycle, tmux integration, Git worktrees, managed Pi launch, status, reconciliation, archive, and safe cleanup.
+4. Use one implicit local worker.
+5. Keep infrastructure provisioning separate from task orchestration.
 6. Use TOON for agent-consumed stdout and treat token use as an interface constraint.
 7. Keep worker-local durable task records and derive status from reconciled observations.
-8. Keep infrastructure provisioning separate from task orchestration.
-9. Keep application source and releases in this repository while allowing an external installer to install the binary.
-10. Add cross-worker discovery only after basic remote execution works.
-11. Source credentials locally, validate named requirements, and never expose credential values.
+8. Keep application source and releases in this repository while allowing an external installer to install the binary.
+9. Source credentials locally, validate named requirements, and never expose credential values.
 
 ## Design constraints
 
@@ -52,23 +50,15 @@ The installed binary is `akagent`.
 
 ## Current local boundary
 
-The current CLI registers local Git repositories, creates durable task records, creates isolated worktrees under the `worktree` policy, and starts detached tmux shells tagged with task IDs.
+The current CLI registers local Git repositories, creates durable task records, creates isolated worktrees under the `worktree` policy, and starts task-tagged tmux resources.
+
+A task can use a detached shell for direct work or a managed local Pi launch selected with `--agent pi`.
+Managed launch persists the resolved command, task worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
 
 It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
-
-It does not launch a managed coding-agent executable, provide remote transport, schedule work, or delete worktrees and credentials through the default cleanup hooks.
+The default cleanup hooks do not delete worktrees or credentials.
 
 ## Rejected initial approaches
-
-### Full scheduler first
-
-A queue, placement engine, central database, and worker leases would add distributed failure modes before workload measurements justify them.
-Explicit local execution provides enough evidence for the first stages.
-
-### Containers first
-
-Containers improve dependency and resource isolation but complicate interactive attachment, Git worktrees, ownership, browser access, caches, and credentials.
-They remain a later option rather than an initial protocol requirement.
 
 ### Tmux as the database
 

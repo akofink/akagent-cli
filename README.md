@@ -47,12 +47,29 @@ Registration requires the root of an existing Git checkout.
 The default repository policy creates an isolated branch and Git worktree for each task.
 The `direct` policy permits the registered checkout itself when that is explicitly selected.
 
-`task start` creates a durable record, validates the repository inputs, creates the required branch and worktree, and starts a detached tmux shell tagged with the task ID.
-The current local CLI does not launch a managed coding-agent executable.
+`task start` creates a durable record, validates the repository inputs, creates the required branch and worktree, and starts a task-tagged tmux resource.
+The local CLI can start either a detached shell for direct human work or a managed local Pi process.
+Use `--agent pi` to select the managed launch, `--prompt` to provide a local prompt file on standard input, and `--context` to provide one non-secret working-context value.
 Use `task attach` for verified human attachment and use `task publish` for durable condition and heartbeat updates.
 
 `task reconcile` compares durable records with tmux and Git observations and repairs safe derived facts.
 It never deletes task state, branches, worktrees, windows, or terminal history.
+
+## Managed Pi launch
+
+Pi must be installed and available as `pi` on `PATH`.
+The managed launch configuration resolves that command, the task worktree, an optional prompt-file reference, and an optional non-secret context before starting tmux.
+The prompt file is opened as standard input for Pi and its content is never placed in process arguments, task events, or protocol output.
+
+```bash
+akagent task start --title "Review the build" --repository demo \
+  --agent pi --prompt /path/to/prompt.txt --context "example"
+```
+
+The start response includes the selected agent, resolved command, prompt reference, and working context.
+A repeated start with the same immutable inputs is an idempotent no-op, while a failed launch remains retryable through the same task start command.
+The managed process receives a minimal safe environment, `AKAGENT_TASK_ID`, and the requested environment credentials that passed readiness checks.
+Optional credentials produce non-secret warnings and are not injected; file credentials are readiness-only and cannot be injected into the managed environment.
 
 `task archive` captures a stopped or finished task's manifest, events, non-secret Git facts, and available terminal history.
 `task clean` archives first, refuses live tasks, preserves committed, dirty, and untracked work unless each category is explicitly authorized, and records independent cleanup debt.
@@ -129,9 +146,8 @@ Automatic update on every invocation remains intentionally deferred because ordi
 
 ## Direction
 
-Near-term work focuses on the local protocol and opt-in workflow integrations.
-
-Remote workers, managed agent launch, scheduling, containers, automatic placement, and a central service are not part of the current local CLI.
+Near-term work focuses on the local protocol, managed local Pi launch, and opt-in workflow integrations.
+The current CLI remains local-first: it uses the registered checkout, Git worktrees, and tmux on the invoking machine.
 
 ## Design documentation
 
@@ -141,8 +157,8 @@ Remote workers, managed agent launch, scheduling, containers, automatic placemen
 - [`docs/architecture.md`](docs/architecture.md) defines system boundaries and failure assumptions.
 - [`docs/protocol.md`](docs/protocol.md) defines resources, state, lifecycle operations, output, and compatibility.
 - [`docs/task-cli.md`](docs/task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
-- [`docs/credentials.md`](docs/credentials.md) defines credential discovery, validation, and current local behavior.
+- [`docs/credentials.md`](docs/credentials.md) defines credential discovery, validation, and managed-launch environment behavior.
 - [`docs/integration-gate.md`](docs/integration-gate.md) defines the default-disabled integration signal.
 - [`docs/technology.md`](docs/technology.md) records the implementation-stack evaluation.
-- [`docs/roadmap.md`](docs/roadmap.md) stages completed local work and future integrations and remote work.
+- [`docs/roadmap.md`](docs/roadmap.md) stages completed local work and remaining local integration work.
 - [`docs/handoff.md`](docs/handoff.md) records current implementation status and limitations.

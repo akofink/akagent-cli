@@ -73,15 +73,19 @@ A task ID is generated when `--task-id` is omitted.
 
 The default start creates a branch named `akagent/<task-id>` and an isolated worktree under the registered repository's worktree root.
 Explicit `--branch`, `--base`, and `--worktree` values are immutable task inputs.
-The start operation creates a detached tmux shell tagged with the task ID unless a managed agent target is selected.
+The start operation creates a task-tagged tmux resource.
+Without managed-launch options, that resource runs the user's shell for direct work.
 
-`--agent pi` selects the first managed coding-agent target.
+`--agent pi` selects the supported managed local Pi target.
+The `pi` executable must be available on `PATH`, and its resolved command path is stored in the task launch configuration.
 
-`--prompt` stores a local prompt-file reference and the prompt content is never placed in process arguments, tmux commands, events, or protocol output.
+`--prompt` stores a reference to a regular local prompt file.
+The launcher opens that file as Pi's standard input, and the prompt content is never placed in process arguments, tmux commands, events, or protocol output.
 
-`--context` stores one non-secret working-context value for the managed process.
+`--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
 
-The selected launch target, command path, prompt reference, and working context are persisted before tmux starts.
+The selected launch target, command path, task worktree, prompt reference, and working context are persisted before tmux starts.
+A failed managed launch leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same immutable inputs.
 
 Equivalent repeated starts, publications, finishes, stops, archives, and completed cleans are successful no-ops.
 A start with different immutable inputs returns a `conflict` error.
@@ -101,8 +105,9 @@ It never deletes task state, branches, worktrees, windows, or terminal history.
 
 ## Attachment
 
-Attachment requires a running task with a fresh heartbeat and process observation.
+Attachment requires a running shell or managed Pi task with a fresh heartbeat and process observation.
 It verifies exactly one process, the durable process identity, the task-tagged tmux window, and the window option immediately before attaching.
+For managed launch, the launcher replaces itself with Pi so the recorded PID and process start time identify Pi rather than a wrapper process.
 
 Missing, stale, contradictory, stopped, and finished observations are rejected with structured recovery guidance.
 Attachment never creates, kills, renames, or retargets tmux resources.
@@ -125,6 +130,9 @@ task:
   untracked: false
 ```
 
+Managed task detail and list views include `agent`, `agent_command`, `prompt_reference`, and `working_context` when configured.
+These fields contain launch metadata only; prompt contents and credential values are never emitted.
+
 The list schema uses a compact tabular array and includes the definitive total.
 
 ```toon
@@ -140,7 +148,7 @@ Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnin
 Automated integrations must check `AKAGENT_ENABLED` before invoking automated behavior.
 Only the exact value `1` enables the integration.
 `akagent integration inspect` reports the read-only state.
-Direct human commands are unaffected.
+Direct human commands, including explicit managed Pi task starts, are unaffected.
 
 ## Errors
 

@@ -3,9 +3,11 @@
 ## Current local behavior
 
 The machine invoking `akagent` is the initial source of credential readiness information.
-The current local CLI validates named requirements and propagates no credential values through task output or command arguments.
+The current local CLI validates named requirements and propagates no credential values through task output, task records, or command arguments.
+Managed Pi launch may inject a requested `env:` credential into the managed process after readiness checks pass.
+File credentials are readiness-only and cannot be injected into the managed environment.
 
-Missing optional credentials produce warnings.
+Missing optional credentials produce non-secret warnings and are not injected.
 Missing required credentials prevent a task that requests them from starting.
 
 The current supported inspection commands are:
@@ -65,27 +67,13 @@ It never reports credential values.
 
 Credential values must not appear in TOON output, errors, logs, events, prompts, tmux commands, process arguments, or diagnostics.
 
-The current local task implementation records named requirements and readiness warnings in the task manifest.
-It does not implement remote credential transfer or task-scoped credential installation.
-
-## Future propagation
-
-Remote propagation is deferred until authenticated worker execution exists.
-Future implementations must:
-
-- Select capabilities per task or worker instead of copying the full local collection.
-- Transfer through stdin or a protected file channel, never command arguments.
-- Install atomically into restrictive directories and files.
-- Track non-secret source identity, scope, fingerprint, expiration, and cleanup state.
-- Remove or refresh credentials according to explicit lifetime policy.
-- Preserve cleanup debt when transfer succeeds but launch or removal fails.
+The current task implementation records named requirements and readiness warnings in the task manifest.
+For managed Pi, the launcher constructs a minimal environment from safe runtime variables, adds `AKAGENT_TASK_ID`, and injects only requested, ready `env:` credentials.
+It excludes ambient variables outside the safe runtime allowlist and filters credential-like names unless they were explicitly requested.
+Optional credentials are never injected.
 
 Dedicated agent SSH, GitHub, and LLM credentials are preferred over copied primary human credentials.
 Git signing should use a scoped signing subkey rather than a primary secret key.
-
-## Deferred classes
-
-Work-specific credentials, browser sessions, remote providers, cloud roles, deployment credentials, and shared worker credential reference counting require a separate design.
 
 ## Failure modes
 

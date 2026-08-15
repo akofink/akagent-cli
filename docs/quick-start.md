@@ -2,7 +2,7 @@
 
 This guide uses only public commands and generic local paths.
 
-`akagent` is a local-first CLI for durable task records, Git worktrees, and tmux-backed human interaction.
+`akagent` is a local-first CLI for durable task records, Git worktrees, and tmux-backed human or managed local Pi interaction.
 It writes protocol data and errors as TOON on stdout.
 
 ## Install or update
@@ -36,7 +36,7 @@ akagent integration inspect
 ```
 
 The inspection command is read-only and does not enable anything.
-Direct human `akagent` commands remain available regardless of the gate.
+Direct human `akagent` commands, including an explicit managed Pi task start, remain available regardless of the gate.
 
 Enable the gate only for the current shell when an approved integration needs it:
 
@@ -87,10 +87,25 @@ akagent task inspect <task-id>
 The command generates a UUIDv7 task ID when `--task-id` is omitted.
 It creates a durable manifest, a task branch, and an isolated Git worktree under the registered repository's worktree root when the policy is `worktree`.
 The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.
-The command also creates a detached tmux shell window tagged with the task ID.
+The command also creates a task-tagged tmux resource.
 
-The current local CLI starts a shell for direct human or shell-driven work.
-It does not launch a managed coding-agent executable.
+By default, the local CLI starts a shell for direct human or shell-driven work.
+Use `--agent pi` to start a managed local Pi process instead.
+Pi must be installed and available as `pi` on `PATH`.
+
+A minimal managed-launch example uses only placeholder task data and a local prompt-file reference:
+
+```bash
+akagent task start --title "Review the build" --repository demo \
+  --agent pi --prompt /path/to/prompt.txt --context "example"
+```
+
+The prompt file must be a regular local file.
+Its contents are opened as Pi's standard input and are not copied into process arguments, tmux commands, task events, or TOON output.
+The task manifest stores the selected target, resolved command path, prompt reference, worktree, and non-secret context before tmux starts.
+The managed process receives a minimal safe environment plus `AKAGENT_TASK_ID` and the requested environment credentials that passed readiness checks.
+Optional credentials produce non-secret warnings and are not injected.
+File credentials can be checked for readiness but cannot be injected into the managed environment.
 
 Task status is computed from lifecycle records and observations.
 Lifecycle values are `starting`, `running`, `stopped`, and `finished`.
@@ -105,7 +120,7 @@ akagent task list
 
 ## Publish, attach, and reconcile
 
-Publish a condition and heartbeat from a trusted local integration or shell:
+Publish a condition and heartbeat from a trusted local integration, managed workflow, or shell:
 
 ```bash
 akagent task publish <task-id> --condition active --activity "running tests"
@@ -115,13 +130,14 @@ akagent task publish <task-id> --condition waiting --reason "needs review"
 The accepted conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
 Publication changes durable task state and refreshes its heartbeat.
 
-Attach only after inspecting the task:
+Attach a direct shell or managed Pi task only after inspecting it:
 
 ```bash
 akagent task attach <task-id>
 ```
 
 Attachment requires a running task, a fresh heartbeat, a fresh process observation, exactly one matching task process, and a matching tmux task ID.
+For managed launch, the launcher replaces itself with Pi so process identity checks refer to the Pi process.
 It verifies the selected window immediately before calling `tmux attach-session`.
 It refuses stale, missing, contradictory, stopped, and finished observations.
 It never creates, kills, renames, or retargets tmux resources.
@@ -177,6 +193,9 @@ The default local cleanup hooks do not delete worktrees or credentials, but clea
 ## Recovery rules
 
 Start with `task inspect` and `task reconcile` when observations are unclear.
+
+If a managed launch fails, repeat the same `task start` command to retry the recoverable `starting` task.
+Equivalent repeated starts are idempotent; changing immutable launch inputs returns a conflict.
 
 Do not attach when the heartbeat or process observation is stale.
 

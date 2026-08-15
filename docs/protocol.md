@@ -2,10 +2,11 @@
 
 ## Scope
 
-The protocol is the stable contract between direct commands, local tasks, integrations, and future transports.
+The protocol is the stable contract between direct commands, local tasks, and integrations.
 It covers identity, records, lifecycle semantics, output, errors, compatibility, and reconciliation.
 
-It does not standardize cloud provisioning, managed agent launch, or imply that all workers have identical capabilities.
+It does not standardize cloud provisioning or imply that all workers have identical capabilities.
+Managed local Pi launch is part of the local task contract described here.
 
 ## Resources
 
@@ -54,6 +55,16 @@ The `direct` policy uses the registered checkout and requires its base revision 
 A credential capability is a named permission needed by a task.
 The task record stores the capability ID and readiness information without storing the value.
 
+### Managed launch
+
+A managed launch selects the local `pi` executable and persists its resolved command, task worktree, optional prompt-file reference, and optional non-secret working context.
+The prompt reference identifies a regular local file whose contents are provided to Pi on standard input.
+The prompt contents are not copied into process arguments, task events, or protocol output.
+
+The managed process receives a minimal safe runtime environment, `AKAGENT_TASK_ID`, and only requested environment credentials that passed readiness checks.
+Optional requirements are recorded as non-secret warnings and are not injected.
+File credentials can satisfy readiness requirements but cannot be injected into the managed environment.
+
 ## State model
 
 Lifecycle phase:
@@ -98,8 +109,8 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
-The local task start operation validates the repository and credential requirements, persists a manifest, creates the requested branch and Git worktree when needed, creates a detached tmux shell, and records the observed process identity.
-It does not launch a managed coding-agent executable.
+The local task start operation validates the repository and credential requirements, persists a manifest, creates the requested branch and Git worktree when needed, and starts either a detached shell or the selected managed Pi process in a task-tagged tmux window.
+For managed launch, the configuration is persisted before tmux starts and the launcher replaces itself with Pi so the durable process identity refers to the managed process.
 
 ## Lifecycle operations
 
@@ -113,7 +124,7 @@ A start is recoverable and records these steps:
 3. Create or validate the branch and worktree.
 4. Check named required and optional credential capabilities.
 5. Persist the task manifest and start event.
-6. Create a detached tmux shell tagged with the task ID.
+6. Create a detached task-tagged tmux shell or managed Pi launch.
 7. Record the tmux window, pane, process identity, and successful start.
 
 Repeated equivalent starts return the existing task with exit code `0`.
@@ -139,7 +150,7 @@ total: 1
 ### Attach
 
 Attachment first resolves the durable task record by task ID.
-It proceeds only for a running task with a fresh heartbeat, a fresh process observation, exactly one matching process, and a matching `@akagent_task_id` tmux window.
+It proceeds only for a running shell or managed Pi task with a fresh heartbeat, a fresh process observation, exactly one matching process, and a matching `@akagent_task_id` tmux window.
 
 The command rechecks the task option on the selected window immediately before running `tmux attach-session` against that verified window ID.
 
@@ -213,7 +224,7 @@ Exit code `2` means the command or its arguments are invalid.
 
 Automated integrations must treat a missing `AKAGENT_ENABLED` signal or any value other than `1` as disabled.
 `akagent integration inspect` reports the read-only state.
-Direct human commands remain available regardless of the gate.
+The gate controls automated invocation only; direct human commands, including an explicit managed Pi task start, remain available regardless of the gate.
 
 ## Concurrency and consistency
 
@@ -225,7 +236,7 @@ Reads identify observation time and tolerate concurrent change.
 
 ## Compatibility
 
-Cross-worker responses include protocol version metadata when remote transport exists.
+Protocol responses include version metadata where required by the command contract.
 Adding optional fields is compatible.
 Removing fields, changing meanings, or changing lifecycle semantics requires a protocol version change.
 Human-readable text is not a stable parsing interface.

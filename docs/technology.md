@@ -52,9 +52,8 @@ Weak structured-data handling, locking, signal control, quoting, and partial-fai
 - Use typed internal values rather than TOON-shaped strings.
 - Treat TOON as output and interchange; decide persistence separately.
 - Begin with worker-local files, locks, and atomic replacement.
-- Use local function calls and command execution before RPC.
-- Add remote transport only after local semantics stabilize.
-- Avoid a daemon, RPC framework, embedded database, dependency-injection framework, or core plugin loader initially.
+- Use local function calls and command execution for the current worker.
+- Keep the implementation centered on the local CLI, worker-local files, and direct command execution.
 
 ## Validation status and remaining work
 
@@ -63,4 +62,5 @@ Weak structured-data handling, locking, signal control, quoting, and partial-fai
 - Concurrent state publication and inspection use per-task locks and race-enabled tests.
 - Atomic manifest replacement and recoverable event recording have focused tests.
 - Credential readiness checks avoid reading or printing source values.
-- Managed agent launch, terminal resize, remote transport, and cross-compilation remain future validation work.
+- Managed local Pi launch validates durable configuration, prompt-file stdin, safe environment construction, process replacement, retry, and process identity.
+- Terminal resize and cross-compilation remain outside the current CLI contract.

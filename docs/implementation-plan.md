@@ -37,9 +37,10 @@ The local lifecycle implementation established:
 - Archive capture and cleanup-preservation policy.
 - Independent archive, worktree-cleanup, credential-cleanup, and recovery-debt state.
 - Default-disabled automated integration gating.
+- Managed local Pi launch with durable configuration, prompt-file stdin, safe environment construction, process identity, retry, and recovery behavior.
 
-The current CLI starts a shell for direct human or shell-driven work.
-Managed coding-agent launch, remote transport, and destructive cleanup hooks are not part of the current implementation.
+The current CLI starts a shell for direct human or shell-driven work by default and starts managed Pi when `--agent pi` is selected.
+Destructive cleanup hooks are not part of the current implementation.
 
 ## Current command surface
 
@@ -58,8 +59,4 @@ akagent worker inspect
 
 1. Keep direct local commands stable and protocol output compatible.
 2. Add opt-in shell or tool integrations that check `AKAGENT_ENABLED=1`.
-3. Validate named remote execution using the same lifecycle and error semantics.
-4. Add artifact transfer, credential propagation, and recovery tests for remote execution.
-5. Add stale-aware discovery and a local cache only after remote execution works.
-
-Containers, schedulers, automatic placement, and a central service remain later decisions.
+3. Extend local lifecycle coverage for managed launch, recovery, and cleanup preservation.
