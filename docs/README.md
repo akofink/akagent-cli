@@ -1,64 +1,74 @@
 # Design index
 
-## Purpose
+`akagent` is a local-first orchestration protocol and CLI for coding tasks.
+It preserves direct Git worktree and tmux operation while adding stable identity, structured state, recovery, and optional integrations.
 
-`akagent` is a local-first orchestration protocol and CLI for coding agents.
-It preserves direct tmux and Git worktree operation while adding stable identity, structured state, recovery, optional integrations, and eventual remote execution.
-
-The repository is `github.com/akofink/akagent-cli`.
 The installed binary is `akagent`.
 `aka` is an optional interactive shell alias and is not a second protocol entry point.
 
+## Public starting point
+
+- [`quick-start.md`](quick-start.md) provides the agent-safe installation, integration-gate, repository, task, attachment, reconciliation, archive, cleanup, and recovery path.
+
 ## Documents
 
-- [`architecture.md`](architecture.md) defines components, ownership, persistence, integrations, discovery, and explicit non-goals.
-- [`protocol.md`](protocol.md) defines worker and task resources, state, lifecycle operations, TOON output, errors, idempotency, and reconciliation.
+- [`architecture.md`](architecture.md) defines current components, ownership, persistence, integrations, discovery, and explicit non-goals.
+- [`protocol.md`](protocol.md) defines worker and task resources, state, lifecycle, TOON output, errors, compatibility, and reconciliation.
 - [`task-cli.md`](task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
-- [`credentials.md`](credentials.md) defines credential sources, requirements, transfer, installation, lifetime, redaction, and revocation.
-- [`technology.md`](technology.md) compares Go, Rust, TypeScript, Python, and shell.
-- [`roadmap.md`](roadmap.md) separates the local proof from hooks, remote EC2 support, and later discovery.
-- [`implementation-plan.md`](implementation-plan.md) maps GitHub issues, parallel ownership, delivery conventions, and integration order.
-- [`storage.md`](storage.md) defines the worker-local state store layout, schema, permissions, locking, and recovery.
-- [`handoff.md`](handoff.md) records current implementation state and the next tasks.
+- [`credentials.md`](credentials.md) defines local credential sources, requirements, validation, and current limitations.
+- [`integration-gate.md`](integration-gate.md) defines the default-disabled signal for automated integrations.
+- [`technology.md`](technology.md) compares the implementation options.
+- [`roadmap.md`](roadmap.md) separates completed local work from future integrations, remote execution, and discovery.
+- [`implementation-plan.md`](implementation-plan.md) records the public issue and delivery map.
+- [`storage.md`](storage.md) defines the worker-local state store layout, schema, permissions, locking, archive, and recovery.
+- [`handoff.md`](handoff.md) records current implementation status and the next public work.
 
 ## Current decisions
 
-1. Use one executable with operator commands and directly invocable `akagent worker ...` commands.
-2. Keep the CLI as the permanent boundary for humans, agents, shell helpers, native hooks, plugins, skills, and remote transports.
-3. Prove task lifecycle, tmux integration, worktrees, status, reconciliation, and cleanup locally before adding remote transport.
-4. Use explicitly selected EC2 workers for the first off-machine tests.
-5. Defer containers, schedulers, automatic placement, and a central service.
+1. Use one executable with direct human commands and a directly inspectable local worker.
+2. Keep the CLI as the permanent boundary for humans, agents, integrations, plugins, skills, and future transports.
+3. Prove local task lifecycle, tmux integration, Git worktrees, status, reconciliation, archive, and safe cleanup before remote transport.
+4. Use one implicit local worker and no scheduler.
+5. Defer containers, automatic placement, and a central service.
 6. Use TOON for agent-consumed stdout and treat token use as an interface constraint.
-7. Keep worker-local durable task records and derive status through reconciliation.
+7. Keep worker-local durable task records and derive status from reconciled observations.
 8. Keep infrastructure provisioning separate from task orchestration.
-9. Keep application source and releases in this repository while using dots or another provisioner to install the binary.
-10. Add local cross-worker discovery and a stale-aware read cache only after basic remote execution works.
-11. Source credentials from the machine invoking `akagent`, validate task requirements, and propagate only explicitly selected capabilities.
-12. Use the existing passphrase-free signing subkey as a scoped bearer credential while never distributing the primary secret key.
+9. Keep application source and releases in this repository while allowing an external installer to install the binary.
+10. Add cross-worker discovery only after basic remote execution works.
+11. Source credentials locally, validate named requirements, and never expose credential values.
 
 ## Design constraints
 
-- Preserve ordinary shell and tmux recovery paths.
+- Preserve ordinary shell, tmux, and Git recovery paths.
 - Preserve repository-specific branch and worktree policies.
 - Make repeated mutations idempotent.
-- Keep tasks operable when hooks, operator processes, or network connections fail.
+- Keep tasks operable when integrations, operator processes, or network connections fail.
 - Do not infer completion from terminal output alone.
-- Do not trust agent-declared state without checking process, tmux, filesystem, and Git facts.
+- Do not trust a declared condition without checking process, tmux, filesystem, and Git facts where required.
 - Avoid fields and ambient context that do not change the next agent decision.
 - Expose worker capability and persistence differences instead of claiming false backend transparency.
+- Keep automated integrations disabled by default.
 - Never expose credential values in commands, output, logs, task records, or tmux metadata.
+
+## Current local boundary
+
+The current CLI registers local Git repositories, creates durable task records, creates isolated worktrees under the `worktree` policy, and starts detached tmux shells tagged with task IDs.
+
+It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
+
+It does not launch a managed coding-agent executable, provide remote transport, schedule work, or delete worktrees and credentials through the default cleanup hooks.
 
 ## Rejected initial approaches
 
 ### Full scheduler first
 
 A queue, placement engine, central database, and worker leases would add distributed failure modes before workload measurements justify them.
-Explicit local execution and named workers provide enough evidence for the first stages.
+Explicit local execution provides enough evidence for the first stages.
 
 ### Containers first
 
 Containers improve dependency and resource isolation but complicate interactive attachment, Git worktrees, ownership, browser access, caches, and credentials.
-They remain a distant option rather than an initial protocol requirement.
+They remain a later option rather than an initial protocol requirement.
 
 ### Tmux as the database
 

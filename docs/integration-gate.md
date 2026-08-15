@@ -1,20 +1,29 @@
-# Optional `akagent` integration instruction
+# `akagent` integration gate
 
-The following snippet is intended for an operator-approved addition to global or `~/dev` agent guidance.
+Automated integrations must remain disabled unless the invoking environment contains exactly `AKAGENT_ENABLED=1`.
+A missing signal, an empty value, or any other value is disabled.
 
-> Agents must not invoke `akagent` as an automated integration unless `AKAGENT_ENABLED=1` is present in the invoking environment.
-> Treat a missing signal or any other value as disabled, and continue without the integration.
-> The read-only `akagent integration inspect` command reports the current gate state.
-> Direct human `akagent` commands remain available regardless of the gate.
+Inspect the current state without changing it:
 
-Enable the integration for the current shell with:
+```bash
+akagent integration inspect
+```
+
+The command reports the signal name, whether the gate is enabled, and a non-secret reason.
+Direct human `akagent` commands are available regardless of the gate.
+
+Enable the gate for the current shell only when an approved integration needs it:
 
 ```bash
 export AKAGENT_ENABLED=1
 ```
 
-Disable it again with:
+Disable it immediately when the integration is no longer needed:
 
 ```bash
 unset AKAGENT_ENABLED
 ```
+
+Integrations must check the gate before invoking automated `akagent` behavior.
+They must continue without the integration when the gate is disabled.
+The gate does not grant credentials, launch a managed agent, or change direct CLI behavior.

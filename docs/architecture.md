@@ -3,132 +3,106 @@
 ## Thesis
 
 Standardize task identity, lifecycle operations, durable records, and recovery behavior.
-Do not attempt to make unlike execution environments appear identical.
+Do not make unlike execution environments appear identical.
 
-The first system is a local process orchestrator with a stable worker protocol.
-Remote execution later transports the same worker commands to a named host.
+The current system is a local task coordinator with a stable CLI protocol.
+Future remote execution can transport the same worker operations to a named host.
 
-## One executable, two surfaces
+## One executable and current surfaces
 
-The operator surface is the normal interface:
+The current executable exposes:
 
 ```text
 akagent
-akagent task start
-akagent task list
-akagent task inspect
-akagent task attach
-akagent task state
-akagent task finish
-akagent task stop
-akagent task archive
-akagent task clean
-akagent worker list
+akagent credential <list|inspect|doctor>
+akagent integration inspect
+akagent id generate
+akagent repository <register|list|inspect|update|unregister>
+akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent update [--source <path>]
 akagent worker inspect
 ```
 
-The worker surface owns machine-local mutations and remains directly invocable:
-
-```text
-akagent worker task start
-akagent worker task inspect
-akagent worker task state
-akagent worker task finish
-akagent worker task stop
-akagent worker task archive
-akagent worker task clean
-akagent worker reconcile
-```
-
-For a local worker, the operator surface may call worker functions in-process.
-For debugging, tests, recovery, and remote execution, the same operation is exposed through the worker command group.
+The current task start operation creates a detached tmux shell and a Git worktree when repository policy requires one.
+It does not launch a managed coding-agent executable.
 
 ## Components
 
-### Operator layer
+### CLI layer
 
-The operator layer:
+The CLI:
 
-- Generates stable task IDs before dispatch.
-- Resolves an explicitly selected worker.
-- Validates requirements against worker and credential capabilities.
-- Invokes worker operations locally or through a transport.
-- Aggregates concise read-only status when requested.
-- Resolves attachment and artifact retrieval.
-- Does not edit a remote task record, worktree, or tmux server directly.
+- Generates stable task IDs when the caller does not provide one.
+- Resolves a named local repository and policy.
+- Validates named credential requirements.
+- Invokes local lifecycle operations.
+- Emits concise TOON data and structured errors.
+- Provides read-only integration-gate inspection.
 
-The first release has one implicit local worker and no scheduler.
+The first release has one implicit local worker and no scheduler or remote transport.
 
-### Worker layer
+### Lifecycle layer
 
-The worker layer is the sole mutation boundary for:
+The lifecycle layer owns:
 
 - Task records and event history.
 - Repository registration and locks.
-- Branch and worktree creation.
-- Tmux windows and options.
-- Agent process launch and termination.
-- Credential installation and cleanup on that worker.
-- State publication and reconciliation.
-- Archival and cleanup.
+- Branch and Git worktree creation.
+- Tmux window identity, observation, attachment, and stop.
+- Durable condition publication and heartbeat refresh.
+- Process and Git reconciliation.
+- Archive capture and cleanup-preservation policy.
 
-Worker operations acquire task or repository locks and record recoverable progress after each side effect.
+The default local cleanup hooks do not remove worktrees or credentials.
+The lifecycle records independent cleanup states and recovery debt so destructive behavior can be added or retried without losing evidence.
 
 ### Tmux
 
-Tmux remains the human interaction and recovery surface, not the database.
+Tmux is the human interaction and recovery surface, not the database.
 
-Each interactive task has:
+Each task window has a stable task ID in a window-scoped option.
+The task record stores the window, pane, process ID, and process start time.
 
-- A stable task ID in a window-scoped option.
-- A concise mutable window name.
-- An immediate `@agent_state` option for human navigation.
-- A durable task record that remains authoritative across tmux renames and process exits.
-
-Manual status updates and future hooks call the same CLI operation.
+Attachment requires a fresh observation and exact process identity before it runs `tmux attach-session`.
+It never trusts a similarly named window and never creates or mutates a target as part of attachment.
 
 ### Git repositories and worktrees
 
 The worker host owns repositories and worktrees.
-Repository policy is explicit because some repositories require worktrees while others require direct work on a designated branch.
+Repository policy is explicit because some repositories use isolated task worktrees while others intentionally use a direct checkout.
 
 Per-repository locking protects shared Git administrative state.
-Startup detects branch collisions, stale worktree records, unexpected bases, and branches already checked out elsewhere.
+Startup validates branch, base revision, worktree location, and existing worktree identity.
 
 ### Durable records
 
-The initial store is worker-local and file based:
+The worker-local store is file based:
 
 ```text
-~/.local/state/akagent/
-  worker.<encoding>
-  repositories.<encoding>
-  tasks/<task-id>/manifest.<encoding>
-  tasks/<task-id>/events/<sequence>.<encoding>
-  tasks/<task-id>/prompt.md
-  tasks/<task-id>/result.md
-  tasks/<task-id>/terminal.log
+$XDG_STATE_HOME/akagent/
+  repositories/<name>.json
+  tasks/<task-id>/manifest.json
+  tasks/<task-id>/events/<sequence>.json
+  tasks/<task-id>/archive.json
   locks/
 ```
 
-Manifest replacement must be atomic.
-The event history records intent and outcome for recovery and debugging.
-The TOON evaluation must decide whether strict TOON is appropriate for durable mutable records or should remain an output encoding.
+The store uses typed JSON envelopes, atomic manifest replacement, append-only events, descriptor-safe traversal, and per-task locks.
+TOON remains the agent-facing output encoding.
 
 ### Integrations
 
-Shell helpers, LLM hooks, Pi plugins, and installable skills are optional adapters.
-They invoke the CLI, request small field sets, preserve structured errors, and never write the task store directly.
+Shell helpers, LLM hooks, plugins, and installable skills are optional adapters.
+They must invoke the CLI, request small field sets, preserve structured errors, and never write the task store directly.
 
-Integrations are opt-in and idempotently installed.
-Their failure cannot prevent direct CLI or tmux use.
-Ambient session context is directory scoped and aggressively token limited.
+Automated integrations are disabled unless `AKAGENT_ENABLED=1` is present.
+The gate is checked by the integration before automated behavior, while direct human commands remain available.
 
-## Remote extension
+## Future remote extension
 
-Remote support adds a transport around worker commands, not a second orchestration implementation.
+Remote support should add a transport around worker operations rather than a second orchestration implementation.
 
-The minimum transport contract is:
+The minimum future transport contract is:
 
 ```text
 execute(worker, argv, stdin) -> stdout, stderr, exit status
@@ -140,18 +114,15 @@ copy_from(worker, remote source, local destination)
 The operator sends an already generated task ID with every mutation.
 A lost response can therefore be retried without launching a duplicate task.
 
-Workers remain independently operable when the operator CLI or transport is unavailable.
-Infrastructure provisioning, instance startup, and DNS remain separate concerns initially.
-
-Private networking and outbound access are preferable to public worker addresses.
-SSH over a private overlay and Systems Manager Session Manager should be evaluated by measured tmux latency, terminal fidelity, file transfer, port forwarding, recovery access, and credential lifetime.
+Workers should remain independently operable when the operator CLI or transport is unavailable.
+Infrastructure provisioning, instance startup, and DNS remain separate concerns.
 
 ## Discovery and local cache
 
-After named remote execution works, the operator CLI should discover tasks across known workers and cache compact observations locally.
-This provides a cross-platform overview without an always-available dashboard or central service.
+After named remote execution works, the operator CLI may discover tasks across known workers and cache compact observations locally.
+The cache will be non-authoritative and mutations will revalidate live state before acting.
 
-Candidate commands are:
+Candidate future commands are:
 
 ```text
 akagent discover refresh
@@ -159,36 +130,17 @@ akagent discover list
 akagent discover inspect <task-id>
 ```
 
-Each cached observation records source worker and platform, task and agent identity, computed status, source observation time, local fetch time, expiration, and the most recent refresh error.
-
-The cache is non-authoritative.
-Mutations resolve the owning worker and revalidate live state before acting.
-Unreachable workers retain visibly stale entries so network loss does not make agents disappear.
-Conflicting observations remain attributed to their sources rather than being silently merged.
-
-Refresh is bounded, cancellable, and tolerant of slow or unavailable workers.
-Explicit refresh and optional shell-hook refresh are sufficient without a daemon.
-
-## Provisioning boundary
-
-This repository owns source, tests, schemas, and releases.
-A dotfiles or machine-bootstrap repository may install `akagent`, configure the `aka` alias, and provision public prerequisites.
-It must not become the owner of application state or protocol behavior.
-
-Operator-specific private context is an optional provisioning layer.
-It must be separable from public worker setup and from unrelated machine classifications such as personal versus work.
-
 ## Failure assumptions
 
-Task execution must survive loss of the operator process and terminal attachment.
-Task records must survive loss of tmux state when the worker filesystem survives.
-Uncommitted work must survive agent process failure and ordinary stop operations.
+Task records should survive loss of the operator process and terminal attachment when the worker filesystem survives.
+Uncommitted work should survive process failure and ordinary stop operations.
 Worker replacement preserves nothing unless Git state and declared artifacts have been copied to durable external storage.
 
-Control-channel loss, stale PIDs, PID reuse, split-brain starts, partial setup, disk exhaustion, credential expiration, cleanup races, and false idle detection are expected conditions rather than exceptional surprises.
+Control-channel loss, stale PIDs, PID reuse, split-brain starts, partial setup, disk exhaustion, credential expiration, cleanup races, and false idle detection are expected conditions.
 
-## Explicit non-goals for the first system
+## Explicit non-goals for the current system
 
+- Managed coding-agent launch.
 - Automatic worker placement.
 - A central daemon or database.
 - A distributed queue.

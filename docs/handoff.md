@@ -2,84 +2,54 @@
 
 ## Goal
 
-Build a local-first agent orchestration protocol that preserves tmux and Git worktree ergonomics and later supports named remote workers.
-
-## Repository and installation
-
-- Source repository: `github.com/akofink/akagent-cli`.
-- Binary: `akagent`.
-- Optional interactive alias: `aka`.
-- Go is the selected implementation language.
-- Machine provisioning may install the Go command into `~/.local/bin`.
-- Public worker bootstrap must not require private operator context.
+Build a local-first task protocol that preserves ordinary Git worktree and tmux recovery paths and can later support named remote workers.
 
 ## Implemented
 
-- `akagent` compact home view.
+- Compact `akagent` home view.
 - `akagent id generate` using UUIDv7.
 - `akagent worker inspect` with local capabilities.
 - TOON 4.1 output through a narrow, conformance-tested output package.
 - Structured usage errors and shell exit codes.
-- Unit tests, vet, and GitHub Actions CI.
 - Source-managed `akagent update` with clean-main validation, fast-forward-only Git updates, and atomic binary replacement.
-- A secure worker-local state store for versioned manifests, append-only events, atomic replacement, locking, and recovery.
+- A secure worker-local state store for versioned manifests, append-only events, atomic replacement, locking, archives, and recovery.
 - A local credential manifest with `file:` and `env:` readiness checks plus `credential list`, `inspect`, and `doctor`.
+- Repository registration with `worktree` and `direct` policies.
+- Durable local task start, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
+- Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
+- Task-tagged detached tmux shells and verified attachment using fresh process identity and heartbeat observations.
+- A default-disabled automated integration gate inspected by `akagent integration inspect`.
 
-## Design evidence from the remote-workstation prototype
+## Current task behavior
 
-- A conventional remote Linux workstation can reproduce the local shell, tmux, Git, runtime, and LLM-tool workflow.
-- Bootstrap portability across distributions and architectures requires explicit package mappings, disk and temporary-directory policy, noninteractive behavior, and complete installation checks.
-- Small workers may run finished tools but are poor places to compile large language runtimes and dependencies.
-- Private workers generally do not need public ingress or public IPv4 addresses.
-- Host telemetry alone cannot answer task state, waiting reason, cleanup debt, credential identity, or artifact recovery questions.
-- Tmux remains the best human interaction surface but cannot be the sole source of orchestration truth.
-- Git commits and structured records are better default checkpoints than machine snapshots.
+`task start` creates a durable record, creates or validates the task Git worktree, starts a detached tmux shell, and records the shell process identity.
+It does not launch a managed coding-agent executable.
 
-## Current credential direction
+`task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.
+`task finish` records a result only after the task process has exited.
+`task archive` captures durable records, Git facts, and terminal history when available.
+`task clean` refuses live tasks and unapproved loss of committed, dirty, or untracked work.
+The default local cleanup hooks do not remove worktrees or credentials, but cleanup state and recovery debt are durable and independently retryable.
 
-- The operator-side invocation resolves credential sources.
-- A non-secret manifest lives under XDG configuration.
-- Dedicated secret files, when needed, live under XDG data with strict permissions.
-- Tasks request named capabilities rather than secret paths.
-- Missing optional credentials warn; missing required credentials block startup.
-- Dedicated agent SSH, GitHub, and LLM credentials are preferred over copied primary human credentials.
-- Git signing uses the existing signing subkey exported without its parent secret key or passphrase and treated as a scoped bearer credential.
-- Remote transfer, refresh, and cleanup begin with remote execution, not before.
+`task reconcile` repairs safe derived observations and Git facts.
+It never deletes task state, branches, worktrees, windows, or terminal history.
 
-## Phase 0 completion
+## Current public command surface
 
-Parent issue [#1](https://github.com/akofink/akagent-cli/issues/1) tracked the three parallel protocol foundations:
+```text
+akagent
+akagent credential <list|inspect|doctor>
+akagent integration inspect
+akagent id generate
+akagent repository <register|list|inspect|update|unregister>
+akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent update [--source <path>]
+akagent worker inspect
+```
 
-1. [#2](https://github.com/akofink/akagent-cli/issues/2) pinned the TOON 4.1 output contract.
-2. [#3](https://github.com/akofink/akagent-cli/issues/3) implemented the secure worker-local state store.
-3. [#4](https://github.com/akofink/akagent-cli/issues/4) added the local credential manifest and doctor commands.
+## Next public work
 
-All three child issues are merged into `main`.
-The detailed ownership, delivery, integration, and future-wave record is in [`implementation-plan.md`](implementation-plan.md).
+The next work should improve opt-in workflow integrations over the stable CLI boundary, then validate one explicitly selected remote worker.
+Scheduling, containers, automatic placement, a central service, and managed coding-agent launch remain deferred.
 
-The foundation is now ready for local task lifecycle work.
-Tmux and Git worktree mutation must build on the store, credential, and output boundaries rather than bypass them.
-
-## Next implementation slice
-
-Issue [#8](https://github.com/akofink/akagent-cli/issues/8) is the refined next task: implement local task lifecycle commands.
-It should register repositories and policy, create and inspect task manifests, manage tmux-backed local tasks, publish durable state, reconcile observations, and preserve uncommitted work and credential cleanup debt.
-The implementation must use `internal/store` for durable records and locks, `internal/credential` for named capability readiness, and `internal/output` for pinned TOON and structured errors.
-
-## Open decisions
-
-- The exact task and event schema fields.
-- The initial repository-registration format and policy discovery rules.
-- The first remote transport after local lifecycle completion.
-- Whether GitHub access begins with a fine-grained token or a GitHub App installation.
-
-The durable store encoding is JSON.
-TOON remains the agent-facing output and interchange encoding until a separate durable-encoding decision is justified.
-
-## Explicitly deferred
-
-- Containers.
-- Scheduling and automatic worker placement.
-- A central dashboard or service.
-- Work-specific credentials.
-- Browser session propagation.
+The detailed public design and delivery map is in [`implementation-plan.md`](implementation-plan.md).

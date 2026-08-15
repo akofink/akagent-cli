@@ -1,69 +1,52 @@
 # Roadmap
 
-## Phase 0: protocol foundation
+## Phase 0: protocol foundation - complete
 
-Goal: retire high-risk assumptions without creating production orchestration structure.
-
-Completed foundation:
+The foundation includes:
 
 - Go module and `akagent` executable.
 - UUIDv7 task-ID generation.
 - TOON output boundary and structured errors.
 - Direct local worker inspection.
 - Explicit source-managed self-update.
-- Conforming TOON 4.1 output with a constrained supported subset and official fixtures.
+- Conforming TOON 4.1 output with fixtures and token measurements.
 - Worker-local JSON state with typed envelopes, atomic replacement, locking, and recovery.
 - Local credential manifest discovery and metadata-only readiness checks.
-- Unit tests, vet, and CI.
+- Unit tests, vet, race coverage, and CI.
 
-Completion evidence:
+## Phase 1: local task lifecycle - implemented
 
-- Child issues [#2](https://github.com/akofink/akagent-cli/issues/2), [#3](https://github.com/akofink/akagent-cli/issues/3), and [#4](https://github.com/akofink/akagent-cli/issues/4) are merged.
-- The durable store encoding is JSON; TOON 4.1 is pinned for agent-facing output and interchange.
-- Conformance, token measurement, failure, race, recovery, and redaction tests are present in `main`.
-
-The next task is [#8](https://github.com/akofink/akagent-cli/issues/8), which refines the first local task-lifecycle implementation from these APIs.
-
-## Phase 1: local task lifecycle
-
-Goal: replace error-prone manual orchestration while preserving ordinary tmux use.
-
-Entry issue: [#8 Implement local task lifecycle commands](https://github.com/akofink/akagent-cli/issues/8).
-The issue is deliberately concrete about repository policy, durable task records, tmux observations, credential capabilities, idempotency, recovery, and protocol output.
-
-Deliverables:
+The local lifecycle currently provides:
 
 - One implicit local worker.
-- Repository registration and policy.
-- Start, list, inspect, attach, state, finish, stop, archive, clean, and reconcile.
-- Stable task IDs and tmux metadata.
-- Repository and task locks.
-- Durable manifests and events.
+- Repository registration with `worktree` and `direct` policies.
+- Durable task start, list, inspect, condition publication, finish, stop, archive, clean, and reconcile commands.
+- Stable task IDs and task-tagged tmux windows.
+- Verified tmux attachment using fresh process identity and heartbeat observations.
+- Git branch and worktree ownership under the `worktree` policy.
+- Durable manifests, append-only events, repository and task locks.
 - Git and process fact collection.
-- Compact no-argument live view.
-- Local credential manifest, doctor, requirements, and warnings.
+- Compact TOON output and structured recovery errors.
+- Local credential requirements and non-secret warnings.
+- Archive and cleanup-preservation state with independent recovery debt.
 
-Exit criteria:
+The current start operation creates a detached tmux shell.
+It does not launch a managed coding-agent executable.
+The default cleanup hooks do not delete worktrees or credentials.
 
-- Existing tmux and worktree workflows remain directly recoverable.
-- Manual tmux state updates work through `akagent`.
-- Waiting, crashes, finish outcomes, operator stops, and process loss remain distinguishable.
-- Partial startup and cleanup can be retried safely.
-- Uncommitted work and credentials are not silently discarded or retained.
+## Phase 2: workflow integrations - gated foundation
 
-## Phase 2: workflow integrations
+Automated integrations have a default-disabled gate.
+They must require exactly `AKAGENT_ENABLED=1` and must continue without the integration otherwise.
 
-Goal: reduce manual reporting without making an LLM tool authoritative.
+Future integrations may include shell helpers, native lifecycle hooks, a plugin, an installable skill, directory-scoped session context, and session-end result capture.
+Each integration must be opt-in, idempotent, independently removable, token-budgeted, and limited to CLI operations.
 
-Candidates include shell helpers, native lifecycle hooks, a Pi plugin, an installable agent skill, directory-scoped session-start context, and session-end result capture.
+## Phase 3: named remote worker - future
 
-All integrations are opt-in, idempotent, independently removable, token-budgeted, and limited to CLI operations.
+The first remote proof should use one explicitly selected worker without scheduling.
 
-## Phase 3: named remote EC2 worker
-
-Goal: prove the local protocol off-machine without scheduling.
-
-Deliverables:
+Potential deliverables include:
 
 - Static named-worker configuration.
 - One remote command and attachment transport.
@@ -73,35 +56,14 @@ Deliverables:
 - Reconnection and lost-response tests.
 - Worker-local operation during operator disconnection.
 
-Evaluate SSH over a private overlay and Systems Manager Session Manager by measured behavior rather than assumed security or convenience.
+## Phase 4: discovery across workers and platforms - future
 
-Exit criteria:
-
-- Local and remote tasks share lifecycle semantics and schemas.
-- Direct `akagent worker ...` diagnosis works on the host.
-- Retries cannot duplicate tasks.
-- Host stop, restart, and process loss reconcile understandably.
-- No broad copied human cloud credential is required.
-- Secrets do not appear in argv, output, logs, or task records.
-
-## Phase 4: discovery across workers and platforms
-
-Goal: provide a local overview and learn whether explicit placement remains sufficient.
-
-Deliverables:
-
-- Concurrent bounded status queries across named workers.
-- Local cache of compact worker, task, and agent observations.
-- Explicit refresh with stale and unreachable reporting.
-- Source attribution and live revalidation before mutation.
-- Capability-aware validation.
-- Idle, retention, credential-expiration, and cleanup-debt reporting.
-
-The cache remains non-authoritative and useful during temporary network loss.
-Only measured workload should justify automatic placement, a central index, or a queue.
+A later local cache may provide compact observations across named workers.
+It should retain source attribution, stale and unreachable status, and live revalidation before mutation.
 
 ## Deferred
 
+- Managed coding-agent launch.
 - Agent containers and container schedulers.
 - Automatic horizontal scaling.
 - Transparent task migration.
@@ -122,6 +84,3 @@ Only measured workload should justify automatic placement, a central index, or a
 - Manual interventions per task.
 - Remote transport failures and safe retries.
 - Credential warnings, expiration, rotation, and cleanup debt.
-- Worker contention under realistic load.
-
-Structured events and periodic analysis are enough before building a metrics pipeline.
