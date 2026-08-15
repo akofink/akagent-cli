@@ -56,6 +56,7 @@ func Run(args []string, stdout io.Writer) int {
 			Usage: "akagent <command>",
 			Commands: []string{
 				"credential <list|inspect|doctor>",
+				"integration inspect",
 				"id generate",
 				"repository register <name> <path> [--policy <worktree|direct>]",
 				"repository <list|inspect|update|unregister>",
@@ -69,6 +70,8 @@ func Run(args []string, stdout io.Writer) int {
 	switch args[0] {
 	case "credential":
 		return credentialCommand(args[1:], stdout)
+	case "integration":
+		return integrationCommand(args[1:], stdout)
 	case "id":
 		if len(args) == 2 && args[1] == "generate" {
 			id, err := uuid.NewV7()
