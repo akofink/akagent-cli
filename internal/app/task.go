@@ -3,6 +3,7 @@ package app
 import (
 	"io"
 	"strings"
+	"time"
 
 	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/store"
@@ -208,16 +209,7 @@ func view(id string, manifest store.Manifest) taskView {
 }
 
 func status(manifest store.Manifest) string {
-	if manifest.Condition == "failed" {
-		return "failed"
-	}
-	if manifest.Lifecycle == "running" && (manifest.Condition == "waiting" || manifest.Condition == "blocked") {
-		return manifest.Condition
-	}
-	if manifest.Lifecycle == "running" && manifest.Condition == "active" {
-		return "active"
-	}
-	return manifest.Lifecycle
+	return lifecycle.Status(manifest, time.Now().UTC(), lifecycle.DefaultHeartbeatTimeout)
 }
 
 func lifecycleError(stdout io.Writer, err error) int {
