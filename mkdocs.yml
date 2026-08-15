@@ -1,0 +1,26 @@
+site_name: akagent
+site_description: Local-first orchestration protocol and CLI for coding tasks.
+site_url: https://akofink.github.io/akagent-cli/
+repo_name: akofink/akagent-cli
+repo_url: https://github.com/akofink/akagent-cli
+
+# Keep the existing Markdown documents as the source of truth for the site.
+docs_dir: docs
+
+nav:
+  - Home: README.md
+  - Quick start: quick-start.md
+  - Architecture: architecture.md
+  - Protocol: protocol.md
+  - Task CLI contract: task-cli.md
+  - Credentials: credentials.md
+  - Integration gate: integration-gate.md
+  - Storage: storage.md
+  - Technology evaluation: technology.md
+  - Roadmap: roadmap.md
+  - Implementation plan: implementation-plan.md
+  - Current handoff: handoff.md
+  - TOON output contract: toon.md
+
+theme:
+  name: mkdocs
