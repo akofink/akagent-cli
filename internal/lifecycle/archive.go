@@ -3,7 +3,9 @@ package lifecycle
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,6 +18,7 @@ type CleanupOptions struct {
 	AllowCommitted bool
 	AllowDirty     bool
 	AllowUntracked bool
+	AllowWorktree  bool
 }
 
 const (
@@ -165,6 +168,10 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 	if manifest.Lifecycle != "stopped" && manifest.Lifecycle != "finished" {
 		return store.Manifest{}, fmt.Errorf("task must be stopped or finished before cleaning")
 	}
+	repository, err := m.Store.ReadRepository(manifest.Repository)
+	if err != nil {
+		return store.Manifest{}, err
+	}
 	if manifest.ArchiveState != archiveComplete {
 		if _, err := m.archive(id); err != nil {
 			return store.Manifest{}, err
@@ -221,6 +228,16 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 		if eventErr := appendOperationEvent(m.Store, id, "cleanup_worktree", "preservation_required", "recovery debt preserved"); eventErr != nil {
 			failures = append(failures, errors.New("worktree preservation event could not be recorded"))
 		}
+	} else if repository.Policy == "worktree" && !options.AllowWorktree {
+		manifest.WorktreeCleanupState = cleanupBlocked
+		failures = append(failures, &store.Error{
+			Kind:     store.KindPreservation,
+			Message:  "Cleanup requires explicit authorization to remove the task worktree",
+			Recovery: "Inspect the archived Git facts and retry with --allow-worktree",
+		})
+		if eventErr := appendOperationEvent(m.Store, id, "cleanup_worktree", "preservation_required", "worktree approval required"); eventErr != nil {
+			failures = append(failures, errors.New("worktree preservation event could not be recorded"))
+		}
 	} else if manifest.WorktreeCleanupState != cleanupComplete {
 		worktreeCleanup := m.CleanupWorktree
 		if worktreeCleanup == nil {
@@ -228,7 +245,7 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 		}
 		if err := worktreeCleanup(manifest, facts); err != nil {
 			manifest.WorktreeCleanupState = cleanupPartial
-			failures = append(failures, errors.New("worktree cleanup failed"))
+			failures = append(failures, err)
 			if eventErr := appendOperationEvent(m.Store, id, "cleanup_worktree", "partial", cleanupDebtEvent); eventErr != nil {
 				failures = append(failures, errors.New("worktree cleanup debt event could not be recorded"))
 			}
@@ -248,20 +265,32 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 		}
 		kind := store.KindPartial
 		message := "Task cleanup is incomplete"
+		retryable := true
+		recovery := fmt.Sprintf("Retry `akagent task clean %s` after resolving the reported debt", id)
 		for _, failure := range failures {
-			if store.IsKind(failure, store.KindPreservation) {
+			var typed *store.Error
+			switch {
+			case errors.As(failure, &typed) && typed.Kind == store.KindPreservation:
 				kind = store.KindPreservation
-				message = failure.Error()
+				message = typed.Message
+				retryable = false
+			case errors.As(failure, &typed) && typed.Kind == store.KindConflict:
+				kind = store.KindConflict
+				message = typed.Message
+				retryable = false
+			}
+			if kind != store.KindPartial {
+				if typed != nil && typed.Recovery != "" {
+					recovery = typed.Recovery
+				}
 				break
 			}
 		}
-		return manifest, &store.Error{
-			Kind:      kind,
-			Message:   message,
-			Retryable: kind == store.KindPartial,
-			Recovery:  fmt.Sprintf("Retry `akagent task clean %s` after resolving the reported debt", id),
-			Err:       errors.Join(failures...),
+		result := &store.Error{Kind: kind, Message: message, Retryable: retryable, Recovery: recovery}
+		if kind == store.KindPartial {
+			result.Err = errors.Join(failures...)
 		}
+		return manifest, result
 	}
 
 	manifest.CleanupDebt = false
@@ -289,6 +318,45 @@ func (m *Manager) cleanupFailure(id string, manifest store.Manifest, cause error
 		Recovery:  fmt.Sprintf("Retry `akagent task clean %s`", id),
 		Err:       cause,
 	}
+}
+
+func (m *Manager) removeWorktree(manifest store.Manifest, _ store.GitFacts) error {
+	repository, err := m.Store.ReadRepository(manifest.Repository)
+	if err != nil {
+		return err
+	}
+	if repository.Policy != "worktree" {
+		return nil
+	}
+	root := repository.WorktreeRoot
+	if root == "" {
+		root = filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
+	}
+	path, err := filepath.Abs(manifest.WorktreePath)
+	if err != nil || path == repository.Path || !within(path, root) {
+		return &store.Error{
+			Kind:     store.KindConflict,
+			Message:  "Task worktree is outside its registered cleanup root",
+			Recovery: "Run `akagent task reconcile` and inspect the task before retrying cleanup",
+		}
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return errors.New("task worktree could not be inspected")
+	}
+	status, err := m.Git.Status(path)
+	if err != nil || !status.Exists || !m.worktreeMatches(repository, manifest, status, false) {
+		return &store.Error{
+			Kind:     store.KindConflict,
+			Message:  "Task worktree does not match its durable ownership",
+			Recovery: "Run `akagent task reconcile` and inspect the task before retrying cleanup",
+		}
+	}
+	if err := m.Git.RemoveWorktree(repository.Path, path); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *Manager) taskLive(id string) (bool, bool, error) {
@@ -348,6 +416,9 @@ func (m *Manager) inspectGitFacts(manifest store.Manifest) (store.GitFacts, erro
 	path := manifest.Git.Path
 	if path == "" {
 		path = repository.Path
+		if repository.Policy == "worktree" {
+			path = manifest.WorktreePath
+		}
 	}
 	head, err := gitOutput(path, "rev-parse", "--verify", "HEAD")
 	if err != nil {
@@ -358,9 +429,9 @@ func (m *Manager) inspectGitFacts(manifest store.Manifest) (store.GitFacts, erro
 	if err != nil {
 		return store.GitFacts{}, errors.New("Git status could not be observed")
 	}
-	facts := store.GitFacts{Path: path, Head: head, Branch: branch}
+	facts := store.GitFacts{Path: path, Head: head, Branch: branch, Committed: manifest.BaseRevision != "" && head != manifest.BaseRevision}
 	for _, line := range strings.Split(status, "\n") {
-		if strings.TrimSpace(line) == "" {
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "##") {
 			continue
 		}
 		if strings.HasPrefix(line, "??") {

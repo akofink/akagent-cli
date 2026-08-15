@@ -76,7 +76,8 @@ Optional credentials produce non-secret warnings and are not injected; file cred
 
 `task archive` captures a stopped or finished task's manifest, events, non-secret Git facts, and available terminal history.
 `task clean` archives first, refuses live tasks, preserves committed, dirty, and untracked work unless each category is explicitly authorized, and records independent cleanup debt.
-The default local cleanup hooks do not delete worktrees or credentials.
+For isolated worktree tasks, `--allow-worktree` is a separate approval for the destructive cleanup hook.
+The hook validates ownership, removes only the task worktree, preserves its branch and archive facts, and never removes a direct registered checkout.
 
 ## Orchestration workflow
 
@@ -155,7 +156,7 @@ Automatic update on every invocation remains intentionally deferred because ordi
 ## Direction
 
 The current CLI remains local-first: it uses the registered checkout, Git worktrees, and tmux on the invoking machine.
-The tracked follow-ups are destructive cleanup hooks, broader workflow integrations beyond the stable CLI boundary, and work-specific secrets or deployment behavior.
+The tracked follow-ups are broader workflow integrations beyond the stable CLI boundary and work-specific secrets or deployment behavior.
 
 ## Design documentation
 

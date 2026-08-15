@@ -191,11 +191,13 @@ Clean only after reviewing the archived Git facts:
 
 ```bash
 akagent task clean <task-id>
-akagent task clean <task-id> --allow-committed --allow-dirty --allow-untracked
+akagent task clean <task-id> --allow-committed --allow-dirty --allow-untracked --allow-worktree
 ```
 
 Cleanup refuses to act while the verified task process is live and refuses to discard committed, dirty, or untracked work unless each category is explicitly authorized.
-The default local cleanup hooks do not delete worktrees or credentials, but cleanup state and any recovery debt are recorded so a later implementation or retry can act safely.
+For isolated worktree tasks, `--allow-worktree` is a separate approval that enables the ownership-checked worktree cleanup hook.
+The hook removes only the task worktree, preserves the branch and archived Git facts, and never removes a direct registered checkout.
+Without that approval, the worktree remains available for direct human recovery and cleanup state records the debt.
 
 ## Recovery rules
 

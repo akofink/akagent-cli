@@ -33,7 +33,8 @@ The local lifecycle currently provides:
 
 The current start operation creates a task-tagged tmux resource.
 It starts a shell by default or a managed local Pi process when requested.
-The default cleanup hooks do not delete worktrees or credentials.
+Approved worktree cleanup validates ownership and preserves archive facts and the task branch.
+Credential cleanup remains an independent hook.
 
 ## Phase 2: workflow integrations - default-enabled integration
 
@@ -47,7 +48,7 @@ Integrations must be idempotent, independently removable, token-budgeted, and li
 
 ## Tracked follow-ups
 
-- Destructive worktree and credential cleanup hooks.
+- Broader workflow integrations beyond the stable CLI boundary.
 - Broader workflow integrations beyond the stable CLI boundary.
 - Work-specific secrets and deployment behavior.
 

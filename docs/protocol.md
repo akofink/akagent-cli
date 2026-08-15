@@ -187,8 +187,12 @@ Partial archive attempts remain retryable, and equivalent archives are idempoten
 Clean archives first and refuses destructive action while a verified task process runs.
 It preserves committed, dirty, and untracked Git facts unless the operator explicitly supplies `--allow-committed`, `--allow-dirty`, and `--allow-untracked` for the corresponding categories.
 
+For a registered `worktree` repository, removing the task worktree also requires the separate `--allow-worktree` approval.
+The cleanup hook validates the durable repository, path, branch, and Git common directory before removing only the task worktree with Git.
+It preserves the task branch and the archive's pre-cleanup Git facts.
+Direct repository tasks never remove their registered checkout.
 Worktree and credential cleanup state are recorded independently so partial cleanup can be retried.
-The default local cleanup hooks do not remove worktrees or credentials.
+Without worktree approval, the worktree remains available for direct human recovery and cleanup debt is durable.
 
 ### Reconcile
 

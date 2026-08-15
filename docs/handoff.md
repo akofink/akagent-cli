@@ -30,7 +30,9 @@ The prompt-file reference is passed to Pi without changing standard input, so Pi
 `task finish` records a result only after the task process has exited.
 `task archive` captures durable records, Git facts, and terminal history when available.
 `task clean` refuses live tasks and unapproved loss of committed, dirty, or untracked work.
-The default local cleanup hooks do not remove worktrees or credentials, but cleanup state and recovery debt are durable and independently retryable.
+Isolated worktree removal additionally requires `--allow-worktree` and validates durable Git ownership before invoking the destructive hook.
+The hook preserves the task branch and archive facts, while direct repository tasks never remove their registered checkout.
+Credential cleanup remains independent, and cleanup state and recovery debt are durable and independently retryable.
 
 `task reconcile` repairs safe derived observations and Git facts.
 It never deletes task state, branches, worktrees, windows, or terminal history.

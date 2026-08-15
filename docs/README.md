@@ -56,7 +56,8 @@ A task can use a detached shell for direct work or a managed local Pi launch sel
 Managed launch persists the resolved command, task worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
 
 It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
-The default cleanup hooks do not delete worktrees or credentials.
+Worktree cleanup requires explicit approval and validates durable ownership before removal.
+Credential cleanup remains an independent hook.
 
 ## Rejected initial approaches
 

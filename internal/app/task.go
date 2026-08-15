@@ -153,11 +153,11 @@ func taskCommand(args []string, stdout io.Writer) int {
 		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "clean":
 		if len(args) < 2 {
-			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked]", false, "Inspect the task before authorizing cleanup")
+			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]", false, "Inspect the task before authorizing cleanup")
 		}
 		options, ok := parseCleanup(args[2:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked]", false, "Inspect the task before authorizing cleanup")
+			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]", false, "Inspect the task before authorizing cleanup")
 		}
 		manifest, err := manager.Clean(args[1], options)
 		if err != nil {
@@ -249,6 +249,8 @@ func parseCleanup(args []string) (lifecycle.CleanupOptions, bool) {
 			options.AllowDirty = true
 		case "--allow-untracked":
 			options.AllowUntracked = true
+		case "--allow-worktree":
+			options.AllowWorktree = true
 		default:
 			return options, false
 		}
