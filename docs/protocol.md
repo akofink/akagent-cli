@@ -161,7 +161,7 @@ Attachment does not write durable state and never creates, kills, renames, or re
 
 Stop verifies the task through the tagged tmux resource and terminates its task window.
 It preserves the durable task record and Git worktree, then records `stopped` without claiming a successful outcome.
-Terminal history may no longer be available after the window is stopped, so archive it before stopping when terminal capture matters.
+Terminal history is best-effort: archive runs only after the task is stopped or finished, and stopping ends the tagged window, so the archive may report terminal history as unavailable.
 Stopping an already stopped or finished task is a successful no-op.
 
 ### Finish
