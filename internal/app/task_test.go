@@ -267,7 +267,12 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 			t.Fatalf("repository %s register = (%d, %q)", name, result.code, result.stdout)
 		}
 	}
-	if result := runCommand(t, []string{"task", "create", "--task-id", "alpha-history", "--title", "Archived", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
+	worktreeRoots := map[string]string{
+		"alpha": filepath.Join(filepath.Dir(alphaPath), ".akagent", "worktrees", "alpha"),
+		"beta":  filepath.Join(filepath.Dir(betaPath), ".akagent", "worktrees", "beta"),
+	}
+	alphaWorktreeRoot := worktreeRoots["alpha"]
+	if result := runCommand(t, []string{"task", "create", "--task-id", "alpha-history", "--title", "Archived", "--repository", "alpha", "--branch", "main", "--worktree", filepath.Join(alphaWorktreeRoot, "alpha-history")}); result.code != 0 {
 		t.Fatalf("archived task create = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "stop", "alpha-history"}); result.code != 0 {
@@ -276,7 +281,7 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 	if result := runCommand(t, []string{"task", "clean", "alpha-history", "--allow-committed", "--allow-dirty", "--allow-untracked", "--allow-worktree"}); result.code != 0 {
 		t.Fatalf("archived task clean = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "create", "--task-id", "alpha-pending", "--title", "Pending cleanup", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
+	if result := runCommand(t, []string{"task", "create", "--task-id", "alpha-pending", "--title", "Pending cleanup", "--repository", "alpha", "--branch", "main", "--worktree", filepath.Join(alphaWorktreeRoot, "alpha-pending")}); result.code != 0 {
 		t.Fatalf("pending task create = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "stop", "alpha-pending"}); result.code != 0 {
@@ -291,7 +296,7 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 		{id: "alpha-active", title: "Alpha", repository: "alpha"},
 		{id: "beta-active", title: "Beta", repository: "beta"},
 	} {
-		if result := runCommand(t, []string{"task", "create", "--task-id", task.id, "--title", task.title, "--repository", task.repository, "--branch", "main"}); result.code != 0 {
+		if result := runCommand(t, []string{"task", "create", "--task-id", task.id, "--title", task.title, "--repository", task.repository, "--branch", "main", "--worktree", filepath.Join(worktreeRoots[task.repository], task.id)}); result.code != 0 {
 			t.Fatalf("%s task create = (%d, %q)", task.id, result.code, result.stdout)
 		}
 	}

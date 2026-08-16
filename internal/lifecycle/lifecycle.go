@@ -732,7 +732,7 @@ func (m *Manager) startInputs(request StartRequest, repository store.Repository)
 	} else {
 		root := repositoryWorktreeRoot(repository)
 		if worktree == "" {
-			worktree = filepath.Join(root, request.ID)
+			worktree = filepath.Join(root, branchLabel(branch))
 		}
 		abs, err := filepath.Abs(worktree)
 		if err != nil || !within(abs, root) || abs == repository.Path {
@@ -1813,7 +1813,7 @@ func startTmuxWindow(id, branch, directory, command string) (TmuxProcess, error)
 	return TmuxProcess{WindowID: window}, nil
 }
 
-func tmuxWindowName(branch string) string {
+func branchLabel(branch string) string {
 	if _, name, ok := strings.Cut(branch, "/"); ok && name != "" {
 		return name
 	}
@@ -1821,6 +1821,10 @@ func tmuxWindowName(branch string) string {
 		return branch
 	}
 	return "task"
+}
+
+func tmuxWindowName(branch string) string {
+	return branchLabel(branch)
 }
 
 func executionWindowName(label string) string {

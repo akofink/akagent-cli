@@ -92,7 +92,7 @@ resource:
   id: 019f...
   repository: backend
   branch: akofink/57-backend
-  worktree_path: /path/to/.akagent/worktrees/backend/019f...
+  worktree_path: /path/to/.akagent/worktrees/backend/57-backend
   metadata:
     delivery: published
   external_urls[1]: https://forge.example/pull/61
@@ -106,6 +106,7 @@ resource:
 A repository registration resolves a stable name to a local Git checkout and policy.
 
 The `worktree` policy creates an isolated task branch and worktree under the registration's worktree root.
+When `--worktree` is omitted, the worktree directory name is the branch label after the owner prefix, such as `80-worktree-labels` for `akofink/80-worktree-labels`.
 Registrations may set that root with an absolute `--worktree-root` value, such as `~/dev/worktrees/backend` after shell expansion.
 When no value is configured, the root remains `<checkout-parent>/.akagent/worktrees/<name>`.
 Task and resource creation reject worktree paths outside the root.

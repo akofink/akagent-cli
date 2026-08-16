@@ -784,7 +784,7 @@ func TestConfiguredWorktreeRootControlsCreationAndReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantPath := filepath.Join(root, "configured-root-task")
+	wantPath := filepath.Join(root, "configured-root")
 	if result.Manifest.WorktreePath != wantPath {
 		t.Fatalf("worktree path = %q, want %q", result.Manifest.WorktreePath, wantPath)
 	}
@@ -828,8 +828,9 @@ func TestLegacyEmptyWorktreeRootUsesDerivedDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantRoot := filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
-	if result.Manifest.WorktreePath != filepath.Join(wantRoot, "legacy-root-task") {
-		t.Fatalf("worktree path = %q, want derived root %q", result.Manifest.WorktreePath, wantRoot)
+	wantPath := filepath.Join(wantRoot, "legacy-root")
+	if result.Manifest.WorktreePath != wantPath {
+		t.Fatalf("worktree path = %q, want %q", result.Manifest.WorktreePath, wantPath)
 	}
 }
 

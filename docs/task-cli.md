@@ -90,6 +90,7 @@ The compatibility `--repository` form creates one initial resource without creat
 Use `akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--metadata <key=value>] [--external-url <https-url>]` to add each resource.
 Use `akagent task resource update <task-id> <resource-id> [--metadata <key=value>] [--external-url <https-url>]` to record mutable delivery metadata without changing Git ownership inputs.
 The `worktree` policy requires an explicit descriptive `--branch` value, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`, and creates an isolated worktree under the registered repository's worktree root.
+When `--worktree` is omitted, its directory name is the branch label after the owner prefix, so `akofink/80-worktree-labels` uses `<worktree-root>/80-worktree-labels`.
 Explicit branch, base, and worktree values are immutable resource inputs.
 The `direct` policy deliberately permits an omitted branch and uses the registered checkout's current branch.
 The task initially has status `created` and can be inspected, archived after stopping, or launched later.
@@ -194,7 +195,7 @@ task:
   status: active
   worker: local
   branch: akofink/51-task-labels
-  worktree_path: /path/to/.akagent/worktrees/demo/019fe8f2-ac67-7406-a6e6-2717b2cd31c6
+  worktree_path: /path/to/.akagent/worktrees/demo/51-task-labels
   condition: none
   committed: false
   dirty: false
@@ -209,7 +210,7 @@ The list schema uses a compact tabular array and includes the definitive total.
 
 ```toon
 tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:
-  019fe8f2-ac67-7406-a6e6-2717b2cd31c6,Inspect local reconciliation,active,local,akofink/51-task-labels,"0000000000000000000000000000000000000001",/path/to/.akagent/worktrees/demo/019fe8f2-ac67-7406-a6e6-2717b2cd31c6,none,false,false,false
+  019fe8f2-ac67-7406-a6e6-2717b2cd31c6,Inspect local reconciliation,active,local,akofink/51-task-labels,"0000000000000000000000000000000000000001",/path/to/.akagent/worktrees/demo/51-task-labels,none,false,false,false
 total: 1
 ```
 

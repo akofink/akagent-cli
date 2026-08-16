@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -27,6 +28,10 @@ func TestTaskOwnsMultipleIndependentResources(t *testing.T) {
 	}
 	if resources[0].ID != "one" || resources[1].ID != "two" {
 		t.Fatalf("resources = %#v, want deterministic IDs", resources)
+	}
+	wantFirstPath := filepath.Join(repository.WorktreeRoot, "one")
+	if first.WorktreePath != wantFirstPath {
+		t.Fatalf("first resource worktree path = %q, want %q", first.WorktreePath, wantFirstPath)
 	}
 	if first.WorktreePath == second.WorktreePath || first.Branch == second.Branch {
 		t.Fatalf("resources share immutable Git inputs: %#v %#v", first, second)
