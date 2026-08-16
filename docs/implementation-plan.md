@@ -28,7 +28,7 @@ The protocol foundation issues established:
 
 The local lifecycle implementation established:
 
-- Repository registration and `worktree` or `direct` policy.
+- Repository registration and `worktree` or `direct` policy, with optional absolute worktree roots and a derived-root default.
 - Durable task manifests and append-only events.
 - Branch and Git worktree creation.
 - Detached task-tagged tmux shells.
@@ -39,6 +39,7 @@ The local lifecycle implementation established:
 - Default-on automated integration gating with an immediate per-environment disable path.
 - Managed local Pi launch with durable configuration, interactive prompt-file references, safe environment construction, process identity, retry, and recovery behavior.
 
+Task and resource creation, cleanup ownership checks, and reconciliation use the registered worktree root.
 The current CLI creates tasks and Git resources without execution side effects.
 Explicit `task launch --target shell` starts a shell for direct human or shell-driven work, and `task launch --target pi` starts managed Pi.
 The historical `task start` command remains as a direct-human compatibility shortcut.

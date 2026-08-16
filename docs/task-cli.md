@@ -12,10 +12,10 @@ Exit code `2` means the command or its arguments are invalid.
 ## Repository registration
 
 ```text
-akagent repository register <name> <path> [--policy <worktree|direct>]
+akagent repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]
 akagent repository list
 akagent repository inspect <name>
-akagent repository update <name> [--path <path>] [--policy <worktree|direct>]
+akagent repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]
 akagent repository unregister <name>
 ```
 
@@ -23,17 +23,21 @@ The path must name the root of an existing Git worktree.
 
 When policy is omitted during registration, `worktree` is selected for a Git checkout.
 
-The `worktree` policy creates task worktrees under `<checkout-parent>/.akagent/worktrees/<name>`.
+The `worktree` policy creates task worktrees under the configured `--worktree-root` when one is provided.
+The root must be absolute and task worktrees must remain contained beneath it.
+When the option is omitted, the existing default is `<checkout-parent>/.akagent/worktrees/<name>`.
 The `direct` policy uses the registered checkout and requires the task base to match its current revision.
+A worktree root is valid only with the `worktree` policy.
 
 Registering the same name with the same fields is an idempotent success.
 Registering the name with different fields returns a `conflict` error.
 
-The list command emits the name, path, policy, and definitive total by default.
+The list command emits the name, path, policy, configured worktree root when present, and definitive total by default.
 Inspect and mutation commands emit the durable registration detail.
 
 Updating equivalent fields is a successful no-op.
 An update that changes the path of a repository referenced by tasks returns a structured `conflict` error and leaves the record unchanged.
+Updating the worktree root changes the containment boundary used by later task creation, cleanup ownership checks, and reconciliation.
 
 Unregister removes only the registration record.
 It never removes the checkout, Git metadata, worktrees, or task files.

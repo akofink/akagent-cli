@@ -699,6 +699,73 @@ func TestRegisterRejectsNonGitDirectory(t *testing.T) {
 	}
 }
 
+func TestConfiguredWorktreeRootControlsCreationAndReconciliation(t *testing.T) {
+	manager, _ := newTestManager(t)
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository.Name = "configured-root"
+	repository.Policy = "worktree"
+	root := filepath.Join(t.TempDir(), "managed-worktrees")
+	repository.WorktreeRoot = root
+	if _, err := manager.Store.RegisterRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := manager.Start(StartRequest{ID: "configured-root-task", Title: "Configured root", Repository: repository.Name, Branch: "akofink/configured-root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := filepath.Join(root, "configured-root-task")
+	if result.Manifest.WorktreePath != wantPath {
+		t.Fatalf("worktree path = %q, want %q", result.Manifest.WorktreePath, wantPath)
+	}
+	if _, err := manager.Start(StartRequest{ID: "outside-root", Title: "Outside root", Repository: repository.Name, Branch: "akofink/outside-root", WorktreePath: filepath.Join(t.TempDir(), "outside")}); err == nil {
+		t.Fatal("Start() accepted a worktree outside the configured root")
+	}
+
+	repository.WorktreeRoot = filepath.Join(t.TempDir(), "new-root")
+	if err := manager.Store.WriteRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := manager.Inspect("configured-root-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(manifest.RecoveryDebt, "worktree_mismatch") {
+		t.Fatalf("recovery debt = %q, want configured-root mismatch", manifest.RecoveryDebt)
+	}
+}
+
+func TestLegacyEmptyWorktreeRootUsesDerivedDefault(t *testing.T) {
+	manager, _ := newTestManager(t)
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository.Name = "legacy-root"
+	repository.Policy = "worktree"
+	repository.WorktreeRoot = ""
+	if _, err := manager.Store.RegisterRepository(repository); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.RegisterRepository(repository.Name, repository.Path, repository.Policy); err != nil {
+		t.Fatalf("re-registering legacy repository = %v", err)
+	}
+	result, err := manager.Start(StartRequest{ID: "legacy-root-task", Title: "Legacy root", Repository: repository.Name, Branch: "akofink/legacy-root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRoot := filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
+	if result.Manifest.WorktreePath != filepath.Join(wantRoot, "legacy-root-task") {
+		t.Fatalf("worktree path = %q, want derived root %q", result.Manifest.WorktreePath, wantRoot)
+	}
+}
+
 func registerWorktreeRepository(t *testing.T, manager *Manager, name string) store.Repository {
 	t.Helper()
 	repository, err := manager.Store.ReadRepository("demo")

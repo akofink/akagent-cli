@@ -38,7 +38,7 @@ A minimal local flow is:
 
 ```bash
 akagent integration inspect
-akagent repository register demo /path/to/checkout
+akagent repository register demo /path/to/checkout --worktree-root /path/to/worktrees/demo
 akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
 akagent task launch <task-id> --target shell
@@ -48,6 +48,8 @@ akagent task inspect <task-id>
 
 Registration requires the root of an existing Git checkout.
 The default repository policy creates an isolated branch and Git worktree for each task.
+Use `--worktree-root <absolute-path>` with the `worktree` policy to separate primary clones from managed worktrees.
+Without that option, the existing derived root remains `<checkout-parent>/.akagent/worktrees/<name>`.
 The `direct` policy permits the registered checkout itself when that is explicitly selected.
 
 `task create` creates a durable record, validates the repository inputs, and creates the required branch and worktree without starting tmux or a process.

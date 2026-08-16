@@ -328,10 +328,7 @@ func (m *Manager) removeWorktree(manifest store.Manifest, _ store.GitFacts) erro
 	if repository.Policy != "worktree" {
 		return nil
 	}
-	root := repository.WorktreeRoot
-	if root == "" {
-		root = filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
-	}
+	root := repositoryWorktreeRoot(repository)
 	path, err := filepath.Abs(manifest.WorktreePath)
 	if err != nil || path == repository.Path || !within(path, root) {
 		return &store.Error{

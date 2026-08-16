@@ -166,6 +166,8 @@ Reconciliation does not invoke either destructive operation.
 
 Starting or stopping executions, task lifecycle commands, credentials, tmux, and Git remain outside this package.
 The store has no Pi-specific execution fields and does not interpret command targets.
-The store also persists repository registration records, while the lifecycle package supplies repository validation and archive and cleanup policy.
+The store also persists repository registration records, including an optional absolute `worktree_root` for worktree-policy registrations.
+Older registrations without that field continue to use the derived root in the lifecycle package without a migration rewrite.
+The lifecycle package supplies repository validation and archive and cleanup policy.
 Worktree removal is available only through the lifecycle approval-gated hook and preserves the task archive and branch.
 Credential cleanup remains an independent local hook.

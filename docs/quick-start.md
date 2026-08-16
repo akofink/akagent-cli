@@ -70,9 +70,13 @@ Repository registration records the path and policy but never deletes the checko
 The supported repository mutations are:
 
 ```text
-akagent repository update <name> [--path <path>] [--policy <worktree|direct>]
+akagent repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]
 akagent repository unregister <name>
 ```
+
+Use `--worktree-root /home/user/dev/worktrees/demo` with the `worktree` policy to keep task worktrees separate from primary clones.
+The configured root must be absolute, and every managed worktree must remain beneath it.
+Without this option, the root remains `<checkout-parent>/.akagent/worktrees/<name>`.
 
 An update that would invalidate a task reference is rejected.
 Unregister removes only the registration and is rejected while tasks still reference it.
@@ -90,7 +94,7 @@ akagent task inspect <task-id>
 ```
 
 The command generates a UUIDv7 task ID when `--task-id` is omitted.
-It creates a durable manifest, a task branch, and an isolated Git worktree under the registered repository's worktree root when the policy is `worktree`.
+It creates a durable manifest, a task branch, and an isolated Git worktree under the registered repository's configured worktree root when the policy is `worktree`.
 Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
 The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.

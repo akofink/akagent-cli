@@ -14,7 +14,7 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Source-managed `akagent update` with clean-main validation, fast-forward-only Git updates, and atomic binary replacement.
 - A secure worker-local state store for versioned manifests, append-only events, atomic replacement, locking, archives, and recovery.
 - A local credential manifest with `file:` and `env:` readiness checks plus `credential list`, `inspect`, and `doctor`.
-- Repository registration with `worktree` and `direct` policies.
+- Repository registration with `worktree` and `direct` policies, optional absolute worktree roots, and the derived-root default.
 - Durable local task creation, explicit execution launch, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
 - Zero or more independently recoverable task resources with separate Git facts, archives, cleanup state, and recovery debt.
 - Zero or more optional tool-neutral executions with independent identity, tmux metadata, lifecycle observation, archive, stop, and recovery state.

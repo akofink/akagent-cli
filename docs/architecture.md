@@ -81,9 +81,12 @@ It never trusts a similarly named window and never creates or mutates a target a
 
 The worker host owns repositories and worktrees.
 Repository policy is explicit because some repositories use isolated task worktrees while others intentionally use a direct checkout.
+Worktree-policy registrations may configure an absolute worktree root independent of the primary clone location.
+The existing derived root remains the default when no root is configured.
 
 Per-repository locking protects shared Git administrative state.
-Startup validates branch, base revision, worktree location, and existing worktree identity.
+Startup validates branch, base revision, worktree containment, and existing worktree identity.
+Cleanup ownership checks and reconciliation use the registered root.
 
 ### Durable records
 
