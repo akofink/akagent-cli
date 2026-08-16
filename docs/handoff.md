@@ -21,7 +21,7 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Managed executions receive the owning task ID and execution ID as non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment context.
 - Resources preserve mutable provider-neutral metadata and HTTPS external reference URLs for delivery records.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
-- Task and execution-tagged detached tmux resources, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
+- Task and execution-tagged detached tmux resources, shared `@agent_state` publication by execution metadata, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
 
 ## Current workflow
@@ -40,6 +40,7 @@ Execution stop, archive, attach, and reconcile operate independently from resour
 The `task launch --target shell` path creates and launches a generic shell execution.
 The optional `task launch --target pi` path delegates to the Pi integration, which creates and launches a generic execution.
 Tmux derives its display name from the descriptive execution label and stores task and execution IDs in window metadata for lifecycle verification.
+Managed execution lifecycle state uses those metadata IDs to clear active state, publish waiting or blocked state, and mark completed execution `done` through `@agent_state`.
 The Pi integration passes a validated prompt-file reference without changing standard input, so Pi remains interactive and a failed launch remains retryable.
 The historical `task start` create-and-launch shortcut is rejected with structured migration guidance.
 Managed execution commands inherit the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` context and can call the local CLI directly to create, inspect, and update resources owned by that task.

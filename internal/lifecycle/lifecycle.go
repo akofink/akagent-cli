@@ -91,6 +91,12 @@ type ExecutionTmux interface {
 	CaptureExecution(executionID, taskID string) (string, error)
 }
 
+// ExecutionStateTmux publishes the shared tmux status option for an execution.
+// The empty state clears @agent_state rather than displaying an active value.
+type ExecutionStateTmux interface {
+	SetExecutionState(executionID, taskID, state string) error
+}
+
 type Manager struct {
 	Store              *store.Store
 	Tmux               Tmux
@@ -860,6 +866,9 @@ func (m *Manager) Publish(id, condition, reason, activity string) (store.Manifes
 	if changed {
 		_, err = m.Store.AppendEvent(id, store.Event{Operation: "publish", Outcome: condition})
 	}
+	if syncErr := m.updateExecutionFromManifest(id, manifest); err == nil && syncErr != nil {
+		err = syncErr
+	}
 	return manifest, err
 }
 
@@ -914,6 +923,9 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 		return store.Manifest{}, err
 	}
 	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
+		if syncErr := m.updateExecutionFromManifest(id, manifest); syncErr != nil {
+			return store.Manifest{}, syncErr
+		}
 		return manifest, nil
 	}
 	if manifest.Lifecycle == "created" {
@@ -924,6 +936,9 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 		}
 		if _, err := m.Store.AppendEvent(id, store.Event{Operation: "stop", Outcome: "succeeded", Detail: "no execution launched"}); err != nil {
 			return store.Manifest{}, err
+		}
+		if syncErr := m.updateExecutionFromManifest(id, manifest); syncErr != nil {
+			return store.Manifest{}, syncErr
 		}
 		return manifest, nil
 	}
@@ -1711,6 +1726,34 @@ func (commandTmux) StartExecution(executionID, taskID, label, directory, command
 		parts = append(parts, shellQuote(argument))
 	}
 	return startExecutionTmuxWindow(executionID, taskID, label, directory, strings.Join(parts, " "))
+}
+
+func (commandTmux) SetExecutionState(executionID, taskID, state string) error {
+	if state != "" && state != "waiting" && state != "blocked" && state != "done" {
+		return errors.New("invalid execution tmux state")
+	}
+	output, err := exec.Command("tmux", "list-windows", "-a", "-F", "#{window_id}\t#{@akagent_task_id}\t#{@akagent_execution_id}").Output()
+	if err != nil {
+		return nil
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 || fields[1] != taskID || fields[2] != executionID {
+			continue
+		}
+		args := []string{"set-option", "-w"}
+		if state == "" {
+			args = append(args, "-u")
+		}
+		args = append(args, "-t", fields[0], "@agent_state")
+		if state != "" {
+			args = append(args, state)
+		}
+		if err := exec.Command("tmux", args...).Run(); err != nil {
+			return errors.New("tmux execution state could not be published")
+		}
+	}
+	return nil
 }
 
 func startExecutionTmuxWindow(executionID, taskID, label, directory, command string) (TmuxProcess, error) {

@@ -48,6 +48,9 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 	}
 	if manifest.ArchiveState == archiveComplete {
 		if _, archiveErr := m.Store.ReadArchive(id); archiveErr == nil {
+			if syncErr := m.syncExecutionStates(id); syncErr != nil {
+				return store.Manifest{}, syncErr
+			}
 			return manifest, nil
 		}
 	}
@@ -132,6 +135,9 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 	archive.Resources = resources
 	if err := m.Store.WriteArchive(id, archive); err != nil {
 		return m.archiveFailure(id, manifest, err)
+	}
+	if err := m.syncExecutionStates(id); err != nil {
+		return manifest, err
 	}
 	return manifest, nil
 }

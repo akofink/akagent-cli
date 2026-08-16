@@ -98,6 +98,8 @@ A task can own zero or more optional tool-neutral execution records.
 Use `task execution create` to persist an execution without starting tmux, then `task execution launch` to start it.
 Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
 The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
+Managed execution windows publish the shared tmux `@agent_state` option by matching those metadata IDs rather than the display label.
+Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 The managed process also receives those IDs as the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment variables.
 An execution can use them directly with the local CLI:
 
@@ -141,6 +143,8 @@ A create or launch with different immutable inputs returns a `conflict` error.
 
 The accepted published conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
 Publication updates the durable record and heartbeat.
+Managed execution publication maps active, failed, and none to a cleared `@agent_state` option.
+Stop clears the option, archive preserves `done`, and reconciliation republishes waiting or blocked only when observations remain fresh.
 
 A finish while the task process is running fails without changing the task outcome.
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.
