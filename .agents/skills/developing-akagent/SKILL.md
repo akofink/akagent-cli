@@ -19,6 +19,8 @@ description: Implements and reviews akagent-cli GitHub issues. Use when changing
 - Keep diagnostics on stderr and opt-in.
 - Make mutations idempotent and recoverable.
 - Treat tmux as an interaction surface, not durable state.
+- Use generic execution records for process launches; optional provider integrations must remain outside task and resource lifecycle behavior.
+- Keep direct human shell execution explicitly available without requiring an external provider.
 - Never expose secret values or inherit unrelated credentials into managed processes.
 
 ## Verify
@@ -34,6 +36,7 @@ git diff --check
 ```
 
 Add focused failure and concurrency tests for stateful behavior.
+Include dogfood coverage for one execution coordinating multiple resources and for core commands without optional providers.
 Show verification evidence rather than only stating that checks pass.
 
 ## Deliver

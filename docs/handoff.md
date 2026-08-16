@@ -19,7 +19,7 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Zero or more independently recoverable task resources with separate Git facts, archives, cleanup state, and recovery debt.
 - Zero or more optional tool-neutral executions with independent identity, tmux metadata, lifecycle observation, archive, stop, and recovery state.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
-- Task and execution-tagged detached tmux resources, managed local Pi compatibility launch, and verified attachment using fresh process identity and heartbeat observations.
+- Task and execution-tagged detached tmux resources, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
 
 ## Current workflow
@@ -32,10 +32,10 @@ Direct-policy tasks deliberately use the registered checkout's current branch wh
 `task execution create` records an optional tool-neutral execution without a process side effect.
 `task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during creation.
 Execution stop, archive, attach, and reconcile operate independently from resource state.
-The compatibility `task launch --target shell` or `task launch --target pi` path materializes a `legacy` execution.
+The compatibility `task launch --target shell` path creates and launches a generic shell execution.
+The optional `task launch --target pi` path delegates to the Pi integration, which creates and launches a generic execution.
 Tmux derives its display name from the descriptive execution label and stores task and execution IDs in window metadata for lifecycle verification.
-Managed Pi compatibility launch persists the resolved command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
-The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive and a failed launch remains retryable with the same immutable inputs.
+The Pi integration passes a validated prompt-file reference without changing standard input, so Pi remains interactive and a failed launch remains retryable.
 The historical `task start` create-and-launch shortcut remains available for direct human recovery.
 
 `task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.
@@ -61,7 +61,7 @@ After a command that may have mutated state fails, inspect the task and run reco
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
 At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 `akagent integration inspect` is read-only and reports the current state.
-Direct human commands, including managed Pi task starts, remain available regardless of the signal.
+Direct human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
 
 ## Current public command surface
 

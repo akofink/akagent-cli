@@ -442,14 +442,14 @@ func (m *Manager) Create(request CreateRequest) (StartResult, error) {
 	return result, err
 }
 
-// LaunchExecution starts an explicit shell or managed Pi execution for an
-// existing task. Launch configuration is persisted before tmux is touched.
+// LaunchExecution preserves the direct shell compatibility shortcut for an
+// existing task. Optional integrations use the generic execution methods.
 func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manifest, error) {
 	if id == "" {
 		return store.Manifest{}, fmt.Errorf("task ID is required")
 	}
-	if request.Target != "shell" && request.Target != "pi" {
-		return store.Manifest{}, &store.Error{Kind: store.KindUsage, Message: "execution target must be shell or pi", Recovery: "Retry with `--target shell` or `--target pi`"}
+	if request.Target != "shell" {
+		return store.Manifest{}, &store.Error{Kind: store.KindUsage, Message: "core execution launch supports shell only", Recovery: "Use `akagent task execution launch` or select an optional integration"}
 	}
 	manifest, err := m.manifest(id)
 	if err != nil {
@@ -459,10 +459,7 @@ func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manif
 		return store.Manifest{}, &store.Error{Kind: store.KindConflict, Message: "execution ID conflicts with the existing task launch", Recovery: fmt.Sprintf("Inspect task %s and retry with its existing execution ID", id)}
 	}
 	if manifest.Lifecycle == "running" {
-		if request.Target == "pi" && manifest.Launch != nil && manifest.Launch.Target == "pi" {
-			return manifest, nil
-		}
-		if request.Target == "shell" && manifest.Launch != nil && manifest.Launch.Target == "shell" {
+		if manifest.Launch != nil && manifest.Launch.Target == "shell" {
 			return manifest, nil
 		}
 		return store.Manifest{}, fmt.Errorf("task already has a different running execution")
@@ -487,26 +484,14 @@ func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manif
 		}
 		manifest.Repository, manifest.Branch, manifest.BaseRevision, manifest.WorktreeBaseRevision, manifest.WorktreePath = resource.Repository, resource.Branch, resource.BaseRevision, resource.WorktreeBaseRevision, resource.WorktreePath
 	}
-	var launch *store.LaunchConfig
-	if request.Target == "pi" {
-		launch, err = m.prepareLaunch(StartRequest{Agent: "pi", PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
-		if err != nil {
-			return store.Manifest{}, err
-		}
-		if err := m.checkLaunchCredentials(manifest); err != nil {
-			return store.Manifest{}, err
-		}
-	} else {
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/sh"
-		}
-		launch = &store.LaunchConfig{Target: "shell", Command: shell, WorkingDirectory: manifest.WorktreePath}
-		if request.PromptReference != "" || request.WorkingContext != "" {
-			return store.Manifest{}, fmt.Errorf("shell execution does not accept prompt or context")
-		}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
 	}
-	launch.WorkingDirectory = manifest.WorktreePath
+	launch := &store.LaunchConfig{Target: "shell", Command: shell, WorkingDirectory: manifest.WorktreePath}
+	if request.PromptReference != "" || request.WorkingContext != "" {
+		return store.Manifest{}, fmt.Errorf("shell execution does not accept prompt or context")
+	}
 	if manifest.Launch != nil && !sameRequestedLaunch(manifest.Launch, launch) {
 		return store.Manifest{}, fmt.Errorf("execution inputs conflict with the existing task")
 	}

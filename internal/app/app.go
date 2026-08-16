@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/akofink/akagent-cli/internal/integration"
 	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/output"
 	"github.com/akofink/akagent-cli/internal/store"
@@ -89,6 +90,16 @@ func Run(args []string, stdout io.Writer) int {
 	case "task":
 		return taskCommand(args[1:], stdout)
 	case "worker":
+		if len(args) >= 4 && args[1] == "launch-pi" {
+			state, err := store.Open()
+			if err != nil {
+				return 1
+			}
+			if err := integration.LaunchPi(lifecycle.New(state), args[2], args[3], args[4:], os.Stderr, nil); err != nil {
+				return 1
+			}
+			return 0
+		}
 		if len(args) == 3 && args[1] == "launch" {
 			state, err := store.Open()
 			if err != nil {

@@ -6,7 +6,8 @@ The protocol is the stable contract between direct commands, local tasks, and in
 It covers identity, records, lifecycle semantics, output, errors, compatibility, and reconciliation.
 
 It does not standardize cloud provisioning or imply that all workers have identical capabilities.
-Execution records are tool-neutral; the current local CLI retains its historical managed Pi launch as a compatibility surface until the integration delivery.
+Execution records are tool-neutral.
+Optional integrations, including Pi, build on the execution interface rather than task or resource lifecycle behavior.
 
 ## Resources
 
@@ -108,9 +109,10 @@ The task record stores the capability ID and readiness information without stori
 An execution launch persists the resolved command, arguments, working directory, and optional resource attachment before tmux starts.
 The launcher keeps standard input attached to the tmux terminal for interactive tools.
 Credential values and prompt contents are never copied into process arguments, task events, or protocol output.
-The existing managed Pi launch maps its compatibility configuration onto a tool-neutral execution record; Pi-specific launch behavior remains a compatibility implementation rather than part of the execution schema.
+Optional integrations map their provider configuration onto tool-neutral execution records.
+Pi-specific launch behavior is implemented outside the core task, resource, and execution records.
 
-The managed process receives a minimal safe runtime environment, `AKAGENT_TASK_ID`, and only requested environment credentials that passed readiness checks.
+An optional managed integration may receive a minimal safe runtime environment, `AKAGENT_TASK_ID`, and only requested environment credentials that passed readiness checks.
 Optional requirements are recorded as non-secret warnings and are not injected.
 File credentials can satisfy readiness requirements but cannot be injected into the managed environment.
 
@@ -172,7 +174,8 @@ The execution operation creates an optional tool-neutral record without a tmux o
 `task execution launch` starts that record in a task-tagged tmux window and records the process identity.
 The display label is descriptive, while the task and execution IDs remain in tmux metadata used for lifecycle verification.
 A launch failure leaves the execution in recoverable `starting` state and records recovery debt.
-The historical `task launch` and `task start` commands remain compatibility shortcuts and also materialize a `legacy` execution record.
+The historical `task launch --target shell` command remains a direct-human compatibility shortcut built on a generic execution record.
+The optional `task launch --target pi` shortcut delegates to the Pi integration, which creates and launches a generic execution record.
 
 ## Lifecycle operations
 
@@ -314,7 +317,8 @@ After a command that may have mutated state fails, inspect the task and run reco
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
 At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 `akagent integration inspect` reports the read-only state.
-The signal controls automated invocation only; direct human commands, including an explicit managed Pi task start, remain available regardless of the signal.
+The signal controls automated invocation only.
+Direct human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
 
 ## Concurrency and consistency
 

@@ -53,28 +53,24 @@ Without that option, the existing derived root remains `<checkout-parent>/.akage
 The `direct` policy permits the registered checkout itself when that is explicitly selected.
 
 `task create` creates a durable record, validates the repository inputs, and creates the required branch and worktree without starting tmux or a process.
-`task launch --target shell` starts a direct shell, while `task launch --target pi` starts managed Pi.
+`task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
+`task launch --target shell` is an explicit direct human shell shortcut built on those generic execution commands.
+Execution stop, archive, attachment, and reconciliation are independent from resource state.
+A task can coordinate multiple resources through one execution by selecting a resource during execution creation.
 Worktree-policy tasks require an explicit descriptive branch such as `akofink/51-task-labels`.
 Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
-`task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
-Execution stop, archive, attachment, and reconciliation are independent from resource state.
-Compatibility task launches display a branch label while retaining task and execution IDs in window metadata for lifecycle verification.
-The local CLI can launch either a detached shell for direct human work or a managed local Pi process.
-Use `task launch --target pi` to select the managed launch, `--prompt` to provide a local prompt file, and `--context` to provide one non-secret working-context value.
 Use `task attach` for verified human attachment and use `task publish` for durable condition and heartbeat updates.
 
 `task reconcile` compares durable records with tmux and Git observations and repairs safe derived facts.
 It never deletes task state, branches, worktrees, windows, or terminal history.
 
-## Managed Pi launch
+## Optional Pi integration
 
-Pi must be installed and available as `pi` on `PATH`.
-The managed launch configuration resolves that command, the task worktree, an optional prompt-file reference, and an optional non-secret context before starting tmux.
-Worktree-policy managed launches require an explicit descriptive branch before the task worktree is created.
-The validated prompt-file reference is passed to Pi while standard input remains attached to the tmux terminal, preserving Pi's interactive mode.
-Prompt content is never placed in process arguments, task events, or protocol output.
-The pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible during execution.
-A failed launch prints safe recovery guidance and remains retryable through the same task launch command.
+Pi is an optional execution integration and must be installed as `pi` on `PATH` only when selected.
+Core task, resource, and generic execution creation do not inspect or require Pi.
+The compatibility `task launch --target pi` shortcut creates a generic execution and delegates process setup to the Pi integration.
+The integration passes the owning task ID as `AKAGENT_TASK_ID`, preserves interactive standard input, and keeps prompt content out of durable records and protocol output.
+Use the direct shell target when a human wants a shell without any provider integration.
 
 ```bash
 akagent task create --title "Review the build" --repository demo \
@@ -82,11 +78,9 @@ akagent task create --title "Review the build" --repository demo \
 akagent task launch <task-id> --target pi --prompt /path/to/prompt.txt --context "example"
 ```
 
-The launch response includes the selected target, resolved command, prompt reference, and working context.
-A repeated create or launch with the same immutable inputs is an idempotent no-op, while a failed launch remains retryable through the same task launch command.
-The historical `task start` create-and-launch shortcut remains available for direct human workflows.
-The managed process receives a minimal safe environment, `AKAGENT_TASK_ID`, and the requested environment credentials that passed readiness checks.
-Optional credentials produce non-secret warnings and are not injected; file credentials are readiness-only and cannot be injected into the managed environment.
+A Pi launch failure leaves the generic execution recoverable and does not change resource state.
+The managed process receives a minimal safe environment and only requested environment credentials that pass readiness checks.
+Optional credentials produce non-secret warnings; file credentials are readiness-only and cannot be injected.
 
 `task archive` captures a stopped or finished task's manifest, events, non-secret Git facts, and available terminal history.
 `task clean` archives first, refuses live tasks, preserves committed, dirty, and untracked work unless each category is explicitly authorized, and records independent cleanup debt.

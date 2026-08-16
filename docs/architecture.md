@@ -29,7 +29,8 @@ The compatibility `--repository` form creates one initial resource.
 The resource command creates additional immutable repository, branch, and worktree combinations.
 A task may own zero or more optional tool-neutral executions.
 Execution creation, launch, observation, attachment, stop, archive, and recovery are independent from resource state.
-The explicit launch operation remains a compatibility shortcut for a direct shell or managed local Pi process.
+The explicit shell launch operation remains a direct-human compatibility shortcut built on generic executions.
+The optional Pi integration provides a separate compatibility shortcut on the same execution interface.
 The legacy `task start` command remains a compatibility shortcut for direct human workflows.
 
 ## Components
@@ -41,7 +42,6 @@ The CLI:
 - Generates stable task IDs when the caller does not provide one.
 - Resolves a named local repository and policy.
 - Validates named credential requirements.
-- Resolves managed local Pi launch configuration when requested.
 - Invokes local lifecycle operations.
 - Emits concise TOON data and structured errors.
 - Provides read-only integration-gate inspection.
@@ -58,7 +58,6 @@ The lifecycle layer owns:
 - Branch and Git worktree creation.
 - Optional execution records with durable process identity, descriptive tmux labels, observation, attachment, stop, archive, and recovery state.
 - Tmux window identity, observation, attachment, and stop.
-- Managed Pi compatibility launch configuration, prompt-file input, and safe process environment.
 - Durable condition publication and heartbeat refresh.
 - Process and Git reconciliation.
 - Archive capture and cleanup-preservation policy.
@@ -113,7 +112,7 @@ Shell helpers, LLM hooks, plugins, and installable skills are optional adapters.
 They must invoke the CLI, request small field sets, preserve structured errors, and never write the task store directly.
 
 Automated integrations are enabled unless `AKAGENT_ENABLED=0` is present.
-The gate is checked by the integration before automated behavior, while direct human commands, including explicit managed Pi starts, remain available.
+The gate is checked by the integration before automated behavior, while direct human commands, including explicit shell execution and optional Pi selection, remain available.
 
 ## Failure assumptions
 
