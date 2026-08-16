@@ -65,7 +65,6 @@ akagent task create --title <title> [--task-id <id>] [--repository <name>] [--re
 akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]
-akagent task start --title <title> --repository <name> ... # legacy create-and-launch shortcut
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 akagent task attach <task-id>
@@ -109,7 +108,7 @@ akagent task resource create "$AKAGENT_TASK_ID" --repository backend --resource-
 akagent task resource list "$AKAGENT_TASK_ID"
 akagent task resource update "$AKAGENT_TASK_ID" backend-resource --metadata delivery=published --external-url https://forge.example/pull/61
 ```
-The compatibility `task launch --target shell` shortcut creates and launches a generic shell execution.
+The `task launch --target shell` command creates and launches a generic shell execution.
 New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
 One execution can coordinate multiple resources by selecting one resource as its working directory and using the owning task ID for further resource operations.
 Resource lifecycle remains independent from execution lifecycle.
@@ -122,7 +121,7 @@ akagent task execution create <task-id> --execution-id coordinator --target shel
 akagent task execution launch <task-id> coordinator
 ```
 
-`--target pi` is an optional integration shortcut.
+`--target pi` is an optional integration target.
 It checks for `pi` only when selected, then creates a generic execution whose worker integration starts Pi.
 Core task, resource, and generic execution commands do not require Pi to be installed.
 

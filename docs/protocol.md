@@ -169,7 +169,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -188,8 +188,8 @@ The execution operation creates an optional tool-neutral record without a tmux o
 The display label is descriptive, while the task and execution IDs remain in tmux metadata used for lifecycle verification.
 Launch clears any stale `@agent_state` value for an active execution.
 A launch failure leaves the execution in recoverable `starting` state and records recovery debt.
-The historical `task launch --target shell` command remains a direct-human compatibility shortcut built on a generic execution record.
-The optional `task launch --target pi` shortcut delegates to the Pi integration, which creates and launches a generic execution record.
+The `task launch --target shell` command creates and launches a generic execution record.
+The `task launch --target pi` target delegates to the Pi integration, which creates and launches a generic execution record.
 
 ## Lifecycle operations
 
