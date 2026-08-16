@@ -528,6 +528,35 @@ esac
 	}
 }
 
+func TestCommandTmuxStopExecutionRequiresWindowGone(t *testing.T) {
+	bin := t.TempDir()
+	statePath := filepath.Join(t.TempDir(), "window")
+	tmuxPath := filepath.Join(bin, "tmux")
+	if err := os.WriteFile(statePath, []byte("live\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const script = `#!/bin/sh
+set -eu
+state="${AKAGENT_TEST_TMUX_STATE:?}"
+case "$1" in
+  list-windows)
+    if [ -f "$state" ]; then printf '%s\t%s\t%s\n' '@1' 'stop-task' 'stop-execution'; fi
+    ;;
+  list-panes) printf '%s\t%s\t%s\n' '@1' '%1' '123' ;;
+  kill-window) : ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AKAGENT_TEST_TMUX_STATE", statePath)
+	if err := (commandTmux{}).StopExecution("stop-execution", "stop-task"); err == nil {
+		t.Fatal("StopExecution() succeeded while the tagged window remained live")
+	}
+}
+
 func TestCommandTmuxStartUsesBranchDisplayNameAndTaskMetadata(t *testing.T) {
 	bin := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "tmux.log")

@@ -873,6 +873,9 @@ func (m *Manager) Publish(id, condition, reason, activity string) (store.Manifes
 }
 
 func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
+	m.operationMu.Lock()
+	defer m.operationMu.Unlock()
+
 	if outcome != "succeeded" && outcome != "failed" {
 		return store.Manifest{}, fmt.Errorf("finish outcome must be succeeded or failed")
 	}
@@ -885,6 +888,9 @@ func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
 	}
 	if len(observation.Processes) != 0 {
 		return store.Manifest{}, fmt.Errorf("task process is still running")
+	}
+	if err := m.ensureExecutionsStopped(id); err != nil {
+		return store.Manifest{}, err
 	}
 	var changed bool
 	manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
@@ -976,7 +982,8 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 	return manifest, err
 }
 
-// Reconcile repairs derived observations and Git facts only. It never removes a window or worktree.
+// Reconcile repairs derived observations and Git facts. It only removes a
+// window when its task and execution metadata are both verified.
 func (m *Manager) Reconcile() ([]store.Manifest, error) {
 	if _, err := m.Store.Recover(); err != nil {
 		return nil, err
@@ -1915,7 +1922,7 @@ func (commandTmux) AttachExecution(executionID, taskID, windowID string) error {
 func (commandTmux) StopExecution(executionID, taskID string) error {
 	observation, err := (commandTmux{}).ObserveExecution(executionID, taskID)
 	if err != nil || !observation.Available {
-		return nil
+		return errors.New("tmux execution window could not be observed")
 	}
 	windows := map[string]bool{}
 	for _, process := range observation.Processes {
@@ -1927,6 +1934,10 @@ func (commandTmux) StopExecution(executionID, taskID string) error {
 		if err := exec.Command("tmux", "kill-window", "-t", window).Run(); err != nil {
 			return errors.New("tmux execution window could not be stopped")
 		}
+	}
+	final, err := (commandTmux{}).ObserveExecution(executionID, taskID)
+	if err != nil || !final.Available || len(final.Processes) != 0 {
+		return errors.New("tmux execution window could not be verified stopped")
 	}
 	return nil
 }

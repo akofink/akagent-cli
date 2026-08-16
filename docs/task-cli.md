@@ -151,8 +151,9 @@ Publication updates the durable record and heartbeat.
 Managed execution publication maps active, failed, and none to a cleared `@agent_state` option.
 Stop clears the option, archive preserves `done`, and reconciliation republishes waiting or blocked only when observations remain fresh.
 
-A finish while the task process is running fails without changing the task outcome.
+A finish while the task or any tagged execution process is running fails without changing the task outcome.
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.
+Execution stop re-observes the verified tagged window before recording `stopped`; a live or unavailable window produces a structured retryable error and leaves durable lifecycle state unchanged.
 
 Archive requires a stopped or finished task and captures the manifest, events, Git facts, resource snapshots, execution snapshots, session references, and available terminal history.
 Execution archive requires only the selected execution to be stopped or finished and does not require resource archive or cleanup.
@@ -168,7 +169,9 @@ Credential cleanup remains independent and retryable.
 
 Reconciliation repairs derived observations and Git facts for the task and each resource.
 It preserves integration-owned session references without parsing provider files.
-It never deletes task state, branches, worktrees, windows, or terminal history.
+For non-running executions, it safely closes and verifies any matching tagged window left by a stale observation.
+A failed verification is retryable and does not claim the execution is stopped.
+It never deletes task state, branches, worktrees, terminal history, or unverified windows.
 Legacy single-resource manifests are migrated lazily to a `legacy` resource when a resource command inspects or extends them.
 Legacy task launch fields migrate lazily to a `legacy` execution when an execution command inspects or extends them.
 Both migrations preserve durable observations and are idempotent.

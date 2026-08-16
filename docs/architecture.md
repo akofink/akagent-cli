@@ -78,6 +78,7 @@ Compatibility task windows retain task-level metadata while new execution operat
 
 Attachment requires a fresh observation and exact process identity before it runs `tmux attach-session`.
 It never trusts a similarly named window and never creates or mutates a target as part of attachment.
+Execution stop re-observes the verified tagged window after killing it, and reports a retryable error rather than recording stopped if the window remains live.
 
 ### Git repositories and worktrees
 
