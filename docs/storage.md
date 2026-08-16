@@ -163,7 +163,7 @@ Callers translate these kinds into protocol errors at the command boundary.
 
 `Clean` never runs while a task's verified tmux identity is live.
 It archives first, preserves committed, dirty, or untracked Git facts unless the operator explicitly authorizes each category, and records worktree and credential cleanup debt independently.
-Resource cleanup applies the same policy to one resource and records its debt without mutating sibling resources.
+Resource cleanup applies the same policy to one resource and records its worktree and credential debt without mutating sibling resources.
 Reconciliation does not invoke either destructive operation.
 
 ## Out of scope
@@ -176,4 +176,5 @@ The store also persists repository registration records, including an optional a
 Older registrations without that field continue to use the derived root in the lifecycle package without a migration rewrite.
 The lifecycle package supplies repository validation and archive and cleanup policy.
 Worktree removal is available only through the lifecycle approval-gated hook and preserves the task archive and branch.
-Credential cleanup remains an independent local hook.
+Credential cleanup is an independent local hook with its own approval, manifest state, append-only events, and retry path.
+Credential cleanup never removes or rewrites the credential manifest itself.

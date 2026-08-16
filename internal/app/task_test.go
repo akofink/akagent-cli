@@ -278,7 +278,7 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 	if result := runCommand(t, []string{"task", "stop", "alpha-history"}); result.code != 0 {
 		t.Fatalf("archived task stop = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "clean", "alpha-history", "--allow-committed", "--allow-dirty", "--allow-untracked", "--allow-worktree"}); result.code != 0 {
+	if result := runCommand(t, []string{"task", "clean", "alpha-history", "--allow-committed", "--allow-dirty", "--allow-untracked", "--allow-worktree", "--allow-credentials"}); result.code != 0 {
 		t.Fatalf("archived task clean = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "create", "--task-id", "alpha-pending", "--title", "Pending cleanup", "--repository", "alpha", "--branch", "main", "--worktree", filepath.Join(alphaWorktreeRoot, "alpha-pending")}); result.code != 0 {
@@ -338,6 +338,25 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 	}
 }
 
+func TestCredentialCleanupCommandContract(t *testing.T) {
+	setupTaskCommandTest(t)
+	const taskID = "credential-86"
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Credential cleanup"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
+		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
+	}
+	blocked := runCommand(t, []string{"credential", "clean", taskID})
+	if blocked.code != 1 || !strings.Contains(blocked.stdout, "category: preservation_required") || !strings.Contains(blocked.stdout, "--allow-credentials") {
+		t.Fatalf("unapproved credential cleanup = (%d, %q), want structured approval error", blocked.code, blocked.stdout)
+	}
+	approved := runCommand(t, []string{"task", "credential", "clean", taskID, "--allow-credentials"})
+	if approved.code != 0 || !strings.Contains(approved.stdout, "credential_cleanup_state: complete") {
+		t.Fatalf("approved credential cleanup = (%d, %q), want completed credential state", approved.code, approved.stdout)
+	}
+}
+
 func TestApprovedWorktreeCleanupCommandContract(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
@@ -355,10 +374,10 @@ func TestApprovedWorktreeCleanupCommandContract(t *testing.T) {
 		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
 	}
 	blocked := runCommand(t, []string{"task", "clean", taskID})
-	if blocked.code != 1 || !strings.Contains(blocked.stdout, "category: preservation_required") || !strings.Contains(blocked.stdout, "--allow-worktree") {
+	if blocked.code != 1 || !strings.Contains(blocked.stdout, "category: preservation_required") || !strings.Contains(blocked.stdout, "--allow-credentials") {
 		t.Fatalf("unapproved cleanup = (%d, %q), want structured approval error", blocked.code, blocked.stdout)
 	}
-	approved := runCommand(t, []string{"task", "clean", taskID, "--allow-worktree"})
+	approved := runCommand(t, []string{"task", "clean", taskID, "--allow-worktree", "--allow-credentials"})
 	if approved.code != 0 || !strings.Contains(approved.stdout, "worktree_cleanup_state: complete") {
 		t.Fatalf("approved cleanup = (%d, %q), want completed cleanup state", approved.code, approved.stdout)
 	}

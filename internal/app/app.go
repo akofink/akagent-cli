@@ -58,13 +58,13 @@ func Run(args []string, stdout io.Writer) int {
 		return write(stdout, helpView{
 			Usage: "akagent <command>",
 			Commands: []string{
-				"credential <list|inspect|doctor>",
+				"credential <list|inspect|doctor|clean>",
 				"integration inspect",
 				"id generate",
 				"repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository <list|inspect|unregister>",
-				"task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
+				"task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
 				"task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]",
 				"update [--source <path>]",
 				"worker inspect",

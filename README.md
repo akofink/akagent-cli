@@ -16,11 +16,11 @@ Current commands:
 
 ```text
 akagent
-akagent credential <list|inspect|doctor>
+akagent credential <list|inspect|doctor|clean>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -93,7 +93,9 @@ Optional credentials produce non-secret warnings; file credentials are readiness
 `task archive` captures a stopped or finished task's manifest, events, non-secret Git facts, and available terminal history.
 `task clean` archives first, refuses live tasks, preserves committed, dirty, and untracked work unless each category is explicitly authorized, and records independent cleanup debt.
 For isolated worktree tasks, `--allow-worktree` is a separate approval for the destructive cleanup hook.
+Credential cleanup is a separate destructive hook and requires `--allow-credentials`.
 The hook validates ownership, removes only the task worktree, preserves its branch and archive facts, and never removes a direct registered checkout.
+Credential cleanup can be retried independently with `akagent credential clean <task-id> --allow-credentials` or `akagent task credential clean <task-id> --allow-credentials`.
 
 ## Orchestration workflow
 
@@ -143,6 +145,7 @@ Commands:
 akagent credential list
 akagent credential inspect <id>
 akagent credential doctor
+akagent credential clean <task-id> [--allow-credentials]
 ```
 
 Set `AKAGENT_CREDENTIALS` to use a non-default manifest path.

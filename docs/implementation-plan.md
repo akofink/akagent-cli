@@ -44,7 +44,8 @@ The current CLI creates tasks and Git resources without execution side effects.
 Explicit `task launch --target shell` starts a generic execution for direct human or shell-driven work.
 The optional `task launch --target pi` shortcut delegates to the Pi execution integration.
 The removed `task start` shortcut is rejected with migration guidance.
-Approval-gated worktree cleanup hooks are implemented for task and resource cleanup, while credential cleanup remains an independent hook.
+Approval-gated worktree and credential cleanup hooks are implemented for task and resource cleanup.
+Credential cleanup is task-scoped, independently approval-gated, durable, and retryable without repeating Git cleanup.
 
 ## Current orchestration boundary
 
@@ -59,11 +60,11 @@ At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to th
 
 ```text
 akagent
-akagent credential <list|inspect|doctor>
+akagent credential <list|inspect|doctor|clean>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -74,4 +75,4 @@ akagent worker inspect
 
 1. Keep direct local commands stable and protocol output compatible.
 2. Add broader workflow integrations beyond the stable CLI boundary while preserving the immediate disable signal.
-3. Extend local lifecycle coverage for broader cleanup integrations beyond the approved worktree hook.
+3. Extend local lifecycle coverage for provider-specific credential cleanup behavior beyond the stable hook boundary.

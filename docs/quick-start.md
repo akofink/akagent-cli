@@ -246,13 +246,18 @@ Clean only after reviewing the archived Git facts:
 
 ```bash
 akagent task clean <task-id>
-akagent task clean <task-id> --allow-committed --allow-dirty --allow-untracked --allow-worktree
+akagent task clean <task-id> --allow-committed --allow-dirty --allow-untracked --allow-worktree --allow-credentials
 ```
 
 Cleanup refuses to act while the verified task process is live and refuses to discard committed, dirty, or untracked work unless each category is explicitly authorized.
 For isolated worktree tasks, `--allow-worktree` is a separate approval that enables the ownership-checked worktree cleanup hook.
 The hook removes only the task worktree, preserves the branch and archived Git facts, and never removes a direct registered checkout.
 Without that approval, the worktree remains available for direct human recovery and cleanup state records the debt.
+Credential cleanup requires the separate `--allow-credentials` approval and can be retried without touching the worktree:
+
+```bash
+akagent credential clean <task-id> --allow-credentials
+```
 
 ## Recovery rules
 
@@ -266,7 +271,7 @@ Do not attach when the heartbeat or process observation is stale.
 
 Stop the task before archiving or cleaning it.
 
-Review `committed`, `dirty`, `untracked`, `archive_state`, `cleanup_state`, and `cleanup_debt` before authorizing cleanup.
+Review `committed`, `dirty`, `untracked`, `archive_state`, `cleanup_state`, `credential_cleanup_state`, and `cleanup_debt` before authorizing cleanup.
 
 Treat structured errors and their recovery fields as the supported recovery guidance.
 

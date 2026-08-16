@@ -82,7 +82,7 @@ One execution can coordinate multiple task resources by selecting a resource wor
 
 It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
 Worktree cleanup requires explicit approval and validates durable ownership before removal.
-Credential cleanup remains an independent hook.
+Credential cleanup is an independent approval-gated hook with durable retry state.
 
 ## Rejected initial approaches
 

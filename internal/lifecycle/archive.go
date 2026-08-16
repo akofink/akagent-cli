@@ -13,12 +13,14 @@ import (
 )
 
 // CleanupOptions explicitly authorizes destruction of each kind of recoverable
-// Git state. No option is implied by task completion or by archive success.
+// Git state and task-scoped credential material. No option is implied by task
+// completion or by archive success.
 type CleanupOptions struct {
-	AllowCommitted bool
-	AllowDirty     bool
-	AllowUntracked bool
-	AllowWorktree  bool
+	AllowCommitted   bool
+	AllowDirty       bool
+	AllowUntracked   bool
+	AllowWorktree    bool
+	AllowCredentials bool
 }
 
 const (
@@ -182,7 +184,7 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 	if err != nil {
 		return store.Manifest{}, err
 	}
-	if manifest.CleanupState == cleanupComplete {
+	if manifest.CleanupState == cleanupComplete && manifest.CredentialCleanupState == cleanupComplete {
 		return manifest, nil
 	}
 	live, available, err := m.taskLive(id)
@@ -223,21 +225,8 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 
 	var failures []error
 	if manifest.CredentialCleanupState != cleanupComplete {
-		credentialCleanup := m.CleanupCredentials
-		if credentialCleanup == nil {
-			credentialCleanup = func(store.Manifest) error { return nil }
-		}
-		if err := credentialCleanup(manifest); err != nil {
-			manifest.CredentialCleanupState = cleanupPartial
-			failures = append(failures, errors.New("credential cleanup failed"))
-			if eventErr := appendOperationEvent(m.Store, id, "cleanup_credentials", "partial", cleanupDebtEvent); eventErr != nil {
-				failures = append(failures, errors.New("credential cleanup debt event could not be recorded"))
-			}
-		} else {
-			manifest.CredentialCleanupState = cleanupComplete
-			if eventErr := appendOperationEvent(m.Store, id, "cleanup_credentials", "succeeded", "credential cleanup complete"); eventErr != nil {
-				failures = append(failures, errors.New("credential cleanup event could not be recorded"))
-			}
+		if err := m.runCredentialCleanup(id, &manifest, options.AllowCredentials); err != nil {
+			failures = append(failures, err)
 		}
 	}
 
@@ -332,6 +321,101 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 		return m.cleanupFailure(id, manifest, err)
 	}
 	return manifest, nil
+}
+
+// CleanCredentials runs only the task-scoped credential cleanup hook. It
+// never removes a worktree and can therefore be retried independently from
+// Git cleanup. The explicit credential approval is separate from every Git
+// preservation approval.
+func (m *Manager) CleanCredentials(id string, options CleanupOptions) (store.Manifest, error) {
+	m.operationMu.Lock()
+	defer m.operationMu.Unlock()
+
+	manifest, err := m.manifest(id)
+	if err != nil {
+		return store.Manifest{}, err
+	}
+	if manifest.CredentialCleanupState == cleanupComplete {
+		return manifest, nil
+	}
+	live, available, err := m.taskLive(id)
+	if err != nil {
+		return store.Manifest{}, err
+	}
+	if !available {
+		return store.Manifest{}, errors.New("task process observation is unavailable")
+	}
+	if live {
+		return store.Manifest{}, liveTaskError("cleaning credentials")
+	}
+	if manifest.Lifecycle != "stopped" && manifest.Lifecycle != "finished" {
+		return store.Manifest{}, fmt.Errorf("task must be stopped or finished before cleaning credentials")
+	}
+	if manifest.ArchiveState != archiveComplete {
+		if _, err := m.archive(id); err != nil {
+			return store.Manifest{}, err
+		}
+		manifest, err = m.manifest(id)
+		if err != nil {
+			return store.Manifest{}, err
+		}
+	}
+	if err := m.runCredentialCleanup(id, &manifest, options.AllowCredentials); err != nil {
+		return manifest, err
+	}
+	return manifest, nil
+}
+
+func (m *Manager) runCredentialCleanup(id string, manifest *store.Manifest, allowed bool) error {
+	if manifest.CredentialCleanupState == cleanupComplete {
+		return nil
+	}
+	manifest.CleanupDebt = true
+	manifest.CredentialCleanupState = cleanupPending
+	if err := m.Store.WriteManifest(id, *manifest); err != nil {
+		return err
+	}
+	if err := appendOperationEvent(m.Store, id, "cleanup_credentials", "intent", "credential cleanup requested"); err != nil {
+		return &store.Error{Kind: store.KindPartial, Message: "Credential cleanup is incomplete", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent credential clean %s`", id), Err: err}
+	}
+	if !allowed {
+		manifest.CredentialCleanupState = cleanupBlocked
+		manifest.CleanupDebt = true
+		writeErr := m.Store.WriteManifest(id, *manifest)
+		eventErr := appendOperationEvent(m.Store, id, "cleanup_credentials", "preservation_required", "credential cleanup approval required")
+		if writeErr != nil || eventErr != nil {
+			return &store.Error{Kind: store.KindPartial, Message: "Credential cleanup approval could not be recorded", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent credential clean %s`", id), Err: errors.Join(writeErr, eventErr)}
+		}
+		return &store.Error{Kind: store.KindPreservation, Message: "Credential cleanup requires explicit authorization", Recovery: fmt.Sprintf("Retry `akagent credential clean %s --allow-credentials`", id)}
+	}
+
+	if m.CleanupCredentials != nil {
+		if err := m.CleanupCredentials(*manifest); err != nil {
+			manifest.CredentialCleanupState = cleanupPartial
+			manifest.CleanupDebt = true
+			writeErr := m.Store.WriteManifest(id, *manifest)
+			eventErr := appendOperationEvent(m.Store, id, "cleanup_credentials", "partial", cleanupDebtEvent)
+			return &store.Error{Kind: store.KindPartial, Message: "Credential cleanup is incomplete", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent credential clean %s --allow-credentials`", id), Err: errors.Join(writeErr, eventErr)}
+		}
+	}
+
+	manifest.CredentialCleanupState = cleanupComplete
+	manifest.CleanupDebt = cleanupDebtRemaining(*manifest)
+	if err := m.Store.WriteManifest(id, *manifest); err != nil {
+		return err
+	}
+	if err := appendOperationEvent(m.Store, id, "cleanup_credentials", "succeeded", "credential cleanup complete"); err != nil {
+		manifest.CredentialCleanupState = cleanupPartial
+		manifest.CleanupDebt = true
+		_ = m.Store.WriteManifest(id, *manifest)
+		return &store.Error{Kind: store.KindPartial, Message: "Credential cleanup is incomplete", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent credential clean %s --allow-credentials`", id)}
+	}
+	return nil
+}
+
+func cleanupDebtRemaining(manifest store.Manifest) bool {
+	return manifest.CleanupState != "" && manifest.CleanupState != cleanupComplete ||
+		manifest.WorktreeCleanupState != "" && manifest.WorktreeCleanupState != cleanupComplete
 }
 
 func (m *Manager) cleanupFailure(id string, manifest store.Manifest, cause error) (store.Manifest, error) {
