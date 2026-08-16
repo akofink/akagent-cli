@@ -39,7 +39,8 @@ Direct-policy tasks deliberately use the registered checkout's current branch wh
 Execution stop, archive, attach, and reconcile operate independently from resource state.
 The `task launch --target shell` path creates and launches a generic shell execution.
 The optional `task launch --target pi` path delegates to the Pi integration, which creates and launches a generic execution.
-Tmux derives its display name from the descriptive execution label and stores task and execution IDs in window metadata for lifecycle verification.
+Compatibility launches derive their execution and tmux display labels from the selected resource or task branch without the owner prefix, or require an explicit descriptive `--label`.
+Tmux stores task and execution IDs in window metadata for lifecycle verification.
 Managed execution lifecycle state uses those metadata IDs to clear active state, publish waiting or blocked state, and mark completed execution `done` through `@agent_state`.
 The Pi integration passes a validated prompt-file reference without changing standard input, so Pi remains interactive and a failed launch remains retryable.
 The historical `task start` create-and-launch shortcut is rejected with structured migration guidance.

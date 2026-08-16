@@ -64,7 +64,7 @@ repository:
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
 akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile> ...
-akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]
+akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 akagent task attach <task-id>
@@ -109,6 +109,9 @@ akagent task resource list "$AKAGENT_TASK_ID"
 akagent task resource update "$AKAGENT_TASK_ID" backend-resource --metadata delivery=published --external-url https://forge.example/pull/61
 ```
 The `task launch --target shell` command creates and launches a generic shell execution.
+Compatibility shell and Pi launches derive the execution and tmux display label from the selected resource or task branch, without the owner prefix.
+Use `--label <descriptive-label>` when no descriptive branch is available.
+Labels must not be `pi`, `shell`, `akagent`, `execution`, or an internal UUID.
 New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
 One execution can coordinate multiple resources by selecting one resource as its working directory and using the owning task ID for further resource operations.
 Resource lifecycle remains independent from execution lifecycle.

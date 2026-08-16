@@ -68,6 +68,8 @@ execution:
 
 The task ID and execution ID are both written to owned tmux window metadata.
 The display label is descriptive and never derived from an internal UUID.
+Compatibility launches derive that label from the selected resource or task branch, removing the owner prefix, or require `--label <descriptive-label>` when no branch is available.
+The compatibility label must not be `pi`, `shell`, `akagent`, `execution`, or an internal UUID.
 A managed execution also receives `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` as non-secret environment context.
 An execution can use those values with the local CLI to create, inspect, and update resources for its owning task.
 A resource ID is attachment metadata used to select a working directory and verify durable intent; execution lifecycle operations do not mutate or require the resource's archive or cleanup state.
@@ -190,6 +192,7 @@ Launch clears any stale `@agent_state` value for an active execution.
 A launch failure leaves the execution in recoverable `starting` state and records recovery debt.
 The `task launch --target shell` command creates and launches a generic execution record.
 The `task launch --target pi` target delegates to the Pi integration, which creates and launches a generic execution record.
+Both compatibility targets use a descriptive branch-derived execution and tmux label, or an explicit `--label` value.
 
 ## Lifecycle operations
 
