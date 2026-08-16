@@ -125,11 +125,22 @@ type CreateRequest struct {
 	Optional     []string
 }
 
+// ResourceRequest contains only immutable Git resource inputs. Resource IDs
+// are supplied by the caller so retries remain idempotent.
+type ResourceRequest struct {
+	ID           string
+	Repository   string
+	Branch       string
+	BaseRevision string
+	WorktreePath string
+}
+
 // LaunchRequest selects one of the currently supported local execution
 // targets. This intentionally models one execution only; later deliveries can
 // add independent execution records without changing task creation.
 type LaunchRequest struct {
 	Target          string
+	ResourceID      string
 	PromptReference string
 	WorkingContext  string
 }
@@ -294,19 +305,37 @@ func discoverInstructions(path string) []string {
 	return instructions
 }
 
-// Create durably records a task and its single Git resource. It does not
-// inspect, create, or mutate tmux and it never starts a process.
+// Create durably records task intent and, when repository inputs are supplied,
+// the compatibility initial Git resource. It never starts a process.
 func (m *Manager) Create(request CreateRequest) (StartResult, error) {
-	if request.ID == "" || request.Title == "" || request.Repository == "" {
-		return StartResult{}, fmt.Errorf("task ID, title, and repository are required")
-	}
-	repository, err := m.Store.ReadRepository(request.Repository)
-	if err != nil {
-		return StartResult{}, err
+	if request.ID == "" || request.Title == "" {
+		return StartResult{}, fmt.Errorf("task ID and title are required")
 	}
 	request.Requirements = unique(request.Requirements)
 	request.Optional = unique(request.Optional)
 	warnings, err := m.checkCredentials(request.Requirements, request.Optional)
+	if err != nil {
+		return StartResult{}, err
+	}
+	if request.Repository == "" {
+		if request.Branch != "" || request.BaseRevision != "" || request.WorktreePath != "" { return StartResult{}, &store.Error{Kind: store.KindUsage, Message: "Git inputs require a repository resource", Recovery: "Create the task first, then use `akagent task resource create`"} }
+		manifest := store.Manifest{Title: request.Title, Worker: "local", Lifecycle: "created", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+		created, existing, err := m.Store.CreateManifest(request.ID, manifest)
+		if err != nil {
+			return StartResult{}, err
+		}
+		if !created {
+			if existing.Title != request.Title || existing.Worker != "local" || existing.Requirements != manifest.Requirements {
+				return StartResult{}, fmt.Errorf("task inputs conflict with the existing task")
+			}
+			return StartResult{Manifest: existing}, nil
+		}
+		if _, err := m.Store.AppendEvent(request.ID, store.Event{Operation: "create", Outcome: "intent"}); err != nil {
+			return StartResult{}, err
+		}
+		return StartResult{Manifest: manifest, Created: true}, nil
+	}
+	repository, err := m.Store.ReadRepository(request.Repository)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -333,6 +362,9 @@ func (m *Manager) Create(request CreateRequest) (StartResult, error) {
 				if err := m.ensureWorktree(request.ID, repository, &existing); err != nil {
 					return err
 				}
+			}
+			if err := m.ensureLegacyResource(request.ID, &existing); err != nil {
+				return err
 			}
 			result = StartResult{Manifest: existing}
 			return nil
@@ -361,6 +393,9 @@ func (m *Manager) Create(request CreateRequest) (StartResult, error) {
 		}
 		if err := m.ensureWorktree(request.ID, repository, &manifest); err != nil {
 			_, _ = m.Store.AppendEvent(request.ID, store.Event{Operation: "create", Outcome: "failed", Detail: "worktree"})
+			return err
+		}
+		if err := m.ensureLegacyResource(request.ID, &manifest); err != nil {
 			return err
 		}
 		result = StartResult{Manifest: manifest, Created: true}
@@ -393,6 +428,23 @@ func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manif
 	}
 	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
 		return store.Manifest{}, fmt.Errorf("task cannot launch after it is %s", manifest.Lifecycle)
+	}
+	if manifest.WorktreePath == "" {
+		resourceID := request.ResourceID
+		if resourceID == "" {
+			ids := strings.Split(manifest.ResourceIDs, ",")
+			if len(ids) == 1 && ids[0] != "" {
+				resourceID = ids[0]
+			}
+		}
+		if resourceID == "" {
+			return store.Manifest{}, &store.Error{Kind: store.KindConflict, Message: "task launch requires a selected resource", Recovery: "Create a resource, then retry with `--resource <resource-id>`"}
+		}
+		resource, resourceErr := m.InspectResource(id, resourceID)
+		if resourceErr != nil {
+			return store.Manifest{}, resourceErr
+		}
+		manifest.Repository, manifest.Branch, manifest.BaseRevision, manifest.WorktreeBaseRevision, manifest.WorktreePath = resource.Repository, resource.Branch, resource.BaseRevision, resource.WorktreeBaseRevision, resource.WorktreePath
 	}
 	var launch *store.LaunchConfig
 	if request.Target == "pi" {
@@ -779,6 +831,9 @@ func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
 			return store.Manifest{}, err
 		}
 	}
+	if err := m.syncResourceFacts(id, manifest); err != nil {
+		return store.Manifest{}, err
+	}
 	if changed {
 		_, err = m.Store.AppendEvent(id, store.Event{Operation: "finish", Outcome: outcome})
 	}
@@ -826,6 +881,9 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 			return store.Manifest{}, err
 		}
 	}
+	if err := m.syncResourceFacts(id, manifest); err != nil {
+		return store.Manifest{}, err
+	}
 	if changed {
 		_, err = m.Store.AppendEvent(id, store.Event{Operation: "stop", Outcome: "succeeded"})
 	}
@@ -861,6 +919,9 @@ func (m *Manager) Reconcile() ([]store.Manifest, error) {
 			return nil
 		})
 		if err != nil {
+			return nil, err
+		}
+		if err := m.reconcileResources(id, manifest); err != nil {
 			return nil, err
 		}
 		if changed {

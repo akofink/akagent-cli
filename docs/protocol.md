@@ -29,6 +29,8 @@ The current CLI exposes `akagent worker inspect` for the implicit local worker.
 ### Task
 
 A task has an immutable ID, operator request, and mutable execution record.
+A task may own zero or more Git resources.
+Task creation can therefore record intent without selecting a repository or creating a worktree.
 
 ```toon
 task:
@@ -42,6 +44,23 @@ Task IDs are generated before dispatch and are safe for filenames, tmux options,
 UUIDv7 provides sortable random identity without worker-local coordination.
 
 Titles, branches, tickets, tmux names, and prompts are attributes rather than identity.
+
+### Task resource
+
+A task resource is an immutable association of one registered repository, branch, base revision, and worktree path.
+Each resource has its own Git facts, archive state, cleanup state, and recovery debt.
+Resource records are independently archived, inspected, reconciled, and cleaned.
+
+```toon
+resource:
+  id: 019f...
+  repository: backend
+  branch: akofink/57-backend
+  worktree_path: /path/to/.akagent/worktrees/backend/019f...
+  committed: false
+  dirty: false
+  untracked: false
+```
 
 ### Repository
 
@@ -84,7 +103,7 @@ Observed facts include tmux window existence, process identity and start time, h
 
 The compact `status` field is a computed view:
 
-1. `created` after durable task and Git resource creation, before an execution is selected.
+1. `created` after durable task creation and any requested Git resource creation, before an execution is selected.
 2. `starting` while recoverable execution startup is incomplete.
 3. `failed` when the condition or finish outcome records failure.
 4. `waiting` or `blocked` when a fresh process observation has that condition.
@@ -106,13 +125,16 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task resource <create|list|inspect|archive|clean>
 akagent update [--source <path>]
 akagent worker inspect
 ```
 
-Task creation validates the repository and credential requirements, persists a manifest, and creates the requested branch and Git worktree when needed.
-It does not create a tmux window or start a process.
+Task creation validates credential requirements and persists a task manifest without creating a tmux window or starting a process.
+When `--repository` is supplied for compatibility, it also creates the initial legacy resource.
+A task with no repository starts with zero resources.
+`task resource create` adds each immutable repository, branch, base, and worktree association and creates its Git worktree when needed.
 Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 
@@ -130,20 +152,23 @@ The historical `task start` command remains a compatibility shortcut for direct 
 The operator surface generates a task ID when omitted.
 Task creation is recoverable and records these steps:
 
-1. Resolve and lock the repository.
-2. Validate policy, requested branch, and requested base.
-3. Create or validate the branch and worktree.
-4. Check named required and optional credential capabilities.
-5. Persist the task manifest and create event.
+1. Check named required and optional credential capabilities.
+2. Persist the task manifest and create event.
+3. For a compatibility `--repository` input, resolve and lock the repository.
+4. For a compatibility `--repository` input, validate policy, branch, base, and worktree.
 
-Creation has no tmux or process side effect.
+Resource creation separately resolves and locks its repository, creates or validates its branch and worktree, and records a resource event.
+Neither operation has a tmux or process side effect.
 Repeated equivalent creates return the existing task with exit code `0`.
 Conflicting immutable inputs return a structured conflict.
 
-Explicit launch then persists the selected shell or Pi execution configuration, creates a detached task-tagged tmux resource, and records the observed process identity.
+Resource creation and explicit launch remain separate durable operations.
+Explicit launch persists the selected shell or Pi execution configuration, creates a detached task-tagged tmux resource, and records the observed process identity.
+A launch for a task with resources selects one resource with `--resource` when the selection is not unambiguous.
 Repeated equivalent launches are successful no-ops.
-A failed launch remains retryable without recreating the task resource.
-The current implementation supports one execution target per task; multiple resources and generic execution records are later epic work.
+A failed launch remains retryable without recreating the task or selected resource.
+The current implementation still supports one execution target per task.
+Generic multiple execution records remain out of scope for this delivery.
 
 ### Publish state
 
@@ -154,6 +179,8 @@ It does not make a declaration authoritative over contradictory process or Git o
 ### Inspect and list
 
 List views default to compact decision-relevant fields and include a definitive total.
+Task resource operations use the same compact TOON boundary.
+`task resource list` returns `resources[]` and `total`, while inspect returns one `resource` object.
 The default list includes actionable records: non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
 Only fully archived, fully cleaned, debt-free records are hidden by default.
 `task list --all` includes all durable task records.
@@ -195,12 +222,15 @@ It does not infer verification success, commit state, or worktree cleanliness fr
 
 Archive accepts stopped or finished tasks after confirming no task process is live.
 It captures the manifest, event history, non-secret Git facts, and terminal history when available.
+`task resource archive` captures one resource's manifest, events, and Git facts without changing another resource's archive state.
 Unavailable terminal history is recorded as a warning.
 Partial archive attempts remain retryable, and equivalent archives are idempotent.
 
 ### Clean
 
 Clean archives first and refuses destructive action while a verified task process runs.
+`task resource clean` applies the same explicit preservation approvals to one resource only.
+A blocked or partial resource cleanup leaves that resource's debt durable and does not mark sibling resources cleaned.
 It preserves committed, dirty, and untracked Git facts unless the operator explicitly supplies `--allow-committed`, `--allow-dirty`, and `--allow-untracked` for the corresponding categories.
 
 For a registered `worktree` repository, removing the task worktree also requires the separate `--allow-worktree` approval.
@@ -257,6 +287,7 @@ The signal controls automated invocation only; direct human commands, including 
 ## Concurrency and consistency
 
 Task mutation uses a per-task lock.
+Resource mutation uses the owning task lock and a per-repository lock for Git setup.
 Repository mutation uses a per-repository lock.
 Manifest replacement uses atomic rename and synchronization.
 Task ID and operation name form the default idempotency identity.
@@ -269,4 +300,6 @@ Adding optional fields is compatible.
 Removing fields, changing meanings, or changing lifecycle semantics requires a protocol version change.
 Interrupted legacy `starting` manifests without a recorded process identity migrate to `created` when the task is created again.
 Legacy manifests with a recorded process remain attached to their observed execution and are not relaunched by migration.
+Legacy manifests with one repository, branch, and worktree are migrated lazily when resource operations inspect or extend them.
+The migration creates a `legacy` resource and preserves the existing task execution fields, Git facts, archive state, cleanup state, and recovery debt.
 Human-readable text is not a stable parsing interface.

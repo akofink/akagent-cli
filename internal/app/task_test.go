@@ -104,6 +104,30 @@ func TestTaskCreateHasNoTmuxSideEffectUntilExplicitLaunch(t *testing.T) {
 	}
 }
 
+func TestTaskResourcesCanBeCreatedAndListedIndependently(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "create", "--task-id", "resource-task", "--title", "Multiple resources"}); result.code != 0 || !strings.Contains(result.stdout, "status: created") {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	for _, id := range []string{"one", "two"} {
+		result := runCommand(t, []string{"task", "resource", "create", "resource-task", "--resource-id", id, "--repository", "demo"})
+		if result.code != 0 || !strings.Contains(result.stdout, "id: "+id) {
+			t.Fatalf("resource create %s = (%d, %q)", id, result.code, result.stdout)
+		}
+	}
+	listed := runCommand(t, []string{"task", "resource", "list", "resource-task"})
+	if listed.code != 0 || !strings.Contains(listed.stdout, "resources[2]") || !strings.Contains(listed.stdout, "one") || !strings.Contains(listed.stdout, "two") {
+		t.Fatalf("resource list = (%d, %q), want two resources", listed.code, listed.stdout)
+	}
+}
+
 func TestWorktreeTaskStartRequiresDescriptiveBranch(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")

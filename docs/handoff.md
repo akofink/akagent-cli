@@ -16,16 +16,21 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - A local credential manifest with `file:` and `env:` readiness checks plus `credential list`, `inspect`, and `doctor`.
 - Repository registration with `worktree` and `direct` policies.
 - Durable local task creation, explicit execution launch, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
+- Zero or more independently recoverable task resources with separate Git facts, archives, cleanup state, and recovery debt.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
 - Task-tagged detached tmux resources, managed local Pi launch, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
 
 ## Current workflow
 
-`task create` creates a durable record and creates or validates the task Git worktree without creating a tmux window or starting a process.
-Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
+`task create` creates durable task intent and can create zero resources without creating a tmux window or starting a process.
+The compatibility `--repository` form creates one initial resource.
+`task resource create` adds additional repository, branch, and worktree combinations.
+Worktree-policy resources require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 `task launch --target shell` or `task launch --target pi` then creates the explicit execution.
+A multi-resource task selects one resource with `--resource`.
+Generic multiple executions remain out of scope.
 Tmux derives its display name from the branch without the owner prefix and keeps the task ID only in window metadata for lifecycle verification.
 Managed launch persists the resolved `pi` command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
 The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive and a failed launch remains retryable with the same immutable inputs.
@@ -39,8 +44,10 @@ Isolated worktree removal additionally requires `--allow-worktree` and validates
 The hook preserves the task branch and archive facts, while direct repository tasks never remove their registered checkout.
 Credential cleanup remains independent, and cleanup state and recovery debt are durable and independently retryable.
 
-`task reconcile` repairs safe derived observations and Git facts.
+`task resource archive` and `task resource clean` operate on one resource without changing sibling resource state.
+`task reconcile` repairs safe derived observations and Git facts for tasks and resources.
 It never deletes task state, branches, worktrees, windows, or terminal history.
+Legacy single-resource manifests migrate lazily to a `legacy` resource when resource operations inspect or extend them.
 
 Agent orchestration is enabled by default over this stable CLI boundary.
 The agent skill owns automated lifecycle behavior and preserves direct human CLI use.
@@ -61,7 +68,8 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task resource <create|list|inspect|archive|clean>
 akagent update [--source <path>]
 akagent worker inspect
 ```

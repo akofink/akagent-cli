@@ -57,8 +57,9 @@ repository:
 ## Task commands
 
 ```text
-akagent task create --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]
-akagent task launch <task-id> --target <shell|pi> [--prompt <path>] [--context <value>]
+akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
+akagent task resource <create|list|inspect|archive|clean> ...
+akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]
 akagent task start --title <title> --repository <name> ... # legacy create-and-launch shortcut
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
@@ -80,14 +81,18 @@ Use `--all` to include all durable task records.
 `--repository <name>` filters by registered repository name, and `--worktree <path>` filters by exact task worktree path.
 Filters compose as an intersection and results remain sorted by task ID.
 
+Task creation persists task intent and can create zero resources.
+The compatibility `--repository` form creates one initial resource without creating a tmux window or starting a process.
+Use `akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>]` to add each resource.
 The `worktree` policy requires an explicit descriptive `--branch` value, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`, and creates an isolated worktree under the registered repository's worktree root.
-Explicit `--branch`, `--base`, and `--worktree` values are immutable task inputs.
+Explicit branch, base, and worktree values are immutable resource inputs.
 The `direct` policy deliberately permits an omitted branch and uses the registered checkout's current branch.
-The create operation persists the task and its single Git resource without creating a tmux window or starting a process.
 The task initially has status `created` and can be inspected, archived after stopping, or launched later.
 
 The launch operation is the only new execution entry point.
 Use `--target shell` for a detached direct shell or `--target pi` for managed local Pi.
+Use `--resource` when a task has more than one resource.
+This delivery does not add multiple execution records.
 The task-tagged tmux resource has a display name derived from the branch after removing its owner prefix.
 The task ID remains in tmux window metadata for lifecycle verification, not in the operator-facing window name.
 
@@ -103,7 +108,7 @@ This preserves Pi's interactive mode while keeping prompt content out of process
 
 `--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
 
-The selected launch target, command path, task worktree, prompt reference, and working context are persisted before tmux starts.
+The selected launch target, command path, selected resource worktree, prompt reference, and working context are persisted before tmux starts.
 Create and launch are separate durable operations, so a failed launch can be retried without recreating the task or Git resource.
 The owned pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible while work runs.
 A failed managed launch shows safe recovery guidance in the pane, leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same `task launch` inputs.
@@ -118,7 +123,9 @@ A finish while the task process is running fails without changing the task outco
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.
 
 Archive requires a stopped or finished task and captures the manifest, events, Git facts, and available terminal history.
+`task resource archive` captures one resource and its events independently.
 Clean archives first and refuses a live task.
+`task resource clean` applies preservation approvals to one resource and leaves sibling resource cleanup state unchanged.
 It requires explicit authorization for each committed, dirty, or untracked category before destructive cleanup.
 For a registered `worktree` repository, `--allow-worktree` is a separate explicit approval that enables the destructive worktree cleanup hook.
 The hook validates durable ownership, removes only the task worktree, preserves the task branch, and records the pre-cleanup Git facts in the archive.
@@ -126,8 +133,9 @@ Direct repository tasks never remove their registered checkout.
 Without worktree approval, cleanup records preservation debt and leaves the worktree available for direct human recovery.
 Credential cleanup remains independent and retryable.
 
-Reconciliation repairs derived observations and Git facts.
+Reconciliation repairs derived observations and Git facts for the task and each resource.
 It never deletes task state, branches, worktrees, windows, or terminal history.
+Legacy single-resource manifests are migrated lazily to a `legacy` resource when a resource command inspects or extends them.
 
 ## Attachment
 
@@ -168,6 +176,8 @@ total: 1
 ```
 
 Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnings`, archive state, cleanup state, and cleanup debt are emitted only when present.
+Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, and cleanup state.
+Resource inspect and mutation output uses one `resource` object.
 
 ## Orchestration and integration signal
 
