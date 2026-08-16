@@ -2,7 +2,6 @@ package app
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -113,7 +112,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
 	case "resource":
@@ -165,41 +164,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, taskDetailView{Task: task})
 	case "start":
-		request, ok := parseStart(args[1:])
-		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--agent pi --prompt <path>] [--context <value>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then start the task")
-		}
-		if request.ID == "" {
-			id, idErr := uuid.NewV7()
-			if idErr != nil {
-				return writeError(stdout, "internal", "Failed to generate a task ID", false, "Retry `akagent task start`")
-			}
-			request.ID = id.String()
-		}
-		if request.Agent != "" {
-			if _, err := manager.Create(lifecycle.CreateRequest{ID: request.ID, Title: request.Title, Repository: request.Repository, Branch: request.Branch, BaseRevision: request.BaseRevision, WorktreePath: request.WorktreePath, Requirements: request.Requirements, Optional: request.Optional}); err != nil {
-				return lifecycleError(stdout, err)
-			}
-			if request.Agent != "pi" {
-				return lifecycleError(stdout, fmt.Errorf("unsupported agent target %q", request.Agent))
-			}
-			execution, err := integration.Launch(manager, request.ID, integration.LaunchRequest{ResourceID: "", PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
-			if err != nil {
-				return lifecycleError(stdout, err)
-			}
-			manifest, err := manager.Inspect(request.ID)
-			if err != nil {
-				return lifecycleError(stdout, err)
-			}
-			task := view(request.ID, manifest)
-			task.Execution, task.Agent = execution.Target, execution.Target
-			return write(stdout, taskDetailView{Task: task})
-		}
-		result, err := manager.Start(request)
-		if err != nil {
-			return lifecycleError(stdout, err)
-		}
-		return write(stdout, taskDetailView{Task: view(request.ID, result.Manifest)})
+		return writeError(stdout, "usage", "The `akagent task start` shortcut was removed", false, "Run `akagent task create --title <title>` and then `akagent task launch <task-id> --target <shell|pi>`")
 	case "list":
 		options, ok := parseTaskList(args[1:])
 		if !ok {
@@ -695,43 +660,6 @@ func parseLaunch(args []string) (lifecycle.LaunchRequest, bool) {
 	return request, request.Target != ""
 }
 
-func parseStart(args []string) (lifecycle.StartRequest, bool) {
-	var request lifecycle.StartRequest
-	for len(args) > 0 {
-		if len(args) < 2 {
-			return request, false
-		}
-		flag, value := args[0], args[1]
-		args = args[2:]
-		switch flag {
-		case "--task-id":
-			request.ID = value
-		case "--title":
-			request.Title = value
-		case "--repository":
-			request.Repository = value
-		case "--branch":
-			request.Branch = value
-		case "--base":
-			request.BaseRevision = value
-		case "--worktree":
-			request.WorktreePath = value
-		case "--require":
-			request.Requirements = append(request.Requirements, value)
-		case "--optional":
-			request.Optional = append(request.Optional, value)
-		case "--agent", "--command":
-			request.Agent = value
-		case "--prompt", "--prompt-ref", "--prompt-reference":
-			request.PromptReference = value
-		case "--context", "--working-context":
-			request.WorkingContext = value
-		default:
-			return request, false
-		}
-	}
-	return request, request.Title != "" && request.Repository != ""
-}
 func parseCleanup(args []string) (lifecycle.CleanupOptions, bool) {
 	var options lifecycle.CleanupOptions
 	for _, arg := range args {
@@ -772,7 +700,7 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {

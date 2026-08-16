@@ -17,7 +17,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|archive|clean>
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -29,9 +29,9 @@ The compatibility `--repository` form creates one initial resource.
 The resource command creates additional immutable repository, branch, and worktree combinations.
 A task may own zero or more optional tool-neutral executions.
 Execution creation, launch, observation, attachment, stop, archive, and recovery are independent from resource state.
-The explicit shell launch operation remains a direct-human compatibility shortcut built on generic executions.
-The optional Pi integration provides a separate compatibility shortcut on the same execution interface.
-The legacy `task start` command remains a compatibility shortcut for direct human workflows.
+The explicit shell launch operation is a direct-human workflow built on generic executions.
+The optional Pi integration provides a separate target on the same execution interface.
+The removed `task start` shortcut is rejected with migration guidance.
 
 ## Components
 

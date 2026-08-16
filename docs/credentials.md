@@ -21,8 +21,8 @@ akagent credential doctor
 Task requirements use named IDs:
 
 ```text
-akagent task start --title <title> --repository <name> --require <credential>
-akagent task start --title <title> --repository <name> --optional <credential>
+akagent task create --title <title> --repository <name> --require <credential>
+akagent task create --title <title> --repository <name> --optional <credential>
 ```
 
 ## Local layout

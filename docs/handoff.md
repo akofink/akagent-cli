@@ -32,11 +32,11 @@ Direct-policy tasks deliberately use the registered checkout's current branch wh
 `task execution create` records an optional tool-neutral execution without a process side effect.
 `task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during creation.
 Execution stop, archive, attach, and reconcile operate independently from resource state.
-The compatibility `task launch --target shell` path creates and launches a generic shell execution.
+The `task launch --target shell` path creates and launches a generic shell execution.
 The optional `task launch --target pi` path delegates to the Pi integration, which creates and launches a generic execution.
 Tmux derives its display name from the descriptive execution label and stores task and execution IDs in window metadata for lifecycle verification.
 The Pi integration passes a validated prompt-file reference without changing standard input, so Pi remains interactive and a failed launch remains retryable.
-The historical `task start` create-and-launch shortcut remains available for direct human recovery.
+The historical `task start` create-and-launch shortcut is rejected with structured migration guidance.
 
 `task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.
 `task finish` records a result only after the task process has exited.
@@ -71,7 +71,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|archive|clean>
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
