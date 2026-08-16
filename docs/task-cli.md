@@ -59,6 +59,7 @@ repository:
 ```text
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
 akagent task resource <create|list|inspect|archive|clean> ...
+akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]
 akagent task start --title <title> --repository <name> ... # legacy create-and-launch shortcut
 akagent task list [--all] [--repository <name>] [--worktree <path>]
@@ -89,15 +90,14 @@ Explicit branch, base, and worktree values are immutable resource inputs.
 The `direct` policy deliberately permits an omitted branch and uses the registered checkout's current branch.
 The task initially has status `created` and can be inspected, archived after stopping, or launched later.
 
-The launch operation is the only new execution entry point.
-Use `--target shell` for a detached direct shell or `--target pi` for managed local Pi.
-Use `--resource` when a task has more than one resource.
-This delivery does not add multiple execution records.
-The task-tagged tmux resource has a display name derived from the branch after removing its owner prefix.
-The task ID remains in tmux window metadata for lifecycle verification, not in the operator-facing window name.
+A task can own zero or more optional tool-neutral execution records.
+Use `task execution create` to persist an execution without starting tmux, then `task execution launch` to start it.
+Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
+The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
+The compatibility `task launch` command still supports shell and managed Pi targets and materializes a `legacy` execution record.
 
 The legacy `task start` command remains available for direct human workflows and retains its historical create-and-launch behavior.
-New integrations should use `task create` followed by an explicit `task launch` operation.
+New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
 
 `--target pi` selects the supported managed local Pi target.
 The `pi` executable must be available on `PATH`, and its resolved command path is stored in the task launch configuration.
@@ -108,7 +108,8 @@ This preserves Pi's interactive mode while keeping prompt content out of process
 
 `--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
 
-The selected launch target, command path, selected resource worktree, prompt reference, and working context are persisted before tmux starts.
+The selected execution target, command path, selected resource worktree, and non-secret arguments are persisted before tmux starts.
+The compatibility managed Pi launch also persists its prompt reference and working context before tmux starts.
 Create and launch are separate durable operations, so a failed launch can be retried without recreating the task or Git resource.
 The owned pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible while work runs.
 A failed managed launch shows safe recovery guidance in the pane, leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same `task launch` inputs.
@@ -123,6 +124,7 @@ A finish while the task process is running fails without changing the task outco
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.
 
 Archive requires a stopped or finished task and captures the manifest, events, Git facts, and available terminal history.
+Execution archive requires only the selected execution to be stopped or finished and does not require resource archive or cleanup.
 `task resource archive` captures one resource and its events independently.
 Clean archives first and refuses a live task.
 `task resource clean` applies preservation approvals to one resource and leaves sibling resource cleanup state unchanged.
@@ -136,11 +138,14 @@ Credential cleanup remains independent and retryable.
 Reconciliation repairs derived observations and Git facts for the task and each resource.
 It never deletes task state, branches, worktrees, windows, or terminal history.
 Legacy single-resource manifests are migrated lazily to a `legacy` resource when a resource command inspects or extends them.
+Legacy task launch fields migrate lazily to a `legacy` execution when an execution command inspects or extends them.
+Both migrations preserve durable observations and are idempotent.
 
 ## Attachment
 
-Attachment requires a running shell or managed Pi task with a fresh heartbeat and process observation.
-It verifies exactly one process, the durable process identity, the task-tagged tmux window, and the window option immediately before attaching.
+Execution attachment requires a running execution with a fresh heartbeat and process observation.
+It verifies exactly one process, the durable process identity, and matching task and execution tmux metadata immediately before attaching.
+The compatibility task attach command retains its task-level verification behavior.
 For managed launch, the launcher replaces itself with Pi so the recorded PID and process start time identify Pi rather than a wrapper process.
 
 Missing, stale, contradictory, stopped, and finished observations are rejected with structured recovery guidance.

@@ -81,6 +81,16 @@ type ManagedTmux interface {
 	StartManaged(taskID, branch string, launch store.LaunchConfig) (TmuxProcess, error)
 }
 
+// ExecutionTmux is the tool-neutral tmux surface for independently managed
+// executions. The task and execution IDs are both verified in tmux metadata.
+type ExecutionTmux interface {
+	StartExecution(executionID, taskID, label, directory, command string, arguments []string) (TmuxProcess, error)
+	ObserveExecution(executionID, taskID string) (TmuxObservation, error)
+	AttachExecution(executionID, taskID, windowID string) error
+	StopExecution(executionID, taskID string) error
+	CaptureExecution(executionID, taskID string) (string, error)
+}
+
 type Manager struct {
 	Store              *store.Store
 	Tmux               Tmux
@@ -135,10 +145,11 @@ type ResourceRequest struct {
 	WorktreePath string
 }
 
-// LaunchRequest selects one of the currently supported local execution
-// targets. This intentionally models one execution only; later deliveries can
-// add independent execution records without changing task creation.
+// LaunchRequest preserves the compatibility task launch surface. New callers
+// should create and launch independent Execution records instead.
 type LaunchRequest struct {
+	ExecutionID     string
+	Label           string
 	Target          string
 	ResourceID      string
 	PromptReference string
@@ -318,7 +329,9 @@ func (m *Manager) Create(request CreateRequest) (StartResult, error) {
 		return StartResult{}, err
 	}
 	if request.Repository == "" {
-		if request.Branch != "" || request.BaseRevision != "" || request.WorktreePath != "" { return StartResult{}, &store.Error{Kind: store.KindUsage, Message: "Git inputs require a repository resource", Recovery: "Create the task first, then use `akagent task resource create`"} }
+		if request.Branch != "" || request.BaseRevision != "" || request.WorktreePath != "" {
+			return StartResult{}, &store.Error{Kind: store.KindUsage, Message: "Git inputs require a repository resource", Recovery: "Create the task first, then use `akagent task resource create`"}
+		}
 		manifest := store.Manifest{Title: request.Title, Worker: "local", Lifecycle: "created", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
 		created, existing, err := m.Store.CreateManifest(request.ID, manifest)
 		if err != nil {
@@ -417,6 +430,9 @@ func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manif
 	if err != nil {
 		return store.Manifest{}, err
 	}
+	if request.ExecutionID != "" && manifest.ExecutionIDs != "" && manifest.ExecutionIDs != request.ExecutionID {
+		return store.Manifest{}, &store.Error{Kind: store.KindConflict, Message: "execution ID conflicts with the existing task launch", Recovery: fmt.Sprintf("Inspect task %s and retry with its existing execution ID", id)}
+	}
 	if manifest.Lifecycle == "running" {
 		if request.Target == "pi" && manifest.Launch != nil && manifest.Launch.Target == "pi" {
 			return manifest, nil
@@ -482,6 +498,9 @@ func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manif
 		return store.Manifest{}, err
 	}
 	if err := m.ensureStarted(id, &manifest); err != nil {
+		return store.Manifest{}, err
+	}
+	if err := m.ensureLegacyExecutionWithID(id, request.ExecutionID, request.Label); err != nil {
 		return store.Manifest{}, err
 	}
 	return manifest, nil
@@ -570,6 +589,11 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 		result = StartResult{Manifest: manifest, Created: true}
 		return nil
 	})
+	if err == nil {
+		if migrationErr := m.ensureLegacyExecution(request.ID); migrationErr != nil {
+			err = migrationErr
+		}
+	}
 	return result, err
 }
 
@@ -837,6 +861,9 @@ func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
 	if changed {
 		_, err = m.Store.AppendEvent(id, store.Event{Operation: "finish", Outcome: outcome})
 	}
+	if syncErr := m.updateExecutionFromManifest(id, manifest); err == nil && syncErr != nil {
+		err = syncErr
+	}
 	return manifest, err
 }
 
@@ -887,6 +914,9 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 	if changed {
 		_, err = m.Store.AppendEvent(id, store.Event{Operation: "stop", Outcome: "succeeded"})
 	}
+	if syncErr := m.updateExecutionFromManifest(id, manifest); err == nil && syncErr != nil {
+		err = syncErr
+	}
 	return manifest, err
 }
 
@@ -922,6 +952,9 @@ func (m *Manager) Reconcile() ([]store.Manifest, error) {
 			return nil, err
 		}
 		if err := m.reconcileResources(id, manifest); err != nil {
+			return nil, err
+		}
+		if _, err := m.ReconcileExecutions(id); err != nil {
 			return nil, err
 		}
 		if changed {
@@ -1597,6 +1630,44 @@ func (commandTmux) StartManaged(id, branch string, launch store.LaunchConfig) (T
 	return startTmuxWindow(id, branch, launch.WorkingDirectory, command)
 }
 
+func (commandTmux) StartExecution(executionID, taskID, label, directory, command string, arguments []string) (TmuxProcess, error) {
+	parts := []string{shellQuote(command)}
+	for _, argument := range arguments {
+		parts = append(parts, shellQuote(argument))
+	}
+	return startExecutionTmuxWindow(executionID, taskID, label, directory, strings.Join(parts, " "))
+}
+
+func startExecutionTmuxWindow(executionID, taskID, label, directory, command string) (TmuxProcess, error) {
+	args := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-n", executionWindowName(label)}
+	if directory != "" {
+		args = append(args, "-c", directory)
+	}
+	args = append(args, command)
+	output, err := exec.Command("tmux", args...).Output()
+	if err != nil {
+		return TmuxProcess{}, errors.New("tmux execution window could not be created")
+	}
+	window := strings.TrimSpace(string(output))
+	if window == "" {
+		return TmuxProcess{}, errors.New("tmux did not return an execution window ID")
+	}
+	if err := exec.Command("tmux", "set-option", "-w", "-t", window, "@akagent_task_id", taskID).Run(); err != nil {
+		return TmuxProcess{}, errors.New("tmux task metadata could not be set")
+	}
+	if err := exec.Command("tmux", "set-option", "-w", "-t", window, "@akagent_execution_id", executionID).Run(); err != nil {
+		return TmuxProcess{}, errors.New("tmux execution metadata could not be set")
+	}
+	observation, err := (commandTmux{}).ObserveExecution(executionID, taskID)
+	if err != nil {
+		return TmuxProcess{WindowID: window}, err
+	}
+	if observation.Available && len(observation.Processes) == 1 {
+		return observation.Processes[0], nil
+	}
+	return TmuxProcess{WindowID: window}, nil
+}
+
 func startTmuxWindow(id, branch, directory, command string) (TmuxProcess, error) {
 	args := []string{"new-window", "-d", "-P", "-F", "#{window_id}", "-n", tmuxWindowName(branch)}
 	if directory != "" {
@@ -1634,6 +1705,14 @@ func tmuxWindowName(branch string) string {
 	return "task"
 }
 
+func executionWindowName(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return "execution"
+	}
+	return label
+}
+
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\\"'\\\"'") + "'"
 }
@@ -1668,6 +1747,82 @@ func (commandTmux) Observe(id string) (TmuxObservation, error) {
 		}
 	}
 	return observation, nil
+}
+
+func (commandTmux) ObserveExecution(executionID, taskID string) (TmuxObservation, error) {
+	output, err := exec.Command("tmux", "list-windows", "-a", "-F", "#{window_id}\t#{@akagent_task_id}\t#{@akagent_execution_id}").Output()
+	if err != nil {
+		return TmuxObservation{}, nil
+	}
+	observation := TmuxObservation{Available: true}
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 || fields[1] != taskID || fields[2] != executionID {
+			continue
+		}
+		paneOutput, paneErr := exec.Command("tmux", "list-panes", "-t", fields[0], "-F", "#{window_id}\t#{pane_id}\t#{pane_pid}").Output()
+		if paneErr != nil {
+			observation.Processes = append(observation.Processes, TmuxProcess{WindowID: fields[0]})
+			continue
+		}
+		for _, paneLine := range strings.Split(strings.TrimSpace(string(paneOutput)), "\n") {
+			paneFields := strings.Split(paneLine, "\t")
+			if len(paneFields) != 3 {
+				continue
+			}
+			pid, parseErr := strconv.Atoi(paneFields[2])
+			startTime := uint64(0)
+			if parseErr == nil {
+				startTime, _ = processStartTime(pid)
+			}
+			observation.Processes = append(observation.Processes, TmuxProcess{WindowID: paneFields[0], PaneID: paneFields[1], PID: pid, StartTime: startTime})
+		}
+	}
+	return observation, nil
+}
+
+func (commandTmux) AttachExecution(executionID, taskID, windowID string) error {
+	values, err := exec.Command("tmux", "display-message", "-p", "-t", windowID, "#{@akagent_task_id}\t#{@akagent_execution_id}").Output()
+	if err != nil || strings.TrimSpace(string(values)) != taskID+"\t"+executionID {
+		return errors.New("tmux execution window could not be verified")
+	}
+	command := exec.Command("tmux", "attach-session", "-t", windowID)
+	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := command.Run(); err != nil {
+		return errors.New("tmux execution window could not be attached")
+	}
+	return nil
+}
+
+func (commandTmux) StopExecution(executionID, taskID string) error {
+	observation, err := (commandTmux{}).ObserveExecution(executionID, taskID)
+	if err != nil || !observation.Available {
+		return nil
+	}
+	windows := map[string]bool{}
+	for _, process := range observation.Processes {
+		if process.WindowID != "" {
+			windows[process.WindowID] = true
+		}
+	}
+	for window := range windows {
+		if err := exec.Command("tmux", "kill-window", "-t", window).Run(); err != nil {
+			return errors.New("tmux execution window could not be stopped")
+		}
+	}
+	return nil
+}
+
+func (commandTmux) CaptureExecution(executionID, taskID string) (string, error) {
+	observation, err := (commandTmux{}).ObserveExecution(executionID, taskID)
+	if err != nil || !observation.Available || len(observation.Processes) == 0 {
+		return "", errors.New("terminal history is unavailable")
+	}
+	captured, err := exec.Command("tmux", "capture-pane", "-p", "-S", "-", "-t", observation.Processes[0].WindowID).Output()
+	if err != nil {
+		return "", errors.New("terminal history is unavailable")
+	}
+	return string(captured), nil
 }
 
 func (commandTmux) Attach(taskID, windowID string) error {

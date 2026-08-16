@@ -26,6 +26,9 @@ The store lives under the XDG state root for the `akagent` application:
   tasks/<task-id>/resources/<resource-id>/manifest.json
   tasks/<task-id>/resources/<resource-id>/events/000001.json
   tasks/<task-id>/resources/<resource-id>/archive.json
+  tasks/<task-id>/executions/<execution-id>/manifest.json
+  tasks/<task-id>/executions/<execution-id>/events/000001.json
+  tasks/<task-id>/executions/<execution-id>/archive.json
   tasks/<task-id>/archive.json
   locks/<task-id>.lock
 ```
@@ -33,7 +36,9 @@ The store lives under the XDG state root for the `akagent` application:
 - `manifest.json` is the mutable task manifest, atomically replaced.
 - `events/<sequence>.json` is an immutable task event record; sequences are 1-based and zero-padded.
 - Each resource has its own mutable manifest, event history, and archive under `resources/<resource-id>`.
-- `archive.json` is an atomically replaced snapshot of the corresponding task or resource manifest, event history, and non-secret Git facts.
+- Each execution has its own mutable manifest, event history, and archive under `executions/<execution-id>`.
+- Execution records contain tool-neutral command and observation metadata, not resource Git state.
+- `archive.json` is an atomically replaced snapshot of the corresponding task, resource, or execution manifest and event history.
 - `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
 
 ## Permissions
@@ -65,7 +70,7 @@ Every record is a typed, versioned envelope serialized as JSON:
 }
 ```
 
-The envelope carries the schema version, record kind, task ID, and observation time (`observed_at`, UTC).
+The envelope carries the schema version, record kind, task ID, optional resource or execution ID, and observation time (`observed_at`, UTC).
 `internal/store.SchemaVersion` is `1`.
 Envelopes without an observation time are rejected as malformed.
 
@@ -87,6 +92,8 @@ Resource archive, cleanup, and recovery fields are never inferred from sibling r
 
 Legacy task manifests with one embedded Git resource are migrated lazily by lifecycle resource operations.
 The migration writes a `legacy` resource record and preserves the original task fields for compatibility.
+Legacy task manifests with launch or process fields are migrated lazily by execution operations into a `legacy` execution record.
+Execution migration preserves the legacy process identity and never starts or stops tmux.
 
 ## Manifest semantics
 
@@ -103,7 +110,7 @@ Because replacement is atomic, a reader never observes a truncated or partially 
 ## Event semantics
 
 `AppendEvent` writes one immutable event and returns its sequence number.
-Sequences are computed under the per-task lock, so concurrent appends yield a contiguous, non-overlapping sequence.
+Task, resource, and execution event sequences are computed under the per-task lock, so concurrent appends yield contiguous, non-overlapping sequences.
 Event file names must be zero-padded six-digit sequences (`000001.json`) starting at 1 with no gaps; reads, appends, and recovery report malformed names and gaps rather than silently skipping them.
 Hidden entries and directory entries in the events directory are also reported as malformed; only temporary write entries are removed during recovery before validation.
 Events are never rewritten in place.
@@ -111,7 +118,7 @@ Events are never rewritten in place.
 ## Concurrency and locking
 
 - Task mutation (`WriteManifest`, `AppendEvent`) acquires the per-task lock via `Lock`/`WithLock`.
-- Resource mutation acquires the owning task lock.
+- Resource and execution mutation acquire the owning task lock.
 - `Lock` waits a short bounded time for a contended lock and returns a typed, retryable `lock_contention` error otherwise, so callers can retry safely.
 - `WithLock` returns the callback's error when it fails and also surfaces failures to release the lock.
 - Reads (`ReadManifest`, `ReadEvents`) do not take the lock; atomic replacement and append-only files make them safe without it.
@@ -157,7 +164,8 @@ Reconciliation does not invoke either destructive operation.
 
 ## Out of scope
 
-Starting or stopping task shells, task lifecycle commands, credentials, tmux, and Git remain outside this package.
+Starting or stopping executions, task lifecycle commands, credentials, tmux, and Git remain outside this package.
+The store has no Pi-specific execution fields and does not interpret command targets.
 The store also persists repository registration records, while the lifecycle package supplies repository validation and archive and cleanup policy.
 Worktree removal is available only through the lifecycle approval-gated hook and preserves the task archive and branch.
 Credential cleanup remains an independent local hook.

@@ -20,7 +20,8 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -53,7 +54,9 @@ The `direct` policy permits the registered checkout itself when that is explicit
 `task launch --target shell` starts a direct shell, while `task launch --target pi` starts managed Pi.
 Worktree-policy tasks require an explicit descriptive branch such as `akofink/51-task-labels`.
 Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
-Tmux displays the branch label without its owner prefix while retaining the task ID in window metadata for lifecycle verification.
+`task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
+Execution stop, archive, attachment, and reconciliation are independent from resource state.
+Compatibility task launches display a branch label while retaining task and execution IDs in window metadata for lifecycle verification.
 The local CLI can launch either a detached shell for direct human work or a managed local Pi process.
 Use `task launch --target pi` to select the managed launch, `--prompt` to provide a local prompt file, and `--context` to provide one non-secret working-context value.
 Use `task attach` for verified human attachment and use `task publish` for durable condition and heartbeat updates.
