@@ -75,6 +75,14 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 	if err != nil {
 		return m.archiveFailure(id, manifest, err)
 	}
+	resources, err := m.ListResources(id)
+	if err != nil {
+		return m.archiveFailure(id, manifest, err)
+	}
+	manifest, err = m.manifest(id)
+	if err != nil {
+		return m.archiveFailure(id, manifest, err)
+	}
 	facts, warnings := m.archiveGitFacts(manifest)
 	terminal := ""
 	terminalErr := error(nil)
@@ -90,6 +98,7 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 		CapturedAt: time.Now().UTC(),
 		Manifest:   manifest,
 		Events:     events,
+		Resources:  resources,
 		Git:        facts,
 		Terminal:   terminal,
 		Warnings:   warnings,
@@ -116,6 +125,11 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 	}
 	archive.Manifest = manifest
 	archive.Events = events
+	resources, err = m.ListResources(id)
+	if err != nil {
+		return m.archiveFailure(id, manifest, err)
+	}
+	archive.Resources = resources
 	if err := m.Store.WriteArchive(id, archive); err != nil {
 		return m.archiveFailure(id, manifest, err)
 	}

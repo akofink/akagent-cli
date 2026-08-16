@@ -135,14 +135,24 @@ type CreateRequest struct {
 	Optional     []string
 }
 
-// ResourceRequest contains only immutable Git resource inputs. Resource IDs
-// are supplied by the caller so retries remain idempotent.
+// ResourceRequest contains Git inputs and optional non-secret delivery
+// metadata. Resource IDs are supplied by the caller so retries remain
+// idempotent.
 type ResourceRequest struct {
 	ID           string
 	Repository   string
 	Branch       string
 	BaseRevision string
 	WorktreePath string
+	Metadata     map[string]string
+	ExternalURLs []string
+}
+
+// ResourceUpdateRequest changes only the mutable, provider-neutral metadata of
+// an existing resource. Git ownership inputs remain immutable.
+type ResourceUpdateRequest struct {
+	Metadata     map[string]string
+	ExternalURLs []string
 }
 
 // LaunchRequest preserves the compatibility task launch surface. New callers
@@ -1447,6 +1457,38 @@ func unique(values []string) []string {
 	return result
 }
 
+func uniqueStrings(values []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func cloneMetadata(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
+}
+
 func processState(process TmuxProcess) string {
 	if process.PID == 0 && process.StartTime == 0 {
 		return ""
@@ -1664,7 +1706,7 @@ func (commandTmux) StartManaged(id, branch string, launch store.LaunchConfig) (T
 }
 
 func (commandTmux) StartExecution(executionID, taskID, label, directory, command string, arguments []string) (TmuxProcess, error) {
-	parts := []string{shellQuote(command)}
+	parts := []string{"env", shellQuote("AKAGENT_TASK_ID=" + taskID), shellQuote("AKAGENT_EXECUTION_ID=" + executionID), shellQuote(command)}
 	for _, argument := range arguments {
 		parts = append(parts, shellQuote(argument))
 	}

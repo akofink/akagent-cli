@@ -126,9 +126,13 @@ The optional integration creates a generic execution with the selected resource 
 The owned pane shows a non-secret startup line before Pi initializes.
 Pi's interactive status and tool views remain visible while the managed task works.
 A failed launch leaves the generic execution recoverable and does not change resource state.
-The managed process receives a minimal safe environment plus `AKAGENT_TASK_ID` and the requested environment credentials that passed readiness checks.
+The managed process receives a minimal safe environment plus the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` context, along with requested environment credentials that passed readiness checks.
+An execution can use that context with `akagent task resource create`, `task resource list`, and `task resource update` without parent-orchestrator intervention.
+Resource metadata and external URLs are provider-neutral delivery records.
+Agents use provider tooling such as `gh` or Bitbucket tooling for pull request operations, then optionally record the resulting URL with `akagent`.
 Optional credentials produce non-secret warnings and are not injected.
 File credentials can be checked for readiness but cannot be injected into the managed environment.
+The core CLI does not provide GitHub, Bitbucket, or Pi delivery commands.
 
 Task status is computed from lifecycle records and observations.
 Lifecycle values are `created`, `starting`, `running`, `stopped`, and `finished`.
