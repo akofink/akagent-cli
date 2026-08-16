@@ -59,6 +59,13 @@ func (s *Store) ReadArchive(taskID string) (TaskArchive, error) {
 			fmt.Sprintf("Malformed archive for task %s", taskID),
 			fmt.Sprintf("Inspect and repair %s", s.archivePath(taskID)))
 	}
+	for _, resource := range archive.Resources {
+		if resource.TaskID != taskID || validateResource(resource) != nil {
+			return TaskArchive{}, malformedError(
+				fmt.Sprintf("Malformed resource snapshot in archive for task %s", taskID),
+				fmt.Sprintf("Inspect and repair %s", s.archivePath(taskID)))
+		}
+	}
 	return archive, nil
 }
 
@@ -79,6 +86,13 @@ func (s *Store) validateArchiveForRecovery(taskID string, result *RecoveryResult
 	archive, err := envelope.DecodeArchive()
 	if err != nil || archive.TaskID != taskID || archive.CapturedAt.IsZero() {
 		result.MalformedRecords = append(result.MalformedRecords, path)
+		return nil
+	}
+	for _, resource := range archive.Resources {
+		if resource.TaskID != taskID || validateResource(resource) != nil {
+			result.MalformedRecords = append(result.MalformedRecords, path)
+			break
+		}
 	}
 	return nil
 }

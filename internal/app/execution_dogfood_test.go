@@ -16,6 +16,32 @@ func TestTaskCreateDoesNotRequirePi(t *testing.T) {
 	}
 }
 
+func TestExecutionCanPublishGenericResourceDeliveryMetadata(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "create", "--task-id", "metadata-cli", "--title", "Record delivery"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	created := runCommand(t, []string{"task", "resource", "create", "metadata-cli", "--resource-id", "resource-one", "--repository", "demo"})
+	if created.code != 0 {
+		t.Fatalf("resource create = (%d, %q)", created.code, created.stdout)
+	}
+	updated := runCommand(t, []string{"task", "resource", "update", "metadata-cli", "resource-one", "--metadata", "delivery=ready", "--external-url", "https://forge.example/pull/61"})
+	if updated.code != 0 || !strings.Contains(updated.stdout, "delivery: ready") || !strings.Contains(updated.stdout, "https://forge.example/pull/61") {
+		t.Fatalf("resource update = (%d, %q)", updated.code, updated.stdout)
+	}
+	inspected := runCommand(t, []string{"task", "resource", "inspect", "metadata-cli", "resource-one"})
+	if inspected.code != 0 || !strings.Contains(inspected.stdout, "metadata:") || !strings.Contains(inspected.stdout, "external_urls[1]") {
+		t.Fatalf("resource inspect = (%d, %q)", inspected.code, inspected.stdout)
+	}
+}
+
 func TestOneExecutionCoordinatesMultipleResources(t *testing.T) {
 	setupTaskCommandTest(t)
 	alphaPath := filepath.Join(t.TempDir(), "alpha")

@@ -495,6 +495,39 @@ esac
 	}
 }
 
+func TestCommandTmuxStartExecutionPublishesTaskContext(t *testing.T) {
+	bin := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := filepath.Join(bin, "tmux")
+	const script = `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$AKAGENT_TEST_TMUX_LOG"
+case "$1" in
+  new-window) printf '@1\n' ;;
+  set-option) : ;;
+  list-windows) printf '%s\t%s\t%s\n' '@1' 'exec-task' 'exec-one' ;;
+  list-panes) printf '%s\t%s\t%s\n' '@1' '%1' '0' ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AKAGENT_TEST_TMUX_LOG", logPath)
+	if _, err := (commandTmux{}).StartExecution("exec-one", "exec-task", "review", "", "/bin/sh", []string{"-c", "printf ok"}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(calls) < 1 || !strings.Contains(calls[0], "env 'AKAGENT_TASK_ID=exec-task' 'AKAGENT_EXECUTION_ID=exec-one' '/bin/sh' '-c' 'printf ok'") {
+		t.Fatalf("execution start calls = %q, want non-secret task context", calls)
+	}
+}
+
 func TestCommandTmuxStartUsesBranchDisplayNameAndTaskMetadata(t *testing.T) {
 	bin := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "tmux.log")

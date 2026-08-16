@@ -53,10 +53,10 @@ The first release has one implicit local worker.
 The lifecycle layer owns:
 
 - Task records and event history.
-- Independently recoverable resource records, Git facts, archives, cleanup state, and recovery debt.
+- Independently recoverable resource records, Git facts, provider-neutral delivery metadata, archives, cleanup state, and recovery debt.
 - Repository registration and locks.
 - Branch and Git worktree creation.
-- Optional execution records with durable process identity, descriptive tmux labels, observation, attachment, stop, archive, and recovery state.
+- Optional execution records with durable process identity, descriptive tmux labels, non-secret task context, observation, attachment, stop, archive, and recovery state.
 - Tmux window identity, observation, attachment, and stop.
 - Durable condition publication and heartbeat refresh.
 - Process and Git reconciliation.

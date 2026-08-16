@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -38,7 +39,7 @@ func (m *Manager) CreateResource(taskID string, request ResourceRequest) (store.
 		if err != nil {
 			return err
 		}
-		resource := store.Resource{ID: request.ID, TaskID: taskID, Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree}
+		resource := store.Resource{ID: request.ID, TaskID: taskID, Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree, Metadata: cloneMetadata(request.Metadata), ExternalURLs: uniqueStrings(request.ExternalURLs)}
 		created, result, err = m.Store.CreateResource(taskID, resource)
 		if err != nil {
 			return err
@@ -109,6 +110,44 @@ func (m *Manager) InspectResource(taskID, resourceID string) (store.Resource, er
 		resourceID = ids[0]
 	}
 	return m.Store.ReadResource(taskID, resourceID)
+}
+
+// UpdateResource records provider-neutral delivery metadata without changing
+// the resource's immutable repository, branch, base, or worktree inputs.
+func (m *Manager) UpdateResource(taskID, resourceID string, request ResourceUpdateRequest) (store.Resource, error) {
+	if resourceID == "" {
+		return store.Resource{}, fmt.Errorf("resource ID is required")
+	}
+	var changed bool
+	resource, err := m.Store.UpdateResource(taskID, resourceID, func(resource *store.Resource) error {
+		if len(request.Metadata) > 0 {
+			if resource.Metadata == nil {
+				resource.Metadata = map[string]string{}
+			}
+			for key, value := range request.Metadata {
+				if resource.Metadata[key] != value {
+					changed = true
+				}
+				resource.Metadata[key] = value
+			}
+		}
+		for _, reference := range uniqueStrings(request.ExternalURLs) {
+			if !containsString(resource.ExternalURLs, reference) {
+				resource.ExternalURLs = append(resource.ExternalURLs, reference)
+				changed = true
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return store.Resource{}, err
+	}
+	if changed {
+		if _, err := m.Store.AppendResourceEvent(taskID, resourceID, store.Event{Operation: "metadata", Outcome: "updated"}); err != nil {
+			return store.Resource{}, err
+		}
+	}
+	return resource, nil
 }
 
 func (m *Manager) ArchiveResource(taskID, resourceID string) (store.Resource, error) {
@@ -398,7 +437,7 @@ func (m *Manager) reconcileResources(taskID string, task store.Manifest) error {
 				resource.RecoveryDebt = removeDebt(resource.RecoveryDebt, "worktree_mismatch")
 			}
 		}
-		if resource != before {
+		if !reflect.DeepEqual(resource, before) {
 			if err := m.Store.WriteResource(taskID, resource); err != nil {
 				return err
 			}

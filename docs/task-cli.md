@@ -62,7 +62,7 @@ repository:
 
 ```text
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
-akagent task resource <create|list|inspect|archive|clean> ...
+akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]
 akagent task start --title <title> --repository <name> ... # legacy create-and-launch shortcut
@@ -88,7 +88,8 @@ Filters compose as an intersection and results remain sorted by task ID.
 
 Task creation persists task intent and can create zero resources.
 The compatibility `--repository` form creates one initial resource without creating a tmux window or starting a process.
-Use `akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>]` to add each resource.
+Use `akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--metadata <key=value>] [--external-url <https-url>]` to add each resource.
+Use `akagent task resource update <task-id> <resource-id> [--metadata <key=value>] [--external-url <https-url>]` to record mutable delivery metadata without changing Git ownership inputs.
 The `worktree` policy requires an explicit descriptive `--branch` value, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`, and creates an isolated worktree under the registered repository's worktree root.
 Explicit branch, base, and worktree values are immutable resource inputs.
 The `direct` policy deliberately permits an omitted branch and uses the registered checkout's current branch.
@@ -100,6 +101,14 @@ Execution attachment, stop, archive, and reconcile operate on one execution and 
 The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
 Managed execution windows publish the shared tmux `@agent_state` option by matching those metadata IDs rather than the display label.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
+The managed process also receives those IDs as the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment variables.
+An execution can use them directly with the local CLI:
+
+```bash
+akagent task resource create "$AKAGENT_TASK_ID" --repository backend --resource-id backend-resource --branch akofink/61-backend
+akagent task resource list "$AKAGENT_TASK_ID"
+akagent task resource update "$AKAGENT_TASK_ID" backend-resource --metadata delivery=published --external-url https://forge.example/pull/61
+```
 The compatibility `task launch --target shell` shortcut creates and launches a generic shell execution.
 New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
 One execution can coordinate multiple resources by selecting one resource as its working directory and using the owning task ID for further resource operations.
@@ -122,6 +131,9 @@ The Pi integration passes only the validated file reference to Pi and leaves sta
 This preserves Pi's interactive mode while keeping prompt content out of durable events and protocol output.
 
 `--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
+Resource metadata and external URLs are provider-neutral and are preserved in resource archives, task archive resource snapshots, and reconciliation.
+Agents use provider tooling such as `gh` or Bitbucket tooling to create and manage pull requests, then optionally record the resulting URL with `akagent`.
+The core CLI does not provide GitHub, Bitbucket, or Pi delivery commands.
 
 The selected execution target, command, selected resource worktree, and non-secret arguments are persisted before tmux starts.
 Create and launch are separate durable operations, so a failed launch can be retried without recreating the task or Git resource.
@@ -197,7 +209,7 @@ total: 1
 ```
 
 Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnings`, archive state, cleanup state, and cleanup debt are emitted only when present.
-Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, and cleanup state.
+Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, cleanup state, and optional metadata and external URLs.
 Resource inspect and mutation output uses one `resource` object.
 
 ## Orchestration and integration signal
