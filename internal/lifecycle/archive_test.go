@@ -198,6 +198,9 @@ func TestApprovedWorktreeCleanupPreservesArchiveAndReconcileRecovery(t *testing.
 	if archive.Git.Path != result.Manifest.WorktreePath || archive.Manifest.WorktreePath != result.Manifest.WorktreePath {
 		t.Fatalf("archive = %#v, want pre-cleanup worktree facts", archive)
 	}
+	if err := os.Remove(filepath.Join(manager.Store.Root(), "repositories", repository.Name+".json")); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := manager.Store.UpdateManifest("cleanup-worktree-task", func(manifest *store.Manifest) error {
 		manifest.RecoveryDebt = "worktree_mismatch"
 		return nil

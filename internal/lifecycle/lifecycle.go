@@ -936,6 +936,19 @@ func within(path, root string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && relative != "."
 }
 
+func expectedMissingWorktree(manifest store.Manifest, repository store.Repository, repositoryErr error) bool {
+	if manifest.Lifecycle != "stopped" && manifest.Lifecycle != "finished" {
+		return false
+	}
+	if manifest.ArchiveState != archiveComplete || manifest.CleanupState != cleanupComplete || manifest.WorktreeCleanupState != cleanupComplete {
+		return false
+	}
+	if repositoryErr == nil {
+		return repository.Policy == "worktree"
+	}
+	return store.IsKind(repositoryErr, store.KindNotFound)
+}
+
 func (m *Manager) refreshGit(manifest *store.Manifest) bool {
 	if manifest.WorktreePath == "" || m.Git == nil {
 		return false
@@ -945,7 +958,7 @@ func (m *Manager) refreshGit(manifest *store.Manifest) bool {
 	status, err := m.Git.Status(manifest.WorktreePath)
 	if err != nil || !status.Exists {
 		manifest.Committed, manifest.Dirty, manifest.Untracked = false, false, false
-		if repositoryErr == nil && repository.Policy == "worktree" && manifest.WorktreeCleanupState == cleanupComplete {
+		if expectedMissingWorktree(*manifest, repository, repositoryErr) {
 			manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_missing")
 			manifest.RecoveryDebt = removeDebt(manifest.RecoveryDebt, "worktree_mismatch")
 		} else {
