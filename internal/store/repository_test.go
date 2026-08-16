@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+func TestRepositoryWorktreeRootValidation(t *testing.T) {
+	state, err := OpenAt(filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.WriteRepository(Repository{Name: "relative", Path: "/checkout", Policy: "worktree", WorktreeRoot: "worktrees"}); !IsKind(err, KindUsage) {
+		t.Fatalf("relative worktree root error = %v, want usage", err)
+	}
+	if err := state.WriteRepository(Repository{Name: "direct", Path: "/checkout", Policy: "direct", WorktreeRoot: "/worktrees"}); !IsKind(err, KindUsage) {
+		t.Fatalf("direct worktree root error = %v, want usage", err)
+	}
+	if err := state.WriteRepository(Repository{Name: "legacy", Path: "/checkout", Policy: "worktree"}); err != nil {
+		t.Fatalf("legacy empty worktree root = %v, want accepted", err)
+	}
+}
+
 func TestUpdateRepositoryIsIdempotentAndConflictSafe(t *testing.T) {
 	state, err := OpenAt(filepath.Join(t.TempDir(), "state"))
 	if err != nil {

@@ -176,7 +176,7 @@ func New(state *store.Store) *Manager {
 	return manager
 }
 
-func (m *Manager) RegisterRepository(name, path, policy string) (store.Repository, error) {
+func (m *Manager) RegisterRepository(name, path, policy string, worktreeRoots ...string) (store.Repository, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return store.Repository{}, fmt.Errorf("resolve repository path")
@@ -195,11 +195,22 @@ func (m *Manager) RegisterRepository(name, path, policy string) (store.Repositor
 	if policy != "worktree" && policy != "direct" {
 		return store.Repository{}, fmt.Errorf("repository policy must be worktree or direct")
 	}
-	worktreeRoot := ""
-	if policy == "worktree" {
-		worktreeRoot = filepath.Join(filepath.Dir(abs), ".akagent", "worktrees", name)
+	worktreeRoot, err := configuredWorktreeRoot(worktreeRoots)
+	if err != nil {
+		return store.Repository{}, err
+	}
+	if worktreeRoot != "" && policy != "worktree" {
+		return store.Repository{}, &store.Error{Kind: store.KindUsage, Message: "A worktree root requires the worktree repository policy", Recovery: "Register the repository with `--policy worktree`"}
+	}
+	if policy == "worktree" && worktreeRoot == "" {
+		worktreeRoot = derivedWorktreeRoot(abs, name)
 	}
 	repository := store.Repository{Name: name, Path: abs, Policy: policy, WorktreeRoot: worktreeRoot, Instructions: discoverInstructions(abs)}
+	if worktreeRoot == derivedWorktreeRoot(abs, name) && (len(worktreeRoots) == 0 || worktreeRoots[0] == "") {
+		if existing, existingErr := m.Store.ReadRepository(name); existingErr == nil && existing.Policy == "worktree" && existing.Path == abs && existing.WorktreeRoot == "" {
+			repository.WorktreeRoot = ""
+		}
+	}
 	if _, err := m.Store.RegisterRepository(repository); err != nil {
 		return store.Repository{}, err
 	}
@@ -230,12 +241,19 @@ func (m *Manager) InspectRepository(name string) (store.Repository, error) {
 
 // UpdateRepository changes only registration metadata. It never writes to the
 // Git checkout or any task record.
-func (m *Manager) UpdateRepository(name, path, policy string) (store.Repository, error) {
+func (m *Manager) UpdateRepository(name, path, policy string, worktreeRoots ...string) (store.Repository, error) {
 	if _, err := m.Store.ReadRepository(name); err != nil {
 		return store.Repository{}, err
 	}
-	if path == "" && policy == "" {
-		return store.Repository{}, fmt.Errorf("repository path or policy update is required")
+	if path == "" && policy == "" && len(worktreeRoots) == 0 {
+		return store.Repository{}, fmt.Errorf("repository path, policy, or worktree root update is required")
+	}
+	configuredRoot, err := configuredWorktreeRoot(worktreeRoots)
+	if err != nil {
+		return store.Repository{}, err
+	}
+	if configuredRoot != "" && policy == "direct" {
+		return store.Repository{}, &store.Error{Kind: store.KindUsage, Message: "A worktree root requires the worktree repository policy", Recovery: "Update the repository with `--policy worktree`"}
 	}
 	var resolvedPath string
 	if path != "" {
@@ -249,6 +267,10 @@ func (m *Manager) UpdateRepository(name, path, policy string) (store.Repository,
 		resolvedPath = abs
 	}
 	return m.Store.UpdateRepository(name, func(repository *store.Repository) error {
+		if configuredRoot != "" && repository.Policy == "direct" && policy != "worktree" {
+			return &store.Error{Kind: store.KindUsage, Message: "A worktree root requires the worktree repository policy", Recovery: "Update the repository with `--policy worktree`"}
+		}
+		oldPath, oldPolicy, oldRoot := repository.Path, repository.Policy, repository.WorktreeRoot
 		if resolvedPath != "" {
 			repository.Path = resolvedPath
 		}
@@ -258,11 +280,14 @@ func (m *Manager) UpdateRepository(name, path, policy string) (store.Repository,
 			}
 			repository.Policy = policy
 		}
-		if resolvedPath != "" || policy != "" {
+		if repository.Policy == "direct" {
 			repository.WorktreeRoot = ""
-			if repository.Policy == "worktree" {
-				repository.WorktreeRoot = filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
-			}
+		} else if configuredRoot != "" {
+			repository.WorktreeRoot = configuredRoot
+		} else if oldPolicy != "worktree" || oldRoot == "" || oldRoot == derivedWorktreeRoot(oldPath, repository.Name) {
+			repository.WorktreeRoot = derivedWorktreeRoot(repository.Path, repository.Name)
+		}
+		if resolvedPath != "" || policy != "" {
 			repository.Instructions = discoverInstructions(repository.Path)
 		}
 		return nil
@@ -632,6 +657,30 @@ func (m *Manager) prepareLaunch(request StartRequest) (*store.LaunchConfig, erro
 	return &store.LaunchConfig{Target: request.Agent, Command: command, PromptReference: prompt, WorkingContext: request.WorkingContext}, nil
 }
 
+func configuredWorktreeRoot(values []string) (string, error) {
+	if len(values) > 1 {
+		return "", &store.Error{Kind: store.KindUsage, Message: "Only one worktree root may be configured", Recovery: "Provide one `--worktree-root` value"}
+	}
+	if len(values) == 0 || values[0] == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(values[0]) {
+		return "", &store.Error{Kind: store.KindUsage, Message: "Repository worktree root must be absolute", Recovery: "Provide an absolute `--worktree-root` value"}
+	}
+	return filepath.Clean(values[0]), nil
+}
+
+func derivedWorktreeRoot(repositoryPath, repositoryName string) string {
+	return filepath.Join(filepath.Dir(repositoryPath), ".akagent", "worktrees", repositoryName)
+}
+
+func repositoryWorktreeRoot(repository store.Repository) string {
+	if repository.WorktreeRoot != "" {
+		return filepath.Clean(repository.WorktreeRoot)
+	}
+	return derivedWorktreeRoot(repository.Path, repository.Name)
+}
+
 func (m *Manager) startInputs(request StartRequest, repository store.Repository) (string, string, string, error) {
 	branch := request.Branch
 	if branch == "" {
@@ -680,10 +729,7 @@ func (m *Manager) startInputs(request StartRequest, repository store.Repository)
 			return "", "", "", fmt.Errorf("direct repository base does not match its current revision")
 		}
 	} else {
-		root := repository.WorktreeRoot
-		if root == "" {
-			root = filepath.Join(filepath.Dir(repository.Path), ".akagent", "worktrees", repository.Name)
-		}
+		root := repositoryWorktreeRoot(repository)
 		if worktree == "" {
 			worktree = filepath.Join(root, request.ID)
 		}
@@ -1302,6 +1348,8 @@ func (m *Manager) worktreeMatches(repository store.Repository, manifest store.Ma
 	expectedRoot := manifest.WorktreePath
 	if repository.Policy == "direct" {
 		expectedRoot = repository.Path
+	} else if !within(manifest.WorktreePath, repositoryWorktreeRoot(repository)) {
+		return false
 	}
 	if !sameGitPath(status.Root, expectedRoot) || status.Branch != manifest.Branch {
 		return false

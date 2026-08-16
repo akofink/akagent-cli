@@ -91,7 +91,12 @@ resource:
 A repository registration resolves a stable name to a local Git checkout and policy.
 
 The `worktree` policy creates an isolated task branch and worktree under the registration's worktree root.
+Registrations may set that root with an absolute `--worktree-root` value, such as `~/dev/worktrees/backend` after shell expansion.
+When no value is configured, the root remains `<checkout-parent>/.akagent/worktrees/<name>`.
+Task and resource creation reject worktree paths outside the root.
+Cleanup ownership checks and reconciliation apply the same boundary.
 The `direct` policy uses the registered checkout and requires its base revision to match.
+A worktree root is valid only for the `worktree` policy.
 
 ### Credential capability
 
@@ -328,6 +333,7 @@ Adding optional fields is compatible.
 Removing fields, changing meanings, or changing lifecycle semantics requires a protocol version change.
 Interrupted legacy `starting` manifests without a recorded process identity migrate to `created` when the task is created again.
 Legacy manifests with a recorded process remain attached to their observed execution and are not relaunched by migration.
+Legacy repository registrations without `worktree_root` continue to use the derived root lazily, without rewriting the registration.
 Legacy manifests with one repository, branch, and worktree are migrated lazily when resource operations inspect or extend them.
 Legacy manifests with launch, tmux, or process fields are migrated lazily when execution operations inspect or extend them.
 The migration creates a `legacy` execution and preserves the existing task execution fields, target metadata, process identity, tmux window, observation, archive state, cleanup state, and recovery debt.

@@ -247,8 +247,13 @@ func validateRepository(repository Repository) error {
 	if repository.Policy != "worktree" && repository.Policy != "direct" {
 		return newError(KindUsage, "Repository policy must be worktree or direct", "Register the repository with a supported policy")
 	}
-	if repository.WorktreeRoot != "" && !filepath.IsAbs(repository.WorktreeRoot) {
-		return newError(KindUsage, "Repository worktree root must be absolute", "Provide an absolute worktree root")
+	if repository.WorktreeRoot != "" {
+		if !filepath.IsAbs(repository.WorktreeRoot) {
+			return newError(KindUsage, "Repository worktree root must be absolute", "Provide an absolute worktree root")
+		}
+		if repository.Policy != "worktree" {
+			return newError(KindUsage, "Repository worktree root requires the worktree policy", "Register the repository with `--policy worktree`")
+		}
 	}
 	for _, instruction := range repository.Instructions {
 		if instruction == "" || !filepath.IsAbs(instruction) {
