@@ -29,6 +29,7 @@ The compatibility `--repository` form creates one initial resource.
 The resource command creates additional immutable repository, branch, and worktree combinations.
 A task may own zero or more optional tool-neutral executions.
 Execution creation, launch, observation, attachment, stop, archive, and recovery are independent from resource state.
+An execution may contain multiple non-secret session references identified by provider-neutral tool, session ID, and optional absolute local reference path.
 The explicit shell launch operation is a direct-human workflow built on generic executions.
 The optional Pi integration provides a separate target on the same execution interface.
 The removed `task start` shortcut is rejected with migration guidance.
@@ -57,6 +58,7 @@ The lifecycle layer owns:
 - Repository registration and locks.
 - Branch and Git worktree creation.
 - Optional execution records with durable process identity, descriptive tmux labels, non-secret task context, observation, attachment, stop, archive, and recovery state.
+- Integration-owned session references that the lifecycle validates and persists without parsing provider session files.
 - Tmux window identity, observation, attachment, and stop.
 - Durable condition publication and heartbeat refresh.
 - Process and Git reconciliation.

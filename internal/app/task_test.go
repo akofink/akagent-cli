@@ -43,8 +43,9 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	if listed := runCommand(t, []string{"task", "list"}); listed.code != 0 || listed.stdout != wantList {
 		t.Fatalf("task list = (%d, %q), want (0, %q)", listed.code, listed.stdout, wantList)
 	}
-	if inspected := runCommand(t, []string{"task", "inspect", taskID}); inspected.code != 0 || inspected.stdout != wantCreated {
-		t.Fatalf("task inspect = (%d, %q), want (0, %q)", inspected.code, inspected.stdout, wantCreated)
+	wantInspected := wantCreated + fmt.Sprintf("resources[1]{id,repository,branch,base_revision,worktree_path,head,committed,dirty,untracked}:\n  legacy,demo,main,\"0000000000000000000000000000000000000001\",%s,\"0000000000000000000000000000000000000001\",true,false,false\n", repositoryPath)
+	if inspected := runCommand(t, []string{"task", "inspect", taskID}); inspected.code != 0 || inspected.stdout != wantInspected {
+		t.Fatalf("task inspect = (%d, %q), want (0, %q)", inspected.code, inspected.stdout, wantInspected)
 	}
 
 	published := runCommand(t, []string{"task", "publish", taskID, "--condition", "active", "--reason", "coding", "--activity", "tests"})

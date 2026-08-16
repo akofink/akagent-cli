@@ -18,6 +18,11 @@ func (s *Store) WriteArchive(taskID string, archive TaskArchive) error {
 	if archive.CapturedAt.IsZero() {
 		return newError(KindUsage, "Archive capture time is required", "Retry archive")
 	}
+	for _, execution := range archive.Executions {
+		if execution.TaskID != taskID || validateStoredExecution(execution) != nil {
+			return newError(KindUsage, "Task archive contains an invalid execution snapshot", "Retry archive with valid execution state")
+		}
+	}
 	return s.WithLock(taskID, func() error {
 		if err := s.ensureTaskDir(taskID); err != nil {
 			return err
@@ -66,6 +71,13 @@ func (s *Store) ReadArchive(taskID string) (TaskArchive, error) {
 				fmt.Sprintf("Inspect and repair %s", s.archivePath(taskID)))
 		}
 	}
+	for _, execution := range archive.Executions {
+		if execution.TaskID != taskID || validateStoredExecution(execution) != nil {
+			return TaskArchive{}, malformedError(
+				fmt.Sprintf("Malformed execution snapshot in archive for task %s", taskID),
+				fmt.Sprintf("Inspect and repair %s", s.archivePath(taskID)))
+		}
+	}
 	return archive, nil
 }
 
@@ -90,6 +102,12 @@ func (s *Store) validateArchiveForRecovery(taskID string, result *RecoveryResult
 	}
 	for _, resource := range archive.Resources {
 		if resource.TaskID != taskID || validateResource(resource) != nil {
+			result.MalformedRecords = append(result.MalformedRecords, path)
+			return nil
+		}
+	}
+	for _, execution := range archive.Executions {
+		if execution.TaskID != taskID || validateStoredExecution(execution) != nil {
 			result.MalformedRecords = append(result.MalformedRecords, path)
 			break
 		}

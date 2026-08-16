@@ -1,7 +1,12 @@
 // Package integration defines the default-on gate for automated akagent integrations.
 package integration
 
-import "os"
+import (
+	"os"
+
+	"github.com/akofink/akagent-cli/internal/lifecycle"
+	"github.com/akofink/akagent-cli/internal/store"
+)
 
 const EnableEnv = "AKAGENT_ENABLED"
 
@@ -33,4 +38,10 @@ func InspectValue(value string, set bool) Status {
 
 func Enabled() bool {
 	return Inspect().Enabled
+}
+
+// RecordSessionReference lets an optional provider integration publish its own
+// session provenance without making the core CLI parse provider state files.
+func RecordSessionReference(manager *lifecycle.Manager, taskID, executionID string, reference store.SessionReference) (store.Execution, error) {
+	return manager.AddExecutionSessionReference(taskID, executionID, reference)
 }

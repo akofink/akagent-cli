@@ -21,7 +21,7 @@ akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
-akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
+akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -54,6 +54,7 @@ The `direct` policy permits the registered checkout itself when that is explicit
 
 `task create` creates a durable record, validates the repository inputs, and creates the required branch and worktree without starting tmux or a process.
 `task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
+`task execution session add` records non-secret provider-neutral tool and session provenance without parsing provider files.
 Managed execution windows publish the shared tmux `@agent_state` option by matching task and execution metadata, not display names.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 `task launch --target shell` is the explicit direct human shell workflow built on those generic execution commands.
@@ -66,6 +67,7 @@ Direct-policy tasks deliberately use the registered checkout's current branch wh
 Use `task attach` for verified human attachment and use `task publish` for durable condition and heartbeat updates.
 
 `task reconcile` compares durable records with tmux and Git observations and repairs safe derived facts.
+`task inspect` is the durable work-state view for resources, executions, activity, results, delivery metadata, and session references.
 It never deletes task state, branches, worktrees, windows, or terminal history.
 
 ## Optional Pi integration

@@ -16,6 +16,28 @@ func TestTaskCreateDoesNotRequirePi(t *testing.T) {
 	}
 }
 
+func TestExecutionSessionReferencesAppearInInspection(t *testing.T) {
+	setupTaskCommandTest(t)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "session-cli", "--title", "Session provenance"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "execution", "create", "session-cli", "--execution-id", "provider", "--target", "tool", "--command", "/bin/sh"}); result.code != 0 {
+		t.Fatalf("execution create = (%d, %q)", result.code, result.stdout)
+	}
+	path := filepath.Join(t.TempDir(), "provider-session.json")
+	if err := os.WriteFile(path, []byte("not parsed by akagent"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := runCommand(t, []string{"task", "execution", "session", "add", "session-cli", "provider", "--tool", "pi", "--session-id", "session-1", "--reference-path", path})
+	if result.code != 0 || !strings.Contains(result.stdout, "session_references[1]") || !strings.Contains(result.stdout, "session-1") {
+		t.Fatalf("session add = (%d, %q)", result.code, result.stdout)
+	}
+	inspected := runCommand(t, []string{"task", "inspect", "session-cli"})
+	if inspected.code != 0 || !strings.Contains(inspected.stdout, "executions[1]") || !strings.Contains(inspected.stdout, "pi:session-1") {
+		t.Fatalf("task inspect = (%d, %q)", inspected.code, inspected.stdout)
+	}
+}
+
 func TestExecutionCanPublishGenericResourceDeliveryMetadata(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")

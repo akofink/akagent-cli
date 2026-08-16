@@ -38,8 +38,9 @@ The store lives under the XDG state root for the `akagent` application:
 - Each resource has its own mutable manifest, event history, and archive under `resources/<resource-id>`.
 - Each execution has its own mutable manifest, event history, and archive under `executions/<execution-id>`.
 - Execution records contain tool-neutral command and observation metadata, not resource Git state.
+- Execution records may contain multiple non-secret session references with a tool identifier, session ID, and optional absolute local reference path.
 - `archive.json` is an atomically replaced snapshot of the corresponding task, resource, or execution manifest and event history.
-Task archives include resource snapshots so resource metadata and external delivery URLs remain available with the task record.
+Task archives include resource and execution snapshots so delivery metadata and execution session references remain available with the task record.
 - `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
 
 ## Permissions
@@ -167,7 +168,9 @@ Reconciliation does not invoke either destructive operation.
 ## Out of scope
 
 Starting or stopping executions, task lifecycle commands, credentials, tmux, and Git remain outside this package.
-The store has no Pi-specific execution fields and does not interpret command targets.
+The store has no Pi-specific execution fields and does not interpret command targets or provider session files.
+Session reference paths are validated as absolute local paths without storing the referenced file content.
+Missing provider files remain valid references so historical archives do not become unreadable when a provider cleans up its state.
 The store also persists repository registration records, including an optional absolute `worktree_root` for worktree-policy registrations.
 Older registrations without that field continue to use the derived root in the lifecycle package without a migration rewrite.
 The lifecycle package supplies repository validation and archive and cleanup policy.

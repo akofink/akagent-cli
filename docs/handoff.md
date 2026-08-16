@@ -17,7 +17,8 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Repository registration with `worktree` and `direct` policies, optional absolute worktree roots, and the derived-root default.
 - Durable local task creation, explicit execution launch, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
 - Zero or more independently recoverable task resources with separate Git facts, archives, cleanup state, and recovery debt.
-- Zero or more optional tool-neutral executions with independent identity, tmux metadata, lifecycle observation, archive, stop, and recovery state.
+- Zero or more optional tool-neutral executions with independent identity, tmux metadata, lifecycle observation, archive, stop, recovery state, and multiple non-secret session references.
+- Session references contain a provider-neutral tool identifier, session ID, and optional validated absolute local reference path.
 - Managed executions receive the owning task ID and execution ID as non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment context.
 - Resources preserve mutable provider-neutral metadata and HTTPS external reference URLs for delivery records.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
@@ -36,6 +37,7 @@ Worktree-policy resources require an explicit descriptive branch, conventionally
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 `task execution create` records an optional tool-neutral execution without a process side effect.
 `task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during creation.
+`task execution session add` records provider-neutral session provenance without parsing Pi or another provider's session files.
 Execution stop, archive, attach, and reconcile operate independently from resource state.
 The `task launch --target shell` path creates and launches a generic shell execution.
 The optional `task launch --target pi` path delegates to the Pi integration, which creates and launches a generic execution.
@@ -67,6 +69,25 @@ Legacy single-resource manifests migrate lazily to a `legacy` resource when reso
 Agent orchestration is enabled by default over this stable CLI boundary.
 The agent skill owns automated lifecycle behavior and preserves direct human CLI use.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+
+## Durable work-state model and migration boundary
+
+`akagent task inspect <task-id>` is the durable source of active work state.
+Its task detail includes task lifecycle, branch and worktree facts, conditions, activity, result, recovery state, all resources, resource Git facts, generic delivery metadata, all executions, execution tool and process provenance, and provider-neutral session references.
+Task and execution archives preserve the same records for recovery after cleanup or provider state changes.
+List commands remain concise and include compact session summaries where appropriate.
+
+Session references are declarations from an integration, not provider adapters in the core lifecycle.
+An integration discovers its own resumable session state and calls the generic session-reference update surface or `task execution session add`.
+`akagent` validates only the non-secret shape and local path reference, then persists the reference without opening or parsing the provider file.
+Missing provider files do not invalidate historical records.
+
+This is the migration boundary from the shared `WORKING_STATE.md` board.
+Existing task records migrate lazily, with absent session references treated as empty and legacy task launch state detached into generic resources and executions as already documented.
+After migration, agents and operators inspect `akagent` task state rather than reading or updating a shared `WORKING_STATE.md`.
+`WORKING_STATE.md` is not a durable input to task lifecycle, reconciliation, archive, or cleanup, and the core CLI does not create or interpret it.
+The repository coding workflow no longer depends on a shared `WORKING_STATE.md` board after this migration.
+Provider-specific session discovery and forge-specific delivery behavior remain outside this repository.
 
 ## Task context and delivery metadata
 
@@ -103,7 +124,7 @@ akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
-akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
+akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```

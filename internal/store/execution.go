@@ -3,7 +3,9 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -18,31 +20,40 @@ const (
 // Execution is an optional, tool-neutral process associated with a task.
 // Resource state is intentionally not embedded here: an execution can be
 // stopped, observed, archived, and recovered without changing its resources.
+// SessionReference identifies resumable state owned by an execution tool.
+// The reference contains no session content or credentials.
+type SessionReference struct {
+	Tool          string `json:"tool"`
+	SessionID     string `json:"session_id"`
+	ReferencePath string `json:"reference_path,omitempty"`
+}
+
 type Execution struct {
-	ID                string    `json:"id"`
-	TaskID            string    `json:"task_id"`
-	Label             string    `json:"label"`
-	Target            string    `json:"target"`
-	Command           string    `json:"command,omitempty"`
-	Arguments         []string  `json:"arguments,omitempty"`
-	ResourceID        string    `json:"resource_id,omitempty"`
-	WorkingDirectory  string    `json:"working_directory,omitempty"`
-	Lifecycle         string    `json:"lifecycle"`
-	Condition         string    `json:"condition"`
-	Reason            string    `json:"reason,omitempty"`
-	Activity          string    `json:"activity,omitempty"`
-	HeartbeatAt       time.Time `json:"heartbeat_at,omitempty"`
-	Result            string    `json:"result,omitempty"`
-	TmuxWindow        string    `json:"tmux_window,omitempty"`
-	ProcessPID        int       `json:"process_pid,omitempty"`
-	ProcessStartTime  uint64    `json:"process_start_time,omitempty"`
-	ObservedPID       int       `json:"observed_pid,omitempty"`
-	ObservedStartTime uint64    `json:"observed_start_time,omitempty"`
-	ProcessPane       string    `json:"process_pane,omitempty"`
-	Observation       string    `json:"observation,omitempty"`
-	ObservationAt     time.Time `json:"observation_at,omitempty"`
-	ArchiveState      string    `json:"archive_state,omitempty"`
-	RecoveryDebt      string    `json:"recovery_debt,omitempty"`
+	ID                string             `json:"id"`
+	TaskID            string             `json:"task_id"`
+	Label             string             `json:"label"`
+	Target            string             `json:"target"`
+	Command           string             `json:"command,omitempty"`
+	Arguments         []string           `json:"arguments,omitempty"`
+	ResourceID        string             `json:"resource_id,omitempty"`
+	WorkingDirectory  string             `json:"working_directory,omitempty"`
+	SessionReferences []SessionReference `json:"session_references,omitempty"`
+	Lifecycle         string             `json:"lifecycle"`
+	Condition         string             `json:"condition"`
+	Reason            string             `json:"reason,omitempty"`
+	Activity          string             `json:"activity,omitempty"`
+	HeartbeatAt       time.Time          `json:"heartbeat_at,omitempty"`
+	Result            string             `json:"result,omitempty"`
+	TmuxWindow        string             `json:"tmux_window,omitempty"`
+	ProcessPID        int                `json:"process_pid,omitempty"`
+	ProcessStartTime  uint64             `json:"process_start_time,omitempty"`
+	ObservedPID       int                `json:"observed_pid,omitempty"`
+	ObservedStartTime uint64             `json:"observed_start_time,omitempty"`
+	ProcessPane       string             `json:"process_pane,omitempty"`
+	Observation       string             `json:"observation,omitempty"`
+	ObservationAt     time.Time          `json:"observation_at,omitempty"`
+	ArchiveState      string             `json:"archive_state,omitempty"`
+	RecoveryDebt      string             `json:"recovery_debt,omitempty"`
 }
 
 // ExecutionArchive is an independently recoverable execution snapshot.
@@ -63,11 +74,73 @@ func validateExecutionID(id string) error {
 	return nil
 }
 
+func validateSessionReferenceShape(reference SessionReference) error {
+	if strings.TrimSpace(reference.Tool) == "" || strings.ContainsAny(reference.Tool, "\r\n") {
+		return newError(KindUsage, "Session reference tool must be a non-empty single line", "Retry with a provider-neutral tool identifier")
+	}
+	if strings.TrimSpace(reference.SessionID) == "" || strings.ContainsAny(reference.SessionID, "\r\n") {
+		return newError(KindUsage, "Session reference session ID must be a non-empty single line", "Retry with a non-secret session ID")
+	}
+	if reference.ReferencePath != "" && (!filepath.IsAbs(reference.ReferencePath) || strings.ContainsAny(reference.ReferencePath, "\r\n\x00")) {
+		return newError(KindUsage, "Session reference path must be an absolute local path", "Retry with an absolute local reference path")
+	}
+	return nil
+}
+
+func validateSessionReference(reference SessionReference) error {
+	if err := validateSessionReferenceShape(reference); err != nil {
+		return err
+	}
+	if reference.ReferencePath == "" {
+		return nil
+	}
+	info, err := os.Lstat(reference.ReferencePath)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return newError(KindUsage, "Session reference path must identify a regular local file", "Retry with an existing non-symlink session reference file")
+	}
+	return nil
+}
+
+func validateExecutionReferences(execution Execution, validatePaths bool) error {
+	seen := make(map[string]struct{}, len(execution.SessionReferences))
+	for _, reference := range execution.SessionReferences {
+		var err error
+		if validatePaths {
+			err = validateSessionReference(reference)
+		} else {
+			err = validateSessionReferenceShape(reference)
+		}
+		if err != nil {
+			return err
+		}
+		key := reference.Tool + "\x00" + reference.SessionID + "\x00" + reference.ReferencePath
+		if _, ok := seen[key]; ok {
+			return newError(KindUsage, "Execution session references must be unique", "Retry without duplicate session references")
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+func validateExecution(execution Execution) error {
+	if err := validateExecutionID(execution.ID); err != nil {
+		return err
+	}
+	return validateExecutionReferences(execution, true)
+}
+
+func validateStoredExecution(execution Execution) error {
+	if err := validateExecutionID(execution.ID); err != nil {
+		return err
+	}
+	return validateExecutionReferences(execution, false)
+}
+
 func (s *Store) WriteExecution(taskID string, execution Execution) error {
 	if err := validateTaskID(taskID); err != nil {
 		return err
 	}
-	if err := validateExecutionID(execution.ID); err != nil {
+	if err := validateExecution(execution); err != nil {
 		return err
 	}
 	if execution.TaskID != "" && execution.TaskID != taskID {
@@ -81,7 +154,7 @@ func (s *Store) CreateExecution(taskID string, execution Execution) (bool, Execu
 	if err := validateTaskID(taskID); err != nil {
 		return false, Execution{}, err
 	}
-	if err := validateExecutionID(execution.ID); err != nil {
+	if err := validateExecution(execution); err != nil {
 		return false, Execution{}, err
 	}
 	execution.TaskID = taskID
@@ -294,6 +367,9 @@ func (s *Store) WriteExecutionArchive(taskID, executionID string, archive Execut
 	if archive.CapturedAt.IsZero() {
 		return newError(KindUsage, "Execution archive capture time is required", "Retry archive")
 	}
+	if archive.Execution.TaskID != taskID || archive.Execution.ID != executionID || validateStoredExecution(archive.Execution) != nil {
+		return newError(KindUsage, "Execution archive payload identity or session references are invalid", "Retry archive with the requested execution")
+	}
 	return s.WithLock(taskID, func() error {
 		if err := s.ensureExecutionDir(taskID, executionID); err != nil {
 			return err
@@ -330,13 +406,16 @@ func (s *Store) ReadExecutionArchive(taskID, executionID string) (ExecutionArchi
 		return ExecutionArchive{}, err
 	}
 	archive, err := envelope.DecodeExecutionArchive()
-	if err != nil || archive.TaskID != taskID || archive.ExecutionID != executionID || archive.CapturedAt.IsZero() {
+	if err != nil || archive.TaskID != taskID || archive.ExecutionID != executionID || archive.CapturedAt.IsZero() || archive.Execution.TaskID != taskID || archive.Execution.ID != executionID || validateStoredExecution(archive.Execution) != nil {
 		return ExecutionArchive{}, malformedError(fmt.Sprintf("Malformed archive for execution %s", executionID), fmt.Sprintf("Inspect and repair %s", path))
 	}
 	return archive, nil
 }
 
 func (s *Store) writeExecutionLocked(taskID string, execution Execution) error {
+	if err := validateExecution(execution); err != nil {
+		return err
+	}
 	if err := s.ensureExecutionDir(taskID, execution.ID); err != nil {
 		return err
 	}
@@ -364,7 +443,7 @@ func (s *Store) ensureExecutionDir(taskID, executionID string) error {
 }
 
 func sameExecutionInputs(a, b Execution) bool {
-	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory
+	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory && slices.Equal(a.SessionReferences, b.SessionReferences)
 }
 
 func executionManifestEnvelope(taskID, executionID string, execution Execution) (Envelope, error) {
@@ -401,6 +480,9 @@ func (e Envelope) DecodeExecution() (Execution, error) {
 	}
 	if execution.ID == "" || execution.TaskID == "" || execution.TaskID != e.TaskID || execution.ID != e.ExecutionID {
 		return Execution{}, malformedError("Execution manifest is missing or has mismatched identity", "Inspect and repair the execution record")
+	}
+	if err := validateStoredExecution(execution); err != nil {
+		return Execution{}, malformedError("Execution manifest contains an invalid session reference", "Inspect and repair the execution record")
 	}
 	return execution, nil
 }

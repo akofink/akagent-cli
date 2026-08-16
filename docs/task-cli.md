@@ -63,7 +63,7 @@ repository:
 ```text
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
 akagent task resource <create|list|inspect|update|archive|clean> ...
-akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile> ...
+akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
@@ -97,6 +97,8 @@ The task initially has status `created` and can be inspected, archived after sto
 A task can own zero or more optional tool-neutral execution records.
 Use `task execution create` to persist an execution without starting tmux, then `task execution launch` to start it.
 Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
+Use `task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]` to record provider-neutral session provenance.
+The optional path is an absolute local reference only; `akagent` never reads provider session files.
 The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
 Managed execution windows publish the shared tmux `@agent_state` option by matching those metadata IDs rather than the display label.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
@@ -152,7 +154,7 @@ Stop clears the option, archive preserves `done`, and reconciliation republishes
 A finish while the task process is running fails without changing the task outcome.
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.
 
-Archive requires a stopped or finished task and captures the manifest, events, Git facts, and available terminal history.
+Archive requires a stopped or finished task and captures the manifest, events, Git facts, resource snapshots, execution snapshots, session references, and available terminal history.
 Execution archive requires only the selected execution to be stopped or finished and does not require resource archive or cleanup.
 `task resource archive` captures one resource and its events independently.
 Clean archives first and refuses a live task.
@@ -165,6 +167,7 @@ Without worktree approval, cleanup records preservation debt and leaves the work
 Credential cleanup remains independent and retryable.
 
 Reconciliation repairs derived observations and Git facts for the task and each resource.
+It preserves integration-owned session references without parsing provider files.
 It never deletes task state, branches, worktrees, windows, or terminal history.
 Legacy single-resource manifests are migrated lazily to a `legacy` resource when a resource command inspects or extends them.
 Legacy task launch fields migrate lazily to a `legacy` execution when an execution command inspects or extends them.
@@ -211,8 +214,10 @@ total: 1
 ```
 
 Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnings`, archive state, cleanup state, and cleanup debt are emitted only when present.
-Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, cleanup state, and optional metadata and external URLs.
+Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, cleanup state, and concise optional metadata and external URL fields.
 Resource inspect and mutation output uses one `resource` object.
+Task inspection additionally emits `resources[<n>]` and `executions[<n>]` snapshots so it is sufficient for durable work-state recovery.
+Execution inspection emits full `session_references[<n>]` entries; execution list output uses a compact session summary.
 
 ## Orchestration and integration signal
 

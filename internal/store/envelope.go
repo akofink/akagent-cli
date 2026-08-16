@@ -116,6 +116,7 @@ type TaskArchive struct {
 	Manifest   Manifest      `json:"manifest"`
 	Events     []EventRecord `json:"events"`
 	Resources  []Resource    `json:"resources,omitempty"`
+	Executions []Execution   `json:"executions,omitempty"`
 	Git        GitFacts      `json:"git,omitempty"`
 	Terminal   string        `json:"terminal,omitempty"`
 	Warnings   []string      `json:"warnings,omitempty"`

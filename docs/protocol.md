@@ -51,8 +51,10 @@ Titles, branches, tickets, tmux names, and prompts are attributes rather than id
 
 An execution is an optional tool-neutral process associated with one task.
 Its durable ID is independent from both the task ID and every resource ID.
-The record stores a descriptive label, target, command metadata, optional resource attachment metadata, lifecycle state, process identity, tmux observations, heartbeat, archive state, and recovery debt.
+The record stores a descriptive label, target, command metadata, optional resource attachment metadata, lifecycle state, process identity, tmux observations, heartbeat, archive state, recovery debt, and zero or more session references.
 The core execution record has no Pi-specific fields.
+A session reference contains only a provider-neutral tool identifier, session ID, and optional absolute local reference path.
+The path is a reference to provider-owned state, not session content, and may be absent or no longer present when the execution is inspected.
 
 ```toon
 execution:
@@ -73,6 +75,8 @@ The compatibility label must not be `pi`, `shell`, `akagent`, `execution`, or an
 A managed execution also receives `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` as non-secret environment context.
 An execution can use those values with the local CLI to create, inspect, and update resources for its owning task.
 A resource ID is attachment metadata used to select a working directory and verify durable intent; execution lifecycle operations do not mutate or require the resource's archive or cleanup state.
+Integrations record their own session references with the generic execution update surface.
+The core CLI never parses Pi or another provider's session files.
 The managed execution window also publishes the shared tmux `@agent_state` option using those metadata IDs, never its display label.
 Active execution clears the option, while waiting, blocked, and completed execution publish `waiting`, `blocked`, and `done` respectively.
 
@@ -173,7 +177,7 @@ akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
-akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
+akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -220,6 +224,7 @@ A resource attachment is optional and only supplies verified working-directory m
 Repeated equivalent creates and launches are successful no-ops.
 A failed launch remains retryable without recreating the task or selected resource.
 A task can own zero or more executions, and each execution can be inspected, attached, stopped, archived, and reconciled independently.
+`task execution session add` appends an idempotent provider-neutral session reference without provider-specific parsing.
 
 ### Publish state
 
@@ -240,7 +245,8 @@ The default list includes actionable records: non-archived tasks and archived ta
 Only fully archived, fully cleaned, debt-free records are hidden by default.
 `task list --all` includes all durable task records.
 `--repository <name>` and `--worktree <path>` apply deterministic exact-match filters that compose with `--all`.
-Detail views include task identity, computed status, branch and worktree facts, conditions, results, and recovery fields when present.
+Detail views include task identity, computed status, branch and worktree facts, conditions, results, recovery fields, all task resources, and all task executions when present.
+Execution detail includes full session references, while execution list output includes a compact `tool:session-id` summary.
 
 ```toon
 tasks[1]{id,title,status,worker,condition}:
@@ -280,6 +286,7 @@ It captures the execution manifest, execution event history, and terminal histor
 Execution archive does not require a resource to be archived or cleaned and never changes resource state.
 Unavailable terminal history is recorded as a warning.
 Partial archive attempts remain retryable, and equivalent archives are idempotent.
+Task archives include the durable resource and execution snapshots, including session references.
 The compatibility task and resource archive operations retain their existing scope.
 
 ### Clean
@@ -302,6 +309,7 @@ Execution reconciliation compares each durable execution with its task-tagged tm
 It repairs safe derived metadata, republishes waiting or blocked state only with fresh observations, and clears stale `@agent_state` values.
 It never deletes task state, executions, branches, worktrees, windows, or terminal history.
 Task reconciliation continues to repair legacy task and resource observations.
+It preserves session references as declared integration metadata and does not inspect provider state.
 
 ## Output
 
@@ -362,6 +370,8 @@ Legacy manifests with a recorded process remain attached to their observed execu
 Legacy repository registrations without `worktree_root` continue to use the derived root lazily, without rewriting the registration.
 Legacy manifests with one repository, branch, and worktree are migrated lazily when resource operations inspect or extend them.
 Legacy manifests with launch, tmux, or process fields are migrated lazily when execution operations inspect or extend them.
+Older execution records without session references migrate by treating the field as empty.
+The migration boundary ends at the provider-neutral session reference: integrations may discover provider state and record a non-secret reference, but `akagent` does not import or interpret provider session files.
 The migration creates a `legacy` execution and preserves the existing task execution fields, target metadata, process identity, tmux window, observation, archive state, cleanup state, and recovery debt.
 The migration is idempotent and does not start, stop, rename, or archive a process.
 Resource migration and execution migration are independent, so either can be recovered without changing the other record.
