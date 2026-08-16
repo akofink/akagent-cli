@@ -45,6 +45,32 @@ func (t *independentExecutionTmux) SetExecutionState(_, _, state string) error {
 	return nil
 }
 
+func TestCompatibilityExecutionLabelUsesTaskBranch(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if err := manager.Store.WriteManifest("label-task", store.Manifest{Title: "Descriptive label", Worker: "local", Lifecycle: "created", Branch: "akofink/69-execution-labels"}); err != nil {
+		t.Fatal(err)
+	}
+	label, err := manager.ResolveCompatibilityExecutionLabel("label-task", "", "")
+	if err != nil || label != "69-execution-labels" {
+		t.Fatalf("ResolveCompatibilityExecutionLabel() = %q, %v; want branch-derived label", label, err)
+	}
+}
+
+func TestCompatibilityExecutionLabelRequiresDescriptiveValue(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "label-required", Title: "Label required"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ResolveCompatibilityExecutionLabel("label-required", "", ""); !store.IsKind(err, store.KindUsage) {
+		t.Fatalf("missing compatibility label error = %v, want usage error", err)
+	}
+	for _, label := range []string{"pi", "shell", "akagent", "019fe8f2-ac67-7406-a6e6-2717b2cd31c6"} {
+		if _, err := manager.ResolveCompatibilityExecutionLabel("label-required", "", label); !store.IsKind(err, store.KindUsage) {
+			t.Fatalf("label %q error = %v, want usage error", label, err)
+		}
+	}
+}
+
 func TestExecutionLifecycleIsIndependentFromResources(t *testing.T) {
 	manager, _ := newTestManager(t)
 	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}

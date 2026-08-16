@@ -140,11 +140,11 @@ func taskCommand(args []string, stdout io.Writer) int {
 		return write(stdout, taskDetailView{Task: view(request.ID, result.Manifest)})
 	case "launch":
 		if len(args) < 3 {
-			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
+			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
 		}
 		request, ok := parseLaunch(args[2:])
 		if !ok || (request.Target != "shell" && request.Target != "pi") {
-			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]", false, "Use --target shell for a direct shell or --target pi for managed Pi")
+			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]", false, "Use --target shell or --target pi with a descriptive label or branch")
 		}
 		var execution store.Execution
 		if request.Target == "pi" {

@@ -53,6 +53,10 @@ func Launch(manager *lifecycle.Manager, taskID string, request LaunchRequest) (s
 	if err != nil {
 		return store.Execution{}, err
 	}
+	label, err := manager.ResolveCompatibilityExecutionLabel(taskID, resourceID, request.Label)
+	if err != nil {
+		return store.Execution{}, err
+	}
 	executionID, err := uuid.NewV7()
 	if err != nil {
 		return store.Execution{}, errors.New("failed to generate an execution ID")
@@ -70,7 +74,7 @@ func Launch(manager *lifecycle.Manager, taskID string, request LaunchRequest) (s
 	}
 	execution, _, err := manager.CreateExecution(taskID, lifecycle.ExecutionRequest{
 		ID:         executionID.String(),
-		Label:      request.Label,
+		Label:      label,
 		Target:     PiTarget,
 		Command:    executable,
 		Arguments:  arguments,
@@ -86,6 +90,10 @@ func Launch(manager *lifecycle.Manager, taskID string, request LaunchRequest) (s
 // execution through the same generic execution primitives used by Pi.
 func LaunchShell(manager *lifecycle.Manager, taskID, label, resourceID string) (store.Execution, error) {
 	resourceID, err := selectResource(manager, taskID, resourceID)
+	if err != nil {
+		return store.Execution{}, err
+	}
+	label, err = manager.ResolveCompatibilityExecutionLabel(taskID, resourceID, label)
 	if err != nil {
 		return store.Execution{}, err
 	}

@@ -103,7 +103,8 @@ Actionable records include non-archived tasks and archived tasks with incomplete
 Use `--repository` and `--worktree` to compose deterministic exact-match filters.
 Task creation does not create a tmux resource or start a process.
 The explicit shell launch command creates a generic execution in a task-tagged tmux window.
-Its display name is descriptive, while the task and execution IDs remain in window metadata for lifecycle verification.
+Its display name is derived from the selected resource or task branch without the owner prefix, or supplied with `--label <descriptive-label>` when no branch is available.
+The task and execution IDs remain in window metadata for lifecycle verification.
 Managed execution windows publish `@agent_state` by matching those metadata IDs.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 

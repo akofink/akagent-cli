@@ -57,6 +57,8 @@ The `direct` policy permits the registered checkout itself when that is explicit
 Managed execution windows publish the shared tmux `@agent_state` option by matching task and execution metadata, not display names.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 `task launch --target shell` is the explicit direct human shell workflow built on those generic execution commands.
+Compatibility shell and Pi launches derive their execution and tmux display label from the selected resource or task branch, without the owner prefix.
+Pass `--label <descriptive-label>` when no descriptive branch is available.
 Execution stop, archive, attachment, and reconciliation are independent from resource state.
 A task can coordinate multiple resources through one execution by selecting a resource during execution creation.
 Worktree-policy tasks require an explicit descriptive branch such as `akofink/51-task-labels`.

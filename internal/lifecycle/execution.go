@@ -25,6 +25,49 @@ type ExecutionRequest struct {
 	WorkingDirectory string
 }
 
+// ResolveCompatibilityExecutionLabel returns a descriptive label for the
+// compatibility launch commands. An explicit label wins, while an omitted
+// label is derived from the selected resource or task branch.
+func (m *Manager) ResolveCompatibilityExecutionLabel(taskID, resourceID, requested string) (string, error) {
+	label := strings.TrimSpace(requested)
+	if label == "" {
+		manifest, err := m.Inspect(taskID)
+		if err != nil {
+			return "", err
+		}
+		branch := manifest.Branch
+		if resourceID != "" {
+			resource, err := m.InspectResource(taskID, resourceID)
+			if err != nil {
+				return "", err
+			}
+			branch = resource.Branch
+		}
+		if strings.TrimSpace(branch) == "" {
+			return "", &store.Error{Kind: store.KindUsage, Message: "compatibility execution requires a descriptive task branch or label", Recovery: "Retry with `--label <descriptive-label>` or create the task with `--branch <branch>`"}
+		}
+		label = tmuxWindowName(branch)
+	}
+	if err := validateCompatibilityExecutionLabel(label); err != nil {
+		return "", err
+	}
+	return label, nil
+}
+
+func validateCompatibilityExecutionLabel(label string) error {
+	if label == "" || strings.ContainsAny(label, "\r\n") {
+		return &store.Error{Kind: store.KindUsage, Message: "execution label must be a non-empty single line", Recovery: "Retry with `--label <descriptive-label>`"}
+	}
+	switch strings.ToLower(label) {
+	case "pi", "shell", "akagent", "execution":
+		return &store.Error{Kind: store.KindUsage, Message: fmt.Sprintf("execution label %q is not descriptive", label), Recovery: "Retry with `--label <descriptive-label>` or use a descriptive task branch"}
+	}
+	if _, err := uuid.Parse(label); err == nil {
+		return &store.Error{Kind: store.KindUsage, Message: "execution label must not be an internal ID", Recovery: "Retry with `--label <descriptive-label>` or use a descriptive task branch"}
+	}
+	return nil
+}
+
 func (m *Manager) CreateExecution(taskID string, request ExecutionRequest) (store.Execution, bool, error) {
 	if taskID == "" || request.Target == "" {
 		return store.Execution{}, false, fmt.Errorf("task ID and execution target are required")

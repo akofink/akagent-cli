@@ -113,12 +113,58 @@ func TestTaskCreateHasNoTmuxSideEffectUntilExplicitLaunch(t *testing.T) {
 	if _, err := os.Stat(os.Getenv("AKAGENT_FAKE_TMUX_STATE")); !os.IsNotExist(err) {
 		t.Fatalf("task create touched fake tmux state: %v", err)
 	}
-	launched := runCommand(t, []string{"task", "launch", "create-56", "--target", "shell"})
+	launched := runCommand(t, []string{"task", "launch", "create-56", "--target", "shell", "--label", "create-only"})
 	if launched.code != 0 || !strings.Contains(launched.stdout, "execution: shell") {
 		t.Fatalf("task launch = (%d, %q), want shell execution", launched.code, launched.stdout)
 	}
 	if _, err := os.Stat(os.Getenv("AKAGENT_FAKE_TMUX_STATE")); err != nil {
 		t.Fatalf("task launch did not create fake tmux state: %v", err)
+	}
+}
+
+func TestCompatibilityLaunchUsesDescriptiveBranchLabel(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	for _, taskID := range []string{"shell-label", "pi-label"} {
+		created := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", taskID, "--repository", "demo"})
+		if created.code != 0 {
+			t.Fatalf("task create %s = (%d, %q)", taskID, created.code, created.stdout)
+		}
+	}
+	if launched := runCommand(t, []string{"task", "launch", "shell-label", "--target", "shell"}); launched.code != 0 {
+		t.Fatalf("shell launch = (%d, %q)", launched.code, launched.stdout)
+	}
+	piPath := filepath.Join(strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))[0], "pi")
+	if err := os.WriteFile(piPath, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if launched := runCommand(t, []string{"task", "launch", "pi-label", "--target", "pi"}); launched.code != 0 {
+		t.Fatalf("Pi launch = (%d, %q)", launched.code, launched.stdout)
+	}
+	log, err := os.ReadFile(os.Getenv("AKAGENT_FAKE_TMUX_LOG"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(log); !strings.Contains(got, "-n main") {
+		t.Fatalf("tmux launch log = %q, want descriptive branch label", got)
+	}
+	for _, test := range []struct {
+		taskID string
+		target string
+	}{
+		{taskID: "shell-label", target: "shell"},
+		{taskID: "pi-label", target: "pi"},
+	} {
+		executions := runCommand(t, []string{"task", "execution", "list", test.taskID})
+		if executions.code != 0 || !strings.Contains(executions.stdout, ",main,"+test.target+",") {
+			t.Fatalf("execution list %s = (%d, %q), want descriptive label", test.taskID, executions.code, executions.stdout)
+		}
 	}
 }
 
@@ -521,6 +567,7 @@ func setupTaskCommandTest(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv("AKAGENT_FAKE_TMUX_STATE", filepath.Join(root, "tmux-state"))
+	t.Setenv("AKAGENT_FAKE_TMUX_LOG", filepath.Join(root, "tmux.log"))
 	bin := filepath.Join(root, "bin")
 	if err := os.Mkdir(bin, 0o700); err != nil {
 		t.Fatal(err)
@@ -535,6 +582,7 @@ list-windows)
   cat "$state"
   ;;
 new-window)
+  printf '%s\n' "$*" >> "${AKAGENT_FAKE_TMUX_LOG:-/dev/null}"
   count=$(wc -l < "$state" | tr -d ' ')
   window="@$((count + 1))"
   printf '%s\t\n' "$window" >> "$state"
