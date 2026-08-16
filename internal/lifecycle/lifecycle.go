@@ -1784,7 +1784,10 @@ func startExecutionTmuxWindow(executionID, taskID, label, directory, command str
 	if directory != "" {
 		args = append(args, "-c", directory)
 	}
-	args = append(args, command)
+	// Configure identity from inside the pane before starting the managed
+	// command. A fast command can otherwise exit between new-window and the
+	// metadata writes below, leaving no verifiable execution window.
+	args = append(args, fmt.Sprintf("window=$(tmux display-message -p '#{window_id}') && tmux set-option -w -t \"$window\" @akagent_task_id %s && tmux set-option -w -t \"$window\" @akagent_execution_id %s && exec %s", shellQuote(taskID), shellQuote(executionID), command))
 	output, err := exec.Command("tmux", args...).Output()
 	if err != nil {
 		return TmuxProcess{}, errors.New("tmux execution window could not be created")
@@ -1792,12 +1795,6 @@ func startExecutionTmuxWindow(executionID, taskID, label, directory, command str
 	window := strings.TrimSpace(string(output))
 	if window == "" {
 		return TmuxProcess{}, errors.New("tmux did not return an execution window ID")
-	}
-	if err := exec.Command("tmux", "set-option", "-w", "-t", window, "@akagent_task_id", taskID).Run(); err != nil {
-		return TmuxProcess{}, errors.New("tmux task metadata could not be set")
-	}
-	if err := exec.Command("tmux", "set-option", "-w", "-t", window, "@akagent_execution_id", executionID).Run(); err != nil {
-		return TmuxProcess{}, errors.New("tmux execution metadata could not be set")
 	}
 	observation, err := (commandTmux{}).ObserveExecution(executionID, taskID)
 	if err != nil {
