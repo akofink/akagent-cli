@@ -96,6 +96,7 @@ akagent task inspect <task-id>
 The command generates a UUIDv7 task ID when `--task-id` is omitted.
 It creates a durable manifest, a task branch, and an isolated Git worktree under the registered repository's configured worktree root when the policy is `worktree`.
 Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
+When `--worktree` is omitted, its directory name is the branch label after the owner prefix beneath the registered root, so `akofink/80-worktree-labels` uses `<worktree-root>/80-worktree-labels`.
 Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
 The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.
 The default task list shows actionable records only, while `--all` includes archived history.

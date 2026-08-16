@@ -34,6 +34,7 @@ Containment validation, cleanup ownership checks, and reconciliation use the con
 The compatibility `--repository` form creates one initial resource.
 `task resource create` adds additional repository, branch, and worktree combinations.
 Worktree-policy resources require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
+When `--worktree` is omitted, the worktree directory uses the branch label after the owner prefix beneath the registered root, such as `80-worktree-labels` for `akofink/80-worktree-labels`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 `task execution create` records an optional tool-neutral execution without a process side effect.
 `task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during execution creation.

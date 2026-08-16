@@ -52,6 +52,7 @@ The default repository policy creates an isolated branch and Git worktree for ea
 Use `--worktree-root <absolute-path>` with the `worktree` policy to separate primary clones from managed worktrees.
 Without that option, the existing derived root remains `<checkout-parent>/.akagent/worktrees/<name>`.
 The `direct` policy permits the registered checkout itself when that is explicitly selected.
+When `--worktree` is omitted, the worktree directory uses the branch label after the owner prefix, such as `80-worktree-labels` for `akofink/80-worktree-labels`.
 
 `task create` is state-only task creation: it creates a durable record and, when the compatibility `--repository` form is used, validates the repository inputs and creates the required branch and worktree without starting tmux or a process.
 `task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
