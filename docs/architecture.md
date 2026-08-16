@@ -13,11 +13,11 @@ The current executable exposes:
 
 ```text
 akagent
-akagent credential <list|inspect|doctor>
+akagent credential <list|inspect|doctor|clean>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -64,9 +64,9 @@ The lifecycle layer owns:
 - Process and Git reconciliation.
 - Archive capture and cleanup-preservation policy.
 
-The lifecycle exposes an approval-gated worktree cleanup hook that validates ownership before removal.
-Direct repositories are never removed, and credential cleanup remains independent.
-The lifecycle records independent cleanup states and recovery debt so approved destructive behavior can be retried without losing evidence.
+The lifecycle exposes approval-gated worktree and credential cleanup hooks.
+The worktree hook validates ownership before removal, direct repositories are never removed, and credential cleanup never rewrites the credential manifest.
+The lifecycle records independent cleanup states and recovery debt so refused or failed destructive behavior can be retried without losing evidence.
 
 ### Tmux
 

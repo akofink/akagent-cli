@@ -225,7 +225,7 @@ func (m *Manager) CleanResource(taskID, resourceID string, options CleanupOption
 	if err != nil {
 		return store.Resource{}, err
 	}
-	if resource.CleanupState == cleanupComplete {
+	if resource.CleanupState == cleanupComplete && resource.CredentialCleanupState == cleanupComplete {
 		return resource, nil
 	}
 	if resource.ArchiveState != archiveComplete {
@@ -264,6 +264,11 @@ func (m *Manager) CleanResource(taskID, resourceID string, options CleanupOption
 		return m.resourceCleanupFailure(resource, err)
 	}
 	var failures []error
+	if resource.CredentialCleanupState != cleanupComplete {
+		if cleanupErr := m.runResourceCredentialCleanup(taskID, &resource, task, options.AllowCredentials); cleanupErr != nil {
+			failures = append(failures, cleanupErr)
+		}
+	}
 	facts := resource.Git
 	if preservation := missingAuthorization(facts, options); preservation != "" {
 		resource.WorktreeCleanupState = cleanupBlocked
@@ -301,6 +306,53 @@ func (m *Manager) CleanResource(taskID, resourceID string, options CleanupOption
 		return m.resourceCleanupFailure(resource, err)
 	}
 	return resource, nil
+}
+
+func (m *Manager) runResourceCredentialCleanup(taskID string, resource *store.Resource, task store.Manifest, allowed bool) error {
+	resource.CleanupDebt = true
+	resource.CredentialCleanupState = cleanupPending
+	if err := m.Store.WriteResource(taskID, *resource); err != nil {
+		return err
+	}
+	if _, err := m.Store.AppendResourceEvent(taskID, resource.ID, store.Event{Operation: "cleanup_credentials", Outcome: "intent", Detail: "credential cleanup requested"}); err != nil {
+		return &store.Error{Kind: store.KindPartial, Message: "Resource credential cleanup is incomplete", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent task resource clean %s %s`", taskID, resource.ID), Err: err}
+	}
+	if !allowed {
+		resource.CredentialCleanupState = cleanupBlocked
+		resource.CleanupDebt = true
+		writeErr := m.Store.WriteResource(taskID, *resource)
+		_, eventErr := m.Store.AppendResourceEvent(taskID, resource.ID, store.Event{Operation: "cleanup_credentials", Outcome: "preservation_required", Detail: "credential cleanup approval required"})
+		if writeErr != nil || eventErr != nil {
+			return &store.Error{Kind: store.KindPartial, Message: "Resource credential cleanup approval could not be recorded", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent task resource clean %s %s --allow-credentials`", taskID, resource.ID), Err: errors.Join(writeErr, eventErr)}
+		}
+		return &store.Error{Kind: store.KindPreservation, Message: "Resource credential cleanup requires explicit authorization", Recovery: fmt.Sprintf("Retry `akagent task resource clean %s %s --allow-credentials`", taskID, resource.ID)}
+	}
+	if m.CleanupCredentials != nil {
+		if err := m.CleanupCredentials(resourceAsManifest(task, *resource)); err != nil {
+			resource.CredentialCleanupState = cleanupPartial
+			resource.CleanupDebt = true
+			writeErr := m.Store.WriteResource(taskID, *resource)
+			_, eventErr := m.Store.AppendResourceEvent(taskID, resource.ID, store.Event{Operation: "cleanup_credentials", Outcome: "partial", Detail: cleanupDebtEvent})
+			return &store.Error{Kind: store.KindPartial, Message: "Resource credential cleanup is incomplete", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent task resource clean %s %s --allow-credentials`", taskID, resource.ID), Err: errors.Join(writeErr, eventErr)}
+		}
+	}
+	resource.CredentialCleanupState = cleanupComplete
+	resource.CleanupDebt = resourceCleanupDebtRemaining(*resource)
+	if err := m.Store.WriteResource(taskID, *resource); err != nil {
+		return err
+	}
+	if _, err := m.Store.AppendResourceEvent(taskID, resource.ID, store.Event{Operation: "cleanup_credentials", Outcome: "succeeded", Detail: "credential cleanup complete"}); err != nil {
+		resource.CredentialCleanupState = cleanupPartial
+		resource.CleanupDebt = true
+		_ = m.Store.WriteResource(taskID, *resource)
+		return &store.Error{Kind: store.KindPartial, Message: "Resource credential cleanup is incomplete", Retryable: true, Recovery: fmt.Sprintf("Retry `akagent task resource clean %s %s --allow-credentials`", taskID, resource.ID)}
+	}
+	return nil
+}
+
+func resourceCleanupDebtRemaining(resource store.Resource) bool {
+	return resource.CleanupState != "" && resource.CleanupState != cleanupComplete ||
+		resource.WorktreeCleanupState != "" && resource.WorktreeCleanupState != cleanupComplete
 }
 
 func (m *Manager) ensureResourceWorktree(repository store.Repository, resource *store.Resource) error {
@@ -351,6 +403,7 @@ func applyResourceGitStatus(resource *store.Resource, status GitStatus) {
 func resourceAsManifest(task store.Manifest, resource store.Resource) store.Manifest {
 	task.Repository, task.Branch, task.BaseRevision, task.WorktreeBaseRevision, task.WorktreePath = resource.Repository, resource.Branch, resource.BaseRevision, resource.WorktreeBaseRevision, resource.WorktreePath
 	task.Committed, task.Dirty, task.Untracked, task.RecoveryDebt = resource.Git.Committed, resource.Git.Dirty, resource.Git.Untracked, resource.RecoveryDebt
+	task.CredentialCleanupState = resource.CredentialCleanupState
 	task.Git = resource.Git
 	return task
 }

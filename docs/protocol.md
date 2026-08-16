@@ -172,11 +172,11 @@ The current executable exposes:
 
 ```text
 akagent
-akagent credential <list|inspect|doctor>
+akagent credential <list|inspect|doctor|clean>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -304,6 +304,9 @@ It preserves the task branch and the archive's pre-cleanup Git facts.
 Direct repository tasks never remove their registered checkout.
 Worktree and credential cleanup state are recorded independently so partial cleanup can be retried.
 Without worktree approval, the worktree remains available for direct human recovery and cleanup debt is durable.
+Credential cleanup requires the separate `--allow-credentials` approval.
+`akagent credential clean <task-id>` and `akagent task credential clean <task-id>` run only the credential hook, while `task clean` may retry it alongside remaining Git cleanup.
+Refused and failed hooks preserve the durable task and credential manifest state and emit only redaction-safe structured errors and events.
 
 ### Reconcile
 

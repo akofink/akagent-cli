@@ -161,12 +161,15 @@ Execution archive requires only the selected execution to be stopped or finished
 `task resource archive` captures one resource and its events independently.
 Clean archives first and refuses a live task.
 `task resource clean` applies preservation approvals to one resource and leaves sibling resource cleanup state unchanged.
+Its `--allow-credentials` approval enables only that resource's credential cleanup hook.
 It requires explicit authorization for each committed, dirty, or untracked category before destructive cleanup.
 For a registered `worktree` repository, `--allow-worktree` is a separate explicit approval that enables the destructive worktree cleanup hook.
 The hook validates durable ownership, removes only the task worktree, preserves the task branch, and records the pre-cleanup Git facts in the archive.
 Direct repository tasks never remove their registered checkout.
 Without worktree approval, cleanup records preservation debt and leaves the worktree available for direct human recovery.
-Credential cleanup remains independent and retryable.
+Credential cleanup is a separate destructive hook and requires `--allow-credentials`.
+`akagent credential clean <task-id> --allow-credentials` and `akagent task credential clean <task-id> --allow-credentials` retry only credential cleanup without touching Git resources.
+A refused or failed credential hook records `blocked` or `partial` credential cleanup state and preserves retryable cleanup debt.
 
 Reconciliation repairs derived observations and Git facts for the task and each resource.
 It preserves integration-owned session references without parsing provider files.
@@ -208,6 +211,7 @@ task:
 Compatibility task views may include an `agent` target when an optional integration is selected.
 Generic execution detail is authoritative for the execution target, command, resource attachment, and recovery state.
 Prompt contents and credential values are never emitted.
+Credential cleanup hook errors are reduced to structured, redaction-safe messages before they reach protocol output.
 
 The list schema uses a compact tabular array and includes the definitive total.
 
@@ -218,7 +222,7 @@ total: 1
 ```
 
 Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnings`, archive state, cleanup state, and cleanup debt are emitted only when present.
-Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, cleanup state, and concise optional metadata and external URL fields.
+Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, cleanup state, credential cleanup state, and concise optional metadata and external URL fields.
 Resource inspect and mutation output uses one `resource` object.
 Task inspection additionally emits `resources[<n>]` and `executions[<n>]` snapshots so it is sufficient for durable work-state recovery.
 Execution inspection emits full `session_references[<n>]` entries; execution list output uses a compact session summary.

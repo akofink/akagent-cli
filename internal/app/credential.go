@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/akofink/akagent-cli/internal/credential"
+	"github.com/akofink/akagent-cli/internal/lifecycle"
+	"github.com/akofink/akagent-cli/internal/store"
 )
 
 type credentialRow struct {
@@ -50,10 +52,28 @@ type doctorView struct {
 
 func credentialCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent credential <list|inspect|doctor>", false, "Run `akagent credential doctor`")
+		return writeError(stdout, "usage", "Usage: akagent credential <list|inspect|doctor|clean>", false, "Run `akagent credential doctor`")
 	}
 
 	switch args[0] {
+	case "clean":
+		if len(args) < 2 {
+			return writeError(stdout, "usage", "Usage: akagent credential clean <task-id> [--allow-credentials]", false, "Inspect the task before authorizing credential cleanup")
+		}
+		options, ok := parseCredentialCleanup(args[2:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent credential clean <task-id> [--allow-credentials]", false, "Inspect the task before authorizing credential cleanup")
+		}
+		state, err := store.Open()
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		manager := lifecycle.New(state)
+		manifest, err := manager.CleanCredentials(args[1], options)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "list":
 		if len(args) != 1 {
 			return writeError(stdout, "usage", "Usage: akagent credential list", false, "Run `akagent credential list`")
