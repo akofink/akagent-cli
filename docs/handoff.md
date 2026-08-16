@@ -24,6 +24,7 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
 - Task and execution-tagged detached tmux resources, shared `@agent_state` publication by execution metadata, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
+- A provider-neutral `akagent integration launch` workflow entry point that records and launches generic executions only when automation is enabled.
 
 ## Current workflow
 
@@ -37,6 +38,9 @@ Worktree-policy resources require an explicit descriptive branch, conventionally
 When `--worktree` is omitted, the worktree directory uses the branch label after the owner prefix beneath the registered root, such as `80-worktree-labels` for `akofink/80-worktree-labels`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 `task execution create` records an optional tool-neutral execution without a process side effect.
+The provider-neutral `akagent integration launch` command is the smallest automated workflow adapter: it checks `AKAGENT_ENABLED` before opening the state store, persists a `workflow` execution, and launches it through the same generic lifecycle.
+A disabled integration returns a skipped success without creating task, resource, execution, or tmux state.
+The command requires a caller-supplied stable execution ID so retries remain idempotent.
 `task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during execution creation.
 `task execution session add` records provider-neutral session provenance without parsing Pi or another provider's session files.
 Execution stop, archive, attach, and reconcile operate independently from resource state.
@@ -117,6 +121,9 @@ Agents perform provider-specific pull request operations with tools such as `gh`
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
 At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 `akagent integration inspect` is read-only and reports the current state.
+The provider-neutral `integration launch` command is the automated workflow entry point and checks the signal before opening the state store or creating an execution.
+When disabled, it returns a skipped success without lifecycle side effects.
+When enabled, it records and launches a generic `workflow` execution through the normal task lifecycle.
 Direct human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
 
 ## Current public command surface
@@ -124,7 +131,7 @@ Direct human commands, including explicit shell execution and optional Pi select
 ```text
 akagent
 akagent credential <list|inspect|doctor|clean>
-akagent integration inspect
+akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
@@ -136,8 +143,6 @@ akagent worker inspect
 
 ## Tracked follow-ups
 
-- Destructive worktree and credential cleanup hooks.
-- Broader workflow integrations beyond the stable CLI boundary.
 - Work-specific secrets and deployment behavior.
 
 The detailed public delivery map is in [`implementation-plan.md`](implementation-plan.md).

@@ -17,7 +17,7 @@ Current commands:
 ```text
 akagent
 akagent credential <list|inspect|doctor|clean>
-akagent integration inspect
+akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
@@ -175,7 +175,9 @@ Automatic update on every invocation remains intentionally deferred because ordi
 ## Direction
 
 The current CLI remains local-first: it uses the registered checkout, Git worktrees, and tmux on the invoking machine.
-The tracked follow-ups are broader workflow integrations beyond the stable CLI boundary and work-specific secrets or deployment behavior.
+The provider-neutral `integration launch` command starts an automated local workflow command through a generic execution, while direct human execution commands remain independent.
+Forge and provider-specific delivery behavior remains outside the core lifecycle.
+The tracked follow-up is work-specific secrets and deployment behavior.
 
 ## Design documentation
 

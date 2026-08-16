@@ -55,13 +55,15 @@ After a command that may have mutated state fails, inspect the task and run reco
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
 At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
+The provider-neutral `integration launch` command is the first broader workflow adapter.
+It requires a stable execution ID, persists a generic execution, and delegates process startup to the existing lifecycle.
 
 ## Current command surface
 
 ```text
 akagent
 akagent credential <list|inspect|doctor|clean>
-akagent integration inspect
+akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
@@ -74,5 +76,5 @@ akagent worker inspect
 ## Tracked follow-ups
 
 1. Keep direct local commands stable and protocol output compatible.
-2. Add broader workflow integrations beyond the stable CLI boundary while preserving the immediate disable signal.
-3. Extend local lifecycle coverage for provider-specific credential cleanup behavior beyond the stable hook boundary.
+2. Extend local lifecycle coverage for provider-specific credential cleanup behavior beyond the stable hook boundary.
+3. Add work-specific secrets and deployment behavior only when a concrete requirement exists.

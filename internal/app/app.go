@@ -59,7 +59,7 @@ func Run(args []string, stdout io.Writer) int {
 			Usage: "akagent <command>",
 			Commands: []string{
 				"credential <list|inspect|doctor|clean>",
-				"integration inspect",
+				"integration <inspect|launch>",
 				"id generate",
 				"repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]",

@@ -14,7 +14,7 @@ The current executable exposes:
 ```text
 akagent
 akagent credential <list|inspect|doctor|clean>
-akagent integration inspect
+akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
@@ -119,7 +119,9 @@ Shell helpers, LLM hooks, plugins, and installable skills are optional adapters.
 They must invoke the CLI, request small field sets, preserve structured errors, and never write the task store directly.
 
 Automated integrations are enabled unless `AKAGENT_ENABLED=0` is present.
-The gate is checked by the integration before automated behavior, while direct human commands, including explicit shell execution and optional Pi selection, remain available.
+The provider-neutral `integration launch` adapter checks the gate before opening the state store, records a generic workflow execution, and delegates startup to the lifecycle.
+A disabled adapter has no lifecycle side effects, while direct human commands, including explicit shell execution and optional Pi selection, remain available.
+Forge and provider-specific behavior remains outside the core lifecycle.
 
 ## Failure assumptions
 

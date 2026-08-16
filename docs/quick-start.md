@@ -138,6 +138,26 @@ akagent task execution inspect <task-id> coordinator
 ```
 
 Task, resource, and execution archives preserve these references.
+
+Automated local workflows can use the provider-neutral integration entry point:
+
+```bash
+akagent integration launch <task-id> --execution-id workflow-run \
+  --command /path/to/workflow --arg --mode --arg check --resource app-resource \
+  --label workflow-check
+```
+
+The caller supplies a stable execution ID so retries are idempotent.
+The command and arguments are opaque non-secret local process inputs.
+The integration records a generic `workflow` execution before starting tmux.
+If `AKAGENT_ENABLED=0` is set, the command returns a skipped success without creating task, resource, execution, or tmux state.
+After an enabled launch failure, inspect and reconcile the execution before retrying:
+
+```bash
+akagent task execution inspect <task-id> workflow-run
+akagent task execution reconcile <task-id>
+```
+
 Use `--target pi` only to select the optional Pi integration.
 Pi must be installed and available as `pi` on `PATH` when that integration is selected.
 
