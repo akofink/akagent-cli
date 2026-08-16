@@ -1,6 +1,7 @@
 # Task CLI contract
 
 The task command is the stable command boundary for local task lifecycle operations.
+Automated local workflow integrations use the separate `integration launch` command and still persist generic executions through this boundary.
 
 All protocol data and errors are written to stdout as TOON.
 Diagnostics are not mixed into protocol output.
@@ -65,6 +66,7 @@ akagent task create --title <title> [--task-id <id>] [--repository <name>] [--re
 akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]
+akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 akagent task attach <task-id>
@@ -112,6 +114,11 @@ akagent task resource list "$AKAGENT_TASK_ID"
 akagent task resource update "$AKAGENT_TASK_ID" backend-resource --metadata delivery=published --external-url https://forge.example/pull/61
 ```
 The `task launch --target shell` command creates and launches a generic shell execution.
+Automated local workflow integrations use `akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]`.
+The integration requires a stable execution ID for idempotent retries, checks `AKAGENT_ENABLED` before opening the state store, and returns a skipped success without lifecycle side effects when the signal is `0`.
+When enabled, it creates and launches a generic execution with target `workflow` through the same durable lifecycle as explicit execution commands.
+The command and arguments are treated as opaque local process inputs and are never interpreted as a provider or forge API.
+Use `task execution inspect`, `task execution reconcile`, and `task execution session add` for recovery and provider-neutral session provenance.
 Compatibility shell and Pi launches derive the execution and tmux display label from the selected resource or task branch, without the owner prefix.
 Use `--label <descriptive-label>` when no descriptive branch is available.
 Labels must not be `pi`, `shell`, `akagent`, `execution`, or an internal UUID.

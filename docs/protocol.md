@@ -173,7 +173,7 @@ The current executable exposes:
 ```text
 akagent
 akagent credential <list|inspect|doctor>
-akagent integration inspect
+akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
@@ -351,6 +351,9 @@ After a command that may have mutated state fails, inspect the task and run reco
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
 At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 `akagent integration inspect` reports the read-only state.
+`akagent integration launch` is the provider-neutral automated workflow adapter.
+It requires a stable execution ID, checks the signal before opening the state store, and uses the generic execution lifecycle with target `workflow`.
+When disabled, it returns a skipped success and creates no lifecycle state.
 The signal controls automated invocation only.
 Direct human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
 

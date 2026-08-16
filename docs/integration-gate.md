@@ -26,7 +26,11 @@ unset AKAGENT_ENABLED
 
 After a command that may have mutated task state fails, inspect the task and run reconciliation before attempting a manual fallback.
 The signal does not grant credentials or launch tasks by itself.
+The provider-neutral `akagent integration launch` command is the automated workflow entry point and checks the signal before opening the state store or creating an execution.
+When disabled, it returns a skipped success without lifecycle side effects.
+When enabled, it records and launches a generic `workflow` execution through the normal task lifecycle.
 The signal also does not control optional execution providers.
+Direct human commands and explicit optional provider selection remain available regardless of the signal.
 Core task, resource, and generic execution commands remain available when Pi is not installed.
 An explicit direct shell launch remains available regardless of the signal.
 Pi is an optional execution integration selected explicitly with `akagent task launch --target pi`.

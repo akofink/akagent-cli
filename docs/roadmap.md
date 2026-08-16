@@ -45,11 +45,13 @@ The agent skill owns automated lifecycle behavior and should inspect and reconci
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal.
 At the CLI boundary, automated integrations are enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 Direct CLI commands, including explicit shell execution and optional Pi launch, remain available when the signal disables automation.
+The provider-neutral `akagent integration launch` adapter is the first broader workflow integration.
+It requires a stable execution ID, persists generic execution state, and delegates startup to the existing lifecycle.
+Disabled automation returns a skipped success without lifecycle side effects.
 Integrations must be idempotent, independently removable, token-budgeted, and limited to CLI operations.
 
 ## Tracked follow-ups
 
-- Broader workflow integrations beyond the stable CLI boundary.
 - Work-specific secrets and deployment behavior.
 
 ## Metrics that can change decisions
