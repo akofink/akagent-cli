@@ -62,5 +62,5 @@ Weak structured-data handling, locking, signal control, quoting, and partial-fai
 - Concurrent state publication and inspection use per-task locks and race-enabled tests.
 - Atomic manifest replacement and recoverable event recording have focused tests.
 - Credential readiness checks avoid reading or printing source values.
-- Managed local Pi launch validates durable configuration, interactive prompt-file references, safe environment construction, process replacement, retry, and process identity.
+- The optional managed local Pi execution integration validates prompt-file references, safe environment construction, process replacement, retry, and process identity on top of generic executions.
 - Terminal resize and cross-compilation remain outside the current CLI contract.

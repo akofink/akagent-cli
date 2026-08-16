@@ -25,14 +25,14 @@ The local lifecycle currently provides:
 - Verified tmux attachment using fresh process identity and heartbeat observations.
 - Git branch and worktree ownership under the `worktree` policy.
 - Durable manifests, append-only events, repository and task locks.
-- Managed local Pi launch with durable target configuration, interactive prompt-file references, safe environment construction, and requested-credential handling.
+- Optional managed local Pi execution integration with interactive prompt-file references, safe environment construction, and requested-credential handling.
 - Git and process fact collection.
 - Compact TOON output and structured recovery errors.
 - Local credential requirements and non-secret warnings.
 - Archive and cleanup-preservation state with independent recovery debt.
 
 The current start operation creates a task-tagged tmux resource.
-It starts a shell by default or a managed local Pi process when requested.
+It starts a generic shell execution by default, with managed local Pi available as an optional execution integration.
 Approved worktree cleanup validates ownership and preserves archive facts and the task branch.
 Credential cleanup remains an independent hook.
 
@@ -43,7 +43,7 @@ The agent skill owns automated lifecycle behavior and should inspect and reconci
 
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal.
 At the CLI boundary, automated integrations are enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
-Direct CLI commands, including managed Pi launch, remain available when the signal disables automation.
+Direct CLI commands, including explicit shell execution and optional Pi launch, remain available when the signal disables automation.
 Integrations must be idempotent, independently removable, token-budgeted, and limited to CLI operations.
 
 ## Tracked follow-ups

@@ -51,7 +51,7 @@ The generated `_site/` directory is disposable and should not be committed.
 
 1. Use one executable with direct human commands and a directly inspectable local worker.
 2. Keep the CLI as the permanent boundary for humans, agents, integrations, plugins, and skills.
-3. Prove local task lifecycle, tmux integration, Git worktrees, managed Pi launch, status, reconciliation, archive, and safe cleanup.
+3. Prove local task lifecycle, tmux integration, Git worktrees, generic executions, optional Pi integration, status, reconciliation, archive, and safe cleanup.
 4. Use one implicit local worker.
 5. Keep infrastructure provisioning separate from task orchestration.
 6. Use TOON for agent-consumed stdout and treat token use as an interface constraint.
@@ -76,8 +76,9 @@ The generated `_site/` directory is disposable and should not be committed.
 
 The current CLI registers local Git repositories, creates durable task records and isolated worktrees under the `worktree` policy, and keeps creation separate from execution.
 
-A task can use an explicit detached shell launch for direct work or a managed local Pi launch selected with `--target pi`.
-Managed launch persists the resolved command, task worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
+A task can use an explicit detached shell execution for direct work or the optional Pi integration selected with `--target pi`.
+Both paths use the generic execution primitives, while task and resource creation remain independent of Pi availability.
+One execution can coordinate multiple task resources by selecting a resource worktree.
 
 It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
 Worktree cleanup requires explicit approval and validates durable ownership before removal.

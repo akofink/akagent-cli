@@ -94,25 +94,32 @@ A task can own zero or more optional tool-neutral execution records.
 Use `task execution create` to persist an execution without starting tmux, then `task execution launch` to start it.
 Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
 The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
-The compatibility `task launch` command still supports shell and managed Pi targets and materializes a `legacy` execution record.
-
-The legacy `task start` command remains available for direct human workflows and retains its historical create-and-launch behavior.
+The compatibility `task launch --target shell` shortcut creates and launches a generic shell execution.
 New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
+One execution can coordinate multiple resources by selecting one resource as its working directory and using the owning task ID for further resource operations.
+Resource lifecycle remains independent from execution lifecycle.
+For example, one execution can coordinate two resources while selecting one as its working directory:
 
-`--target pi` selects the supported managed local Pi target.
-The `pi` executable must be available on `PATH`, and its resolved command path is stored in the task launch configuration.
+```bash
+akagent task resource create <task-id> --repository frontend --resource-id frontend-resource --branch akofink/feature
+akagent task resource create <task-id> --repository backend --resource-id backend-resource --branch akofink/feature
+akagent task execution create <task-id> --execution-id coordinator --target shell --command /bin/sh --resource frontend-resource
+akagent task execution launch <task-id> coordinator
+```
+
+`--target pi` is an optional integration shortcut.
+It checks for `pi` only when selected, then creates a generic execution whose worker integration starts Pi.
+Core task, resource, and generic execution commands do not require Pi to be installed.
 
 `--prompt` stores a reference to a regular local prompt file.
-The launcher passes only the validated file reference to Pi and leaves standard input attached to the tmux terminal.
-This preserves Pi's interactive mode while keeping prompt content out of process arguments, tmux commands, events, and protocol output.
+The Pi integration passes only the validated file reference to Pi and leaves standard input attached to the tmux terminal.
+This preserves Pi's interactive mode while keeping prompt content out of durable events and protocol output.
 
 `--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
 
-The selected execution target, command path, selected resource worktree, and non-secret arguments are persisted before tmux starts.
-The compatibility managed Pi launch also persists its prompt reference and working context before tmux starts.
+The selected execution target, command, selected resource worktree, and non-secret arguments are persisted before tmux starts.
 Create and launch are separate durable operations, so a failed launch can be retried without recreating the task or Git resource.
-The owned pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible while work runs.
-A failed managed launch shows safe recovery guidance in the pane, leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same `task launch` inputs.
+A failed optional integration leaves its generic execution recoverable and does not change resource state.
 
 Equivalent repeated creates, launches, publications, finishes, stops, archives, and completed cleans are successful no-ops.
 A create or launch with different immutable inputs returns a `conflict` error.
@@ -146,7 +153,7 @@ Both migrations preserve durable observations and are idempotent.
 Execution attachment requires a running execution with a fresh heartbeat and process observation.
 It verifies exactly one process, the durable process identity, and matching task and execution tmux metadata immediately before attaching.
 The compatibility task attach command retains its task-level verification behavior.
-For managed launch, the launcher replaces itself with Pi so the recorded PID and process start time identify Pi rather than a wrapper process.
+For the optional Pi integration, the integration worker replaces itself with Pi so the recorded PID and process start time identify Pi rather than a wrapper process.
 
 Missing, stale, contradictory, stopped, and finished observations are rejected with structured recovery guidance.
 Attachment never creates, kills, renames, or retargets tmux resources.
@@ -169,8 +176,9 @@ task:
   untracked: false
 ```
 
-Managed task detail and list views include `agent`, `agent_command`, `prompt_reference`, and `working_context` when configured.
-These fields contain launch metadata only; prompt contents and credential values are never emitted.
+Compatibility task views may include an `agent` target when an optional integration is selected.
+Generic execution detail is authoritative for the execution target, command, resource attachment, and recovery state.
+Prompt contents and credential values are never emitted.
 
 The list schema uses a compact tabular array and includes the definitive total.
 
@@ -193,7 +201,7 @@ After a command that may have mutated state fails, inspect the task and run reco
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
 Automation is enabled at the CLI boundary unless `AKAGENT_ENABLED` is set to the exact value `0`.
 `akagent integration inspect` reports the read-only state.
-Direct human commands, including explicit managed Pi task starts, are unaffected.
+Direct human commands, including explicit shell execution and optional Pi selection, are unaffected.
 
 ## Errors
 

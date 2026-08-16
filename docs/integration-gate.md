@@ -26,4 +26,7 @@ unset AKAGENT_ENABLED
 
 After a command that may have mutated task state fails, inspect the task and run reconciliation before attempting a manual fallback.
 The signal does not grant credentials or launch tasks by itself.
-An explicit direct CLI managed Pi start remains available regardless of the signal.
+The signal also does not control optional execution providers.
+Core task, resource, and generic execution commands remain available when Pi is not installed.
+An explicit direct shell launch remains available regardless of the signal.
+Pi is an optional execution integration selected explicitly with `akagent task launch --target pi`.

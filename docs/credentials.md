@@ -4,7 +4,7 @@
 
 The machine invoking `akagent` is the initial source of credential readiness information.
 The current local CLI validates named requirements and propagates no credential values through task output, task records, or command arguments.
-Managed Pi launch may inject a requested `env:` credential into the managed process after readiness checks pass.
+The optional Pi execution integration may inject a requested `env:` credential into its managed process after readiness checks pass.
 File credentials are readiness-only and cannot be injected into the managed environment.
 
 Missing optional credentials produce non-secret warnings and are not injected.
@@ -68,7 +68,7 @@ It never reports credential values.
 Credential values must not appear in TOON output, errors, logs, events, prompts, tmux commands, process arguments, or diagnostics.
 
 The current task implementation records named requirements and readiness warnings in the task manifest.
-For managed Pi, the launcher constructs a minimal environment from safe runtime variables, adds `AKAGENT_TASK_ID`, and injects only requested, ready `env:` credentials.
+For the optional Pi integration, the integration worker constructs a minimal environment from safe runtime variables, adds `AKAGENT_TASK_ID`, and injects only requested, ready `env:` credentials.
 It excludes ambient variables outside the safe runtime allowlist and filters credential-like names unless they were explicitly requested.
 Optional credentials are never injected.
 

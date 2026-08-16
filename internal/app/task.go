@@ -2,10 +2,12 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"time"
 
+	"github.com/akofink/akagent-cli/internal/integration"
 	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/store"
 	"github.com/google/uuid"
@@ -140,14 +142,28 @@ func taskCommand(args []string, stdout io.Writer) int {
 			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
 		}
 		request, ok := parseLaunch(args[2:])
-		if !ok {
+		if !ok || (request.Target != "shell" && request.Target != "pi") {
 			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]", false, "Use --target shell for a direct shell or --target pi for managed Pi")
 		}
-		manifest, err := manager.LaunchExecution(args[1], request)
+		var execution store.Execution
+		if request.Target == "pi" {
+			execution, err = integration.Launch(manager, args[1], integration.LaunchRequest{Label: request.Label, ResourceID: request.ResourceID, PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
+		} else {
+			execution, err = integration.LaunchShell(manager, args[1], request.Label, request.ResourceID)
+		}
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
-		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
+		manifest, err := manager.Inspect(args[1])
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		task := view(args[1], manifest)
+		task.Execution = execution.Target
+		if execution.Target == "pi" {
+			task.Agent = execution.Target
+		}
+		return write(stdout, taskDetailView{Task: task})
 	case "start":
 		request, ok := parseStart(args[1:])
 		if !ok {
@@ -159,6 +175,25 @@ func taskCommand(args []string, stdout io.Writer) int {
 				return writeError(stdout, "internal", "Failed to generate a task ID", false, "Retry `akagent task start`")
 			}
 			request.ID = id.String()
+		}
+		if request.Agent != "" {
+			if _, err := manager.Create(lifecycle.CreateRequest{ID: request.ID, Title: request.Title, Repository: request.Repository, Branch: request.Branch, BaseRevision: request.BaseRevision, WorktreePath: request.WorktreePath, Requirements: request.Requirements, Optional: request.Optional}); err != nil {
+				return lifecycleError(stdout, err)
+			}
+			if request.Agent != "pi" {
+				return lifecycleError(stdout, fmt.Errorf("unsupported agent target %q", request.Agent))
+			}
+			execution, err := integration.Launch(manager, request.ID, integration.LaunchRequest{ResourceID: "", PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
+			if err != nil {
+				return lifecycleError(stdout, err)
+			}
+			manifest, err := manager.Inspect(request.ID)
+			if err != nil {
+				return lifecycleError(stdout, err)
+			}
+			task := view(request.ID, manifest)
+			task.Execution, task.Agent = execution.Target, execution.Target
+			return write(stdout, taskDetailView{Task: task})
 		}
 		result, err := manager.Start(request)
 		if err != nil {

@@ -2,7 +2,7 @@
 
 This guide uses only public commands and generic local paths.
 
-`akagent` is a local-first CLI for durable task records, Git worktrees, and tmux-backed human or managed local Pi interaction.
+`akagent` is a local-first CLI for durable task records, Git worktrees, and tmux-backed human or optional managed local Pi interaction.
 It writes protocol data and errors as TOON on stdout.
 
 ## Install or update
@@ -98,12 +98,14 @@ The default task list shows actionable records only, while `--all` includes arch
 Actionable records include non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
 Use `--repository` and `--worktree` to compose deterministic exact-match filters.
 Task creation does not create a tmux resource or start a process.
-The explicit launch command creates a task-tagged tmux resource.
-Its display name is derived from the branch after removing the owner prefix, while the task ID remains in window metadata for lifecycle verification.
+The explicit shell launch command creates a generic execution in a task-tagged tmux window.
+Its display name is descriptive, while the task and execution IDs remain in window metadata for lifecycle verification.
 
 Use `--target shell` for direct human or shell-driven work.
-Use `--target pi` to start a managed local Pi process instead.
-Pi must be installed and available as `pi` on `PATH`.
+Use `task execution create` and `task execution launch` when the caller needs explicit generic execution identity.
+A task can create multiple resources and coordinate them through one execution by selecting one resource as its working directory.
+Use `--target pi` only to select the optional Pi integration.
+Pi must be installed and available as `pi` on `PATH` when that integration is selected.
 
 A minimal managed-launch example uses only placeholder task data and a local prompt-file reference:
 
@@ -116,10 +118,10 @@ akagent task launch <task-id> --target pi --prompt /path/to/prompt.txt --context
 The prompt file must be a regular local file.
 Only the validated prompt-file reference is passed to Pi, and standard input remains attached to the tmux terminal.
 This keeps Pi interactive while prompt contents stay out of process arguments, tmux commands, task events, and TOON output.
-The task manifest stores the selected target, resolved command path, prompt reference, worktree, and non-secret context before tmux starts.
+The optional integration creates a generic execution with the selected resource worktree and non-secret context before tmux starts.
 The owned pane shows a non-secret startup line before Pi initializes.
 Pi's interactive status and tool views remain visible while the managed task works.
-A failed launch prints safe recovery guidance in the pane and remains retryable through the same task launch command.
+A failed launch leaves the generic execution recoverable and does not change resource state.
 The managed process receives a minimal safe environment plus `AKAGENT_TASK_ID` and the requested environment credentials that passed readiness checks.
 Optional credentials produce non-secret warnings and are not injected.
 File credentials can be checked for readiness but cannot be injected into the managed environment.
@@ -147,14 +149,14 @@ akagent task publish <task-id> --condition waiting --reason "needs review"
 The accepted conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
 Publication changes durable task state and refreshes its heartbeat.
 
-Attach a direct shell or managed Pi task only after inspecting it:
+Attach a direct shell or optional Pi execution only after inspecting it:
 
 ```bash
 akagent task attach <task-id>
 ```
 
 Attachment requires a running task, a fresh heartbeat, a fresh process observation, exactly one matching task process, and a matching tmux task ID.
-For managed launch, the launcher replaces itself with Pi so process identity checks refer to the Pi process.
+For the optional Pi integration, the integration worker replaces itself with Pi so process identity checks refer to the Pi process.
 It verifies the selected window immediately before calling `tmux attach-session`.
 It refuses stale, missing, contradictory, stopped, and finished observations.
 It never creates, kills, renames, or retargets tmux resources.
@@ -214,7 +216,7 @@ Without that approval, the worktree remains available for direct human recovery 
 Start with `task inspect` and `task reconcile` when observations are unclear or a possibly mutating command fails.
 Use the agent skill for automated lifecycle behavior and manual fallback only after those checks.
 
-If a managed launch fails, repeat the same `task launch` command to retry the recoverable `starting` task.
+If an optional integration launch fails, retry the generic execution or repeat the same compatibility launch command after inspecting and reconciling its state.
 Equivalent repeated creates and launches are idempotent; changing immutable task or launch inputs returns a conflict.
 
 Do not attach when the heartbeat or process observation is stale.
