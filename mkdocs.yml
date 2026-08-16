@@ -9,18 +9,22 @@ docs_dir: docs
 
 nav:
   - Home: README.md
-  - Quick start: quick-start.md
-  - Architecture: architecture.md
-  - Protocol: protocol.md
-  - Task CLI contract: task-cli.md
-  - Credentials: credentials.md
-  - Integration gate: integration-gate.md
-  - Storage: storage.md
-  - Technology evaluation: technology.md
-  - Roadmap: roadmap.md
-  - Implementation plan: implementation-plan.md
-  - Current handoff: handoff.md
-  - TOON output contract: toon.md
+  - Getting started:
+      - Quick start: quick-start.md
+  - Concepts:
+      - Architecture: architecture.md
+      - Protocol: protocol.md
+      - Credentials: credentials.md
+      - Storage: storage.md
+      - Technology evaluation: technology.md
+  - Reference:
+      - Task CLI contract: task-cli.md
+      - TOON output contract: toon.md
+      - Integration gate: integration-gate.md
+  - Project status:
+      - Roadmap: roadmap.md
+      - Implementation plan: implementation-plan.md
+      - Current handoff: handoff.md
 
 theme:
   name: mkdocs
