@@ -27,7 +27,7 @@ type Error struct {
 	Recovery  string
 }
 
-type commandRunner func(dir, name string, args ...string) ([]byte, error)
+type commandRunner func(dir string, env []string, name string, args ...string) ([]byte, error)
 
 func Run(sourceDir, executable string) (Result, *Error) {
 	return run(sourceDir, executable, execute)
@@ -72,7 +72,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 	}
 	defer updateLock.Unlock()
 
-	status, commandErr := runner(sourceDir, "git", "status", "--porcelain")
+	status, commandErr := runner(sourceDir, nil, "git", "status", "--porcelain")
 	if commandErr != nil {
 		return Result{}, internalError("Inspect the source checkout", fmt.Sprintf("Run `git -C %q status`", sourceDir))
 	}
@@ -84,7 +84,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 		}
 	}
 
-	branch, commandErr := runner(sourceDir, "git", "branch", "--show-current")
+	branch, commandErr := runner(sourceDir, nil, "git", "branch", "--show-current")
 	if commandErr != nil {
 		return Result{}, internalError("Inspect the source branch", fmt.Sprintf("Run `git -C %q branch --show-current`", sourceDir))
 	}
@@ -100,7 +100,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 	if commandErr != nil {
 		return Result{}, internalError("Read the installed source revision", fmt.Sprintf("Run `git -C %q rev-parse HEAD`", sourceDir))
 	}
-	if _, commandErr := runner(sourceDir, "git", "fetch", "origin"); commandErr != nil {
+	if _, commandErr := runner(sourceDir, nil, "git", "fetch", "origin"); commandErr != nil {
 		return Result{}, &Error{
 			Category:  "retryable",
 			Message:   "Failed to fetch akagent updates",
@@ -108,7 +108,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 			Recovery:  "Check network and GitHub access, then retry `akagent update`",
 		}
 	}
-	if _, commandErr := runner(sourceDir, "git", "merge", "--ff-only", "origin/main"); commandErr != nil {
+	if _, commandErr := runner(sourceDir, nil, "git", "merge", "--ff-only", "origin/main"); commandErr != nil {
 		return Result{}, &Error{
 			Category: "conflict",
 			Message:  "Local akagent main cannot fast-forward to origin/main",
@@ -142,7 +142,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 	}
 	defer os.RemoveAll(worktreeParent)
 	worktreeDir := filepath.Join(worktreeParent, "checkout")
-	if _, commandErr := runner(sourceDir, "git", "worktree", "add", "--detach", worktreeDir, after); commandErr != nil {
+	if _, commandErr := runner(sourceDir, nil, "git", "worktree", "add", "--detach", worktreeDir, after); commandErr != nil {
 		return Result{}, internalError("Create an isolated source checkout", fmt.Sprintf("Run `git -C %q worktree prune`, then retry `akagent update`", sourceDir))
 	}
 	worktreeAdded := true
@@ -150,7 +150,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 		if !worktreeAdded {
 			return nil
 		}
-		_, removeErr := runner(sourceDir, "git", "worktree", "remove", "--force", worktreeDir)
+		_, removeErr := runner(sourceDir, nil, "git", "worktree", "remove", "--force", worktreeDir)
 		if removeErr == nil {
 			worktreeAdded = false
 		}
@@ -158,7 +158,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 	}
 	defer removeWorktree()
 
-	if _, commandErr := runner(worktreeDir, "go", "build", "-o", temporaryPath, "./cmd/akagent"); commandErr != nil {
+	if _, commandErr := runner(worktreeDir, sanitizedGoEnvironment(), "go", "build", "-o", temporaryPath, "./cmd/akagent"); commandErr != nil {
 		return Result{}, &Error{
 			Category: "internal",
 			Message:  "Failed to build the updated akagent binary",
@@ -193,14 +193,32 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 	}, nil
 }
 
-func execute(dir, name string, args ...string) ([]byte, error) {
+func execute(dir string, env []string, name string, args ...string) ([]byte, error) {
 	command := exec.Command(name, args...)
 	command.Dir = dir
+	if env != nil {
+		command.Env = env
+	}
 	return command.CombinedOutput()
 }
 
+func sanitizedGoEnvironment() []string {
+	environment := os.Environ()
+	sanitized := make([]string, 0, len(environment)+2)
+	for _, entry := range environment {
+		key, _, _ := strings.Cut(entry, "=")
+		switch key {
+		case "GOROOT", "GOTOOLDIR", "GOTOOLCHAIN", "GOENV":
+			continue
+		default:
+			sanitized = append(sanitized, entry)
+		}
+	}
+	return append(sanitized, "GOENV=off", "GOTOOLCHAIN=local")
+}
+
 func revision(sourceDir string, runner commandRunner) (string, error) {
-	revision, err := runner(sourceDir, "git", "rev-parse", "HEAD")
+	revision, err := runner(sourceDir, nil, "git", "rev-parse", "HEAD")
 	return strings.TrimSpace(string(revision)), err
 }
 
