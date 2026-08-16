@@ -9,10 +9,11 @@ import (
 )
 
 type independentExecutionTmux struct {
-	observation TmuxObservation
-	started     int
-	stopped     int
-	states      []string
+	observation     TmuxObservation
+	started         int
+	stopped         int
+	states          []string
+	leaveLiveOnStop bool
 }
 
 func (t *independentExecutionTmux) Start(_ string, _ string) (TmuxProcess, error) {
@@ -34,7 +35,9 @@ func (t *independentExecutionTmux) ObserveExecution(_, _ string) (TmuxObservatio
 func (t *independentExecutionTmux) AttachExecution(_, _, _ string) error { return nil }
 func (t *independentExecutionTmux) StopExecution(_, _ string) error {
 	t.stopped++
-	t.observation = TmuxObservation{Available: true}
+	if !t.leaveLiveOnStop {
+		t.observation = TmuxObservation{Available: true}
+	}
 	return nil
 }
 func (t *independentExecutionTmux) CaptureExecution(_, _ string) (string, error) {
@@ -158,6 +161,12 @@ func TestTaskFinishPublishesDoneExecutionState(t *testing.T) {
 	if _, err := manager.LaunchExecutionRecord("finish-task", "finish-execution"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := manager.Finish("finish-task", "succeeded", "complete"); !store.IsKind(err, store.KindLocked) {
+		t.Fatalf("Finish() error = %v, want a live execution retry error", err)
+	}
+	if _, err := manager.StopExecution("finish-task", "finish-execution"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := manager.Finish("finish-task", "succeeded", "complete"); err != nil {
 		t.Fatal(err)
 	}
@@ -170,6 +179,69 @@ func TestTaskFinishPublishesDoneExecutionState(t *testing.T) {
 	}
 	if got := tmux.states[len(tmux.states)-1]; got != "done" {
 		t.Fatalf("archived execution state = %q, want done", got)
+	}
+}
+
+func TestStopExecutionDoesNotRecordStoppedWhileTaggedWindowRemainsLive(t *testing.T) {
+	manager, _ := newTestManager(t)
+	executionTmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = executionTmux
+	if _, err := manager.Create(CreateRequest{ID: "stop-race-task", Title: "Stop race"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("stop-race-task", ExecutionRequest{ID: "stop-race", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.LaunchExecutionRecord("stop-race-task", "stop-race"); err != nil {
+		t.Fatal(err)
+	}
+	executionTmux.leaveLiveOnStop = true
+	_, stopErr := manager.StopExecution("stop-race-task", "stop-race")
+	var storeErr *store.Error
+	if !errors.As(stopErr, &storeErr) || storeErr.Kind != store.KindLocked || !storeErr.Retryable {
+		t.Fatalf("StopExecution() error = %v, want structured retryable stop error", stopErr)
+	}
+	execution, err := manager.InspectExecution("stop-race-task", "stop-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Lifecycle != "running" {
+		t.Fatalf("execution after failed stop = %#v, want running", execution)
+	}
+	executionTmux.leaveLiveOnStop = false
+	if _, err := manager.StopExecution("stop-race-task", "stop-race"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReconcileStopsStaleTerminalExecutionWindow(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	if _, err := manager.Create(CreateRequest{ID: "stale-stop-task", Title: "Stale stop"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("stale-stop-task", ExecutionRequest{ID: "stale-stop", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.LaunchExecutionRecord("stale-stop-task", "stale-stop"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateExecution("stale-stop-task", "stale-stop", func(execution *store.Execution) error {
+		execution.Lifecycle, execution.Condition = "stopped", "none"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ReconcileExecutions("stale-stop-task"); err != nil {
+		t.Fatal(err)
+	}
+	execution, err := manager.InspectExecution("stale-stop-task", "stale-stop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Lifecycle != "stopped" || execution.Observation != ObservationMissing || tmux.stopped != 1 {
+		t.Fatalf("reconciled execution = %#v, stops=%d; want stopped and missing after cleanup", execution, tmux.stopped)
 	}
 }
 

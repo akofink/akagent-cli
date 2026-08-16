@@ -267,9 +267,10 @@ Attachment does not write durable state and never creates, kills, renames, or re
 
 ### Stop
 
-Execution stop verifies the execution's tagged tmux metadata and terminates only that execution window.
+Execution stop verifies the execution's tagged tmux metadata, terminates only that execution window, and re-observes it before changing durable state.
+If the tagged window cannot be observed or remains live, stop returns a structured retryable error and leaves the execution lifecycle unchanged.
 It preserves the task record, execution record, and Git resources, then records `stopped` without claiming a successful outcome.
-Stopping an already stopped or finished execution is a successful no-op.
+Stopping an already stopped or finished execution verifies that no tagged process remains before returning a successful no-op.
 The compatibility task stop operation retains its historical task-level behavior.
 
 ### Finish
@@ -308,7 +309,9 @@ Without worktree approval, the worktree remains available for direct human recov
 
 Execution reconciliation compares each durable execution with its task-tagged tmux and process observations.
 It repairs safe derived metadata, republishes waiting or blocked state only with fresh observations, and clears stale `@agent_state` values.
-It never deletes task state, executions, branches, worktrees, windows, or terminal history.
+For a non-running execution, a live window with matching task and execution metadata is safely stopped and verified absent.
+If that cleanup cannot converge, reconciliation returns a structured retryable error without claiming the execution is stopped.
+It never deletes task state, executions, branches, worktrees, or terminal history, and never removes an unverified window.
 Task reconciliation continues to repair legacy task and resource observations.
 It preserves session references as declared integration metadata and does not inspect provider state.
 

@@ -54,7 +54,8 @@ Agents use provider tooling such as `gh` or Bitbucket tooling to create and mana
 The core CLI does not call GitHub, Bitbucket, Pi, or another forge delivery API.
 
 `task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.
-`task finish` records a result only after the task process has exited.
+Execution stop verifies that its tagged window is absent before recording `stopped`; a live or unavailable window returns a structured retryable failure.
+`task finish` records a result only after the task and execution processes have exited.
 `task archive` captures durable records, Git facts, and terminal history when available.
 `task clean` refuses live tasks and unapproved loss of committed, dirty, or untracked work.
 Isolated worktree removal additionally requires `--allow-worktree` and validates durable Git ownership before invoking the destructive hook.
@@ -64,7 +65,8 @@ Credential cleanup remains independent, and cleanup state and recovery debt are 
 `task resource archive`, `task resource clean`, and `task resource update` operate on one resource without changing sibling resource state.
 `task execution archive` and `task execution stop` operate on one execution without changing resource state.
 `task reconcile` repairs safe derived observations and Git facts for tasks and resources, while `task execution reconcile` repairs execution observations without changing resource state.
-It never deletes task state, branches, worktrees, windows, or terminal history.
+Reconciliation may close a matching tagged window for a non-running execution and verifies it is gone before updating the observation.
+It never deletes task state, branches, worktrees, terminal history, or unverified windows.
 Legacy single-resource manifests migrate lazily to a `legacy` resource when resource operations inspect or extend them.
 
 Agent orchestration is enabled by default over this stable CLI boundary.

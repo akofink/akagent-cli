@@ -274,20 +274,19 @@ func (m *Manager) PublishExecution(taskID, executionID, condition, reason, activ
 }
 
 func (m *Manager) StopExecution(taskID, executionID string) (store.Execution, error) {
+	m.operationMu.Lock()
+	defer m.operationMu.Unlock()
+
 	execution, err := m.InspectExecution(taskID, executionID)
 	if err != nil {
+		return store.Execution{}, err
+	}
+	if err := m.stopExecutionWindow(taskID, executionID); err != nil {
 		return store.Execution{}, err
 	}
 	if execution.Lifecycle == "stopped" || execution.Lifecycle == "finished" {
 		m.publishExecutionState(execution)
 		return execution, nil
-	}
-	if tmux, ok := m.Tmux.(ExecutionTmux); ok {
-		if err := tmux.StopExecution(executionID, taskID); err != nil {
-			return store.Execution{}, err
-		}
-	} else if err := m.Tmux.Stop(taskID); err != nil {
-		return store.Execution{}, err
 	}
 	execution, err = m.Store.UpdateExecution(taskID, executionID, func(execution *store.Execution) error {
 		execution.Lifecycle, execution.Condition = "stopped", "none"
@@ -400,6 +399,9 @@ func (m *Manager) ArchiveExecution(taskID, executionID string) (store.Execution,
 }
 
 func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) {
+	m.operationMu.Lock()
+	defer m.operationMu.Unlock()
+
 	if err := m.ensureLegacyExecution(taskID); err != nil {
 		return nil, err
 	}
@@ -413,30 +415,83 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 		if err != nil {
 			return nil, err
 		}
-		if execution.Lifecycle == "running" {
-			observation, observeErr := m.observeExecution(taskID, id)
+		observation, observeErr := m.observeExecution(taskID, id)
+		if observeErr != nil {
+			return nil, observeErr
+		}
+		if observation.Available && len(observation.Processes) > 0 && execution.Lifecycle != "running" {
+			if err := m.stopExecutionWindow(taskID, id); err != nil {
+				return nil, err
+			}
+			observation, observeErr = m.observeExecution(taskID, id)
 			if observeErr != nil {
 				return nil, observeErr
 			}
-			before := execution
-			now := m.now()
-			applyExecutionObservation(&execution, observation, now, m.heartbeatTimeout())
-			if observation.Available && len(observation.Processes) == 0 {
-				execution.Lifecycle, execution.Condition = "stopped", "none"
-			}
-			if !reflect.DeepEqual(execution, before) {
-				if err := m.Store.WriteExecution(taskID, execution); err != nil {
-					return nil, err
-				}
-				_, _ = m.Store.AppendExecutionEvent(taskID, id, store.Event{Operation: "reconcile", Outcome: observationOutcome(execution.Observation)})
-			}
+		}
+		before := execution
+		now := m.now()
+		applyExecutionObservation(&execution, observation, now, m.heartbeatTimeout())
+		if execution.Lifecycle == "running" && observation.Available && len(observation.Processes) == 0 {
+			execution.Lifecycle, execution.Condition = "stopped", "none"
+		}
+		if reflect.DeepEqual(execution, before) {
 			m.publishExecutionStateValue(execution, reconciledExecutionState(execution, now, m.heartbeatTimeout()))
 		} else {
-			m.publishExecutionState(execution)
+			if err := m.Store.WriteExecution(taskID, execution); err != nil {
+				return nil, err
+			}
+			_, _ = m.Store.AppendExecutionEvent(taskID, id, store.Event{Operation: "reconcile", Outcome: observationOutcome(execution.Observation)})
+			m.publishExecutionStateValue(execution, reconciledExecutionState(execution, now, m.heartbeatTimeout()))
 		}
 		result = append(result, execution)
 	}
 	return result, nil
+}
+
+func (m *Manager) stopExecutionWindow(taskID, executionID string) error {
+	observation, err := m.observeExecution(taskID, executionID)
+	if err != nil || !observation.Available {
+		return executionStopError(taskID, executionID, "the tagged tmux window could not be observed", err)
+	}
+	if len(observation.Processes) > 0 {
+		if tmux, ok := m.Tmux.(ExecutionTmux); ok {
+			err = tmux.StopExecution(executionID, taskID)
+		} else {
+			err = m.Tmux.Stop(taskID)
+		}
+		if err != nil {
+			return executionStopError(taskID, executionID, "the tagged tmux window could not be stopped", err)
+		}
+	}
+	observation, err = m.observeExecution(taskID, executionID)
+	if err != nil || !observation.Available || len(observation.Processes) > 0 {
+		return executionStopError(taskID, executionID, "the tagged tmux window remains live", err)
+	}
+	return nil
+}
+
+func executionStopError(taskID, executionID, message string, cause error) error {
+	return &store.Error{Kind: store.KindLocked, Message: fmt.Sprintf("Execution %s for task %s stop could not converge: %s", executionID, taskID, message), Retryable: true, Recovery: fmt.Sprintf("Run `akagent task execution reconcile %s` and retry `akagent task execution stop %s %s`", taskID, taskID, executionID), Err: cause}
+}
+
+func (m *Manager) ensureExecutionsStopped(taskID string) error {
+	ids, err := m.Store.ExecutionIDs(taskID)
+	if err != nil {
+		return err
+	}
+	for _, executionID := range ids {
+		live, available, err := m.executionLive(taskID, executionID)
+		if err != nil {
+			return err
+		}
+		if !available {
+			return &store.Error{Kind: store.KindLocked, Message: fmt.Sprintf("Execution %s for task %s cannot be finalized because its tmux observation is unavailable", executionID, taskID), Retryable: true, Recovery: fmt.Sprintf("Run `akagent task execution reconcile %s` and retry task finish", taskID)}
+		}
+		if live {
+			return liveExecutionError("finishing the task")
+		}
+	}
+	return nil
 }
 
 func (m *Manager) executionLive(taskID, executionID string) (bool, bool, error) {
