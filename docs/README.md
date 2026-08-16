@@ -74,7 +74,7 @@ The generated `_site/` directory is disposable and should not be committed.
 
 ## Current local boundary
 
-The current CLI registers local Git repositories, creates durable task records and isolated worktrees under the `worktree` policy, and keeps creation separate from execution.
+The current CLI registers local Git repositories, records state-only task intent, creates independently recoverable resources and isolated worktrees under the `worktree` policy, and keeps resource creation separate from execution.
 
 A task can use an explicit detached shell execution for direct work or the optional Pi integration selected with `--target pi`.
 Both paths use the generic execution primitives, while task and resource creation remain independent of Pi availability.

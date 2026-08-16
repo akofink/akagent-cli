@@ -162,13 +162,14 @@ Publication changes durable task state and refreshes its heartbeat.
 For managed executions, active, failed, and none clear `@agent_state`.
 Reconciliation clears stale waiting or blocked state when process observations are no longer fresh.
 
-Attach a direct shell or optional Pi execution only after inspecting it:
+Attach a compatibility task execution or a selected generic execution only after inspecting it:
 
 ```bash
 akagent task attach <task-id>
+akagent task execution attach <task-id> <execution-id>
 ```
 
-Attachment requires a running task, a fresh heartbeat, a fresh process observation, exactly one matching task process, and a matching tmux task ID.
+Attachment requires a running task or execution, a fresh heartbeat, a fresh process observation, exactly one matching process, and matching task and execution tmux metadata where applicable.
 For the optional Pi integration, the integration worker replaces itself with Pi so process identity checks refer to the Pi process.
 It verifies the selected window immediately before calling `tmux attach-session`.
 It refuses stale, missing, contradictory, stopped, and finished observations.
@@ -178,6 +179,7 @@ Reconcile after a disconnect, a terminal change, or an unexpected process exit:
 
 ```bash
 akagent task reconcile
+akagent task execution reconcile <task-id>
 akagent task inspect <task-id>
 ```
 
@@ -192,7 +194,8 @@ Stop a running task when the work should remain available for recovery:
 akagent task stop <task-id>
 ```
 
-Stopping ends the tagged tmux window and preserves the durable task record and Git worktree.
+Stopping ends the tagged task or execution tmux window and preserves the durable task, execution, and Git resource records.
+Execution stop is independent from resource state.
 It does not mark the task as successfully finished.
 
 Finish only after the task process has exited:

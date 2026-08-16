@@ -9,7 +9,7 @@ The installed binary is `akagent`.
 ## Status
 
 The repository provides the protocol foundation and the initial local task lifecycle.
-Task manifests and append-only events are durable state.
+Task, resource, and execution manifests and append-only events are durable state.
 Tmux is an observed interaction surface and a human attachment surface.
 
 Current commands:
@@ -21,6 +21,7 @@ akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
@@ -52,7 +53,7 @@ Use `--worktree-root <absolute-path>` with the `worktree` policy to separate pri
 Without that option, the existing derived root remains `<checkout-parent>/.akagent/worktrees/<name>`.
 The `direct` policy permits the registered checkout itself when that is explicitly selected.
 
-`task create` creates a durable record, validates the repository inputs, and creates the required branch and worktree without starting tmux or a process.
+`task create` is state-only task creation: it creates a durable record and, when the compatibility `--repository` form is used, validates the repository inputs and creates the required branch and worktree without starting tmux or a process.
 `task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
 `task execution session add` records non-secret provider-neutral tool and session provenance without parsing provider files.
 Managed execution windows publish the shared tmux `@agent_state` option by matching task and execution metadata, not display names.

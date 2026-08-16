@@ -18,8 +18,8 @@ akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
-akagent task resource <create|list|inspect|archive|clean>
-akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
+akagent task resource <create|list|inspect|update|archive|clean>
+akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -72,8 +72,9 @@ The lifecycle records independent cleanup states and recovery debt so approved d
 
 Tmux is the human interaction and recovery surface, not the database.
 
-Each task window has a stable task ID in a window-scoped option.
-The task record stores the window, pane, process ID, and process start time.
+Each managed execution window has stable task and execution IDs in window-scoped options.
+The execution record stores the window, pane, process ID, process start time, and shared `@agent_state` publication state.
+Compatibility task windows retain task-level metadata while new execution operations verify both IDs.
 
 Attachment requires a fresh observation and exact process identity before it runs `tmux attach-session`.
 It never trusts a similarly named window and never creates or mutates a target as part of attachment.
@@ -101,6 +102,9 @@ $XDG_STATE_HOME/akagent/
   tasks/<task-id>/resources/<resource-id>/manifest.json
   tasks/<task-id>/resources/<resource-id>/events/<sequence>.json
   tasks/<task-id>/resources/<resource-id>/archive.json
+  tasks/<task-id>/executions/<execution-id>/manifest.json
+  tasks/<task-id>/executions/<execution-id>/events/<sequence>.json
+  tasks/<task-id>/executions/<execution-id>/archive.json
   tasks/<task-id>/archive.json
   locks/
 ```

@@ -31,8 +31,9 @@ The local lifecycle currently provides:
 - Local credential requirements and non-secret warnings.
 - Archive and cleanup-preservation state with independent recovery debt.
 
-The current start operation creates a task-tagged tmux resource.
-It starts a generic shell execution by default, with managed local Pi available as an optional execution integration.
+Task creation records durable intent and can create zero resources without a process side effect.
+Resource creation independently provisions or validates Git state, while generic execution creation and launch manage task-tagged tmux processes.
+The compatibility shell launch and optional managed local Pi target both use generic executions.
 Approved worktree cleanup validates ownership and preserves archive facts and the task branch.
 Credential cleanup remains an independent hook.
 
@@ -48,7 +49,6 @@ Integrations must be idempotent, independently removable, token-budgeted, and li
 
 ## Tracked follow-ups
 
-- Broader workflow integrations beyond the stable CLI boundary.
 - Broader workflow integrations beyond the stable CLI boundary.
 - Work-specific secrets and deployment behavior.
 
