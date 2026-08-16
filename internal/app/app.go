@@ -64,7 +64,7 @@ func Run(args []string, stdout io.Writer) int {
 				"repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository <list|inspect|unregister>",
-				"task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
+				"task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
 				"task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]",
 				"update [--source <path>]",
 				"worker inspect",
@@ -106,6 +106,17 @@ func Run(args []string, stdout io.Writer) int {
 				return 1
 			}
 			if err := lifecycle.New(state).Launch(args[2]); err != nil {
+				return 1
+			}
+			return 0
+		}
+		if len(args) == 4 && args[1] == "deploy" {
+			state, err := store.Open()
+			if err != nil {
+				return 1
+			}
+			if err := lifecycle.New(state).RunDeployment(args[2], args[3]); err != nil {
+				fmt.Fprintln(os.Stderr, "akagent: local deployment failed")
 				return 1
 			}
 			return 0

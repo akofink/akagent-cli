@@ -91,6 +91,13 @@ type ExecutionTmux interface {
 	CaptureExecution(executionID, taskID string) (string, error)
 }
 
+// DeploymentTmux starts a local deployment worker without placing command or
+// credential values in tmux arguments. The worker resolves the durable
+// execution record and injects only its requested, ready environment sources.
+type DeploymentTmux interface {
+	StartDeployment(executionID, taskID, label, directory string) (TmuxProcess, error)
+}
+
 // ExecutionStateTmux publishes the shared tmux status option for an execution.
 // The empty state clears @agent_state rather than displaying an active value.
 type ExecutionStateTmux interface {
@@ -1733,6 +1740,15 @@ func (commandTmux) StartExecution(executionID, taskID, label, directory, command
 		parts = append(parts, shellQuote(argument))
 	}
 	return startExecutionTmuxWindow(executionID, taskID, label, directory, strings.Join(parts, " "))
+}
+
+func (commandTmux) StartDeployment(executionID, taskID, label, directory string) (TmuxProcess, error) {
+	executable, err := os.Executable()
+	if err != nil || executable == "" {
+		return TmuxProcess{}, errors.New("akagent executable could not be resolved")
+	}
+	command := shellQuote(executable) + " worker deploy " + shellQuote(taskID) + " " + shellQuote(executionID)
+	return startExecutionTmuxWindow(executionID, taskID, label, directory, command)
 }
 
 func (commandTmux) SetExecutionState(executionID, taskID, state string) error {

@@ -10,6 +10,11 @@ File credentials are readiness-only and cannot be injected into the managed envi
 Missing optional credentials produce non-secret warnings and are not injected.
 Missing required credentials prevent a task that requests them from starting.
 
+A deployment can declare work-scoped credential IDs independently from the task requirements.
+The IDs and readiness state are durable metadata, while secret values remain process-local.
+Deployment requirements are checked again immediately before launch so rotation or removal is observed safely.
+Only ready `env:` entries can be injected into a local deployment command; file entries remain readiness-only.
+
 The current supported inspection commands are:
 
 ```text
@@ -87,3 +92,7 @@ The protocol must remain understandable when a required capability is missing, a
 The integration gate does not grant credentials.
 Credential cleanup authorization does not grant, print, or rotate credentials.
 It only controls whether automated integrations may invoke automated `akagent` behavior.
+
+Local deployments use a worker command that receives only task and execution IDs.
+The worker resolves the deployment record, builds the minimal environment, and never places credential values in tmux metadata, command arguments, durable records, or protocol output.
+Deployment commands are responsible for avoiding secret values in their own output.

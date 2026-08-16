@@ -63,6 +63,7 @@ repository:
 
 ```text
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
+akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]
 akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]
@@ -99,6 +100,12 @@ The task initially has status `created` and can be inspected, archived after sto
 
 A task can own zero or more optional tool-neutral execution records.
 Use `task execution create` to persist an execution without starting tmux, then `task execution launch` to start it.
+The create command accepts repeated `--require <credential>` IDs for target `deploy` executions.
+An execution with target `deploy` is a local deployment attempt and may carry work-scoped `--require` credential IDs.
+Deployment creation records intent without a process side effect.
+Launch rechecks credential readiness before creating the worker window.
+The worker injects only ready environment credentials in memory and records a generic succeeded or failed result before exiting.
+An interrupted deployment remains recoverable as a stopped execution and can be retried as a new deployment attempt without changing resource state.
 Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
 Use `task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]` to record provider-neutral session provenance.
 The optional path is an absolute local reference only; `akagent` never reads provider session files.
@@ -146,6 +153,8 @@ This preserves Pi's interactive mode while keeping prompt content out of durable
 Resource metadata and external URLs are provider-neutral and are preserved in resource archives, task archive resource snapshots, and reconciliation.
 Agents use provider tooling such as `gh` or Bitbucket tooling to create and manage pull requests, then optionally record the resulting URL with `akagent`.
 The core CLI does not provide GitHub, Bitbucket, or Pi delivery commands.
+Local deployment commands are direct executable paths with non-secret `--arg` values and run in the selected resource worktree.
+Deployment command output is not captured by `akagent`, so commands must not print credential values.
 
 The selected execution target, command, selected resource worktree, and non-secret arguments are persisted before tmux starts.
 Create and launch are separate durable operations, so a failed launch can be retried without recreating the task or Git resource.
