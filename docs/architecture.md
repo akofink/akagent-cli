@@ -17,13 +17,17 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task resource <create|list|inspect|archive|clean>
 akagent update [--source <path>]
 akagent worker inspect
 ```
 
-Task creation persists a task and its single Git resource without creating tmux or starting a process.
-The explicit launch operation runs a shell for direct work or a managed local Pi process when `--target pi` is selected.
+Task creation persists task intent and may own zero resources without creating tmux or starting a process.
+The compatibility `--repository` form creates one initial resource.
+The resource command creates additional immutable repository, branch, and worktree combinations.
+The explicit launch operation selects one resource and runs a shell for direct work or a managed local Pi process when `--target pi` is selected.
+Generic multiple executions remain out of scope.
 The legacy `task start` command remains a compatibility shortcut for direct human workflows.
 
 ## Components
@@ -47,6 +51,7 @@ The first release has one implicit local worker.
 The lifecycle layer owns:
 
 - Task records and event history.
+- Independently recoverable resource records, Git facts, archives, cleanup state, and recovery debt.
 - Repository registration and locks.
 - Branch and Git worktree creation.
 - Explicit one-execution launch state.
@@ -87,6 +92,9 @@ $XDG_STATE_HOME/akagent/
   repositories/<name>.json
   tasks/<task-id>/manifest.json
   tasks/<task-id>/events/<sequence>.json
+  tasks/<task-id>/resources/<resource-id>/manifest.json
+  tasks/<task-id>/resources/<resource-id>/events/<sequence>.json
+  tasks/<task-id>/resources/<resource-id>/archive.json
   tasks/<task-id>/archive.json
   locks/
 ```

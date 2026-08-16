@@ -23,13 +23,17 @@ The store lives under the XDG state root for the `akagent` application:
   tasks/<task-id>/manifest.json
   tasks/<task-id>/events/000001.json
   tasks/<task-id>/events/000002.json
+  tasks/<task-id>/resources/<resource-id>/manifest.json
+  tasks/<task-id>/resources/<resource-id>/events/000001.json
+  tasks/<task-id>/resources/<resource-id>/archive.json
   tasks/<task-id>/archive.json
   locks/<task-id>.lock
 ```
 
-- `manifest.json` is the mutable manifest, atomically replaced.
-- `events/<sequence>.json` is an immutable event record; sequences are 1-based and zero-padded.
-- `archive.json` is an atomically replaced snapshot of the manifest, event history, non-secret Git facts, and available terminal history.
+- `manifest.json` is the mutable task manifest, atomically replaced.
+- `events/<sequence>.json` is an immutable task event record; sequences are 1-based and zero-padded.
+- Each resource has its own mutable manifest, event history, and archive under `resources/<resource-id>`.
+- `archive.json` is an atomically replaced snapshot of the corresponding task or resource manifest, event history, and non-secret Git facts.
 - `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
 
 ## Permissions
@@ -55,6 +59,7 @@ Every record is a typed, versioned envelope serialized as JSON:
   "schema_version": 1,
   "kind": "manifest",
   "task_id": "019fe8f2-ac67-7406-a6e6-2717b2cd31c6",
+  "resource_id": "019f-resource",
   "observed_at": "2026-08-09T21:59:00Z",
   "data": { ... }
 }
@@ -73,6 +78,15 @@ Envelopes without an observation time are rejected as malformed.
 
 The durable encoding is JSON.
 Whether strict TOON is also safe for durable mutable records remains an open decision tracked by the TOON issue; TOON stays an output and interchange encoding until then.
+
+## Resource semantics
+
+A resource manifest is keyed by its owning task ID and immutable resource ID.
+Resource mutations use the owning task lock, while Git setup also uses the repository lock.
+Resource archive, cleanup, and recovery fields are never inferred from sibling resources.
+
+Legacy task manifests with one embedded Git resource are migrated lazily by lifecycle resource operations.
+The migration writes a `legacy` resource record and preserves the original task fields for compatibility.
 
 ## Manifest semantics
 
@@ -97,6 +111,7 @@ Events are never rewritten in place.
 ## Concurrency and locking
 
 - Task mutation (`WriteManifest`, `AppendEvent`) acquires the per-task lock via `Lock`/`WithLock`.
+- Resource mutation acquires the owning task lock.
 - `Lock` waits a short bounded time for a contended lock and returns a typed, retryable `lock_contention` error otherwise, so callers can retry safely.
 - `WithLock` returns the callback's error when it fails and also surfaces failures to release the lock.
 - Reads (`ReadManifest`, `ReadEvents`) do not take the lock; atomic replacement and append-only files make them safe without it.
@@ -137,6 +152,7 @@ Callers translate these kinds into protocol errors at the command boundary.
 
 `Clean` never runs while a task's verified tmux identity is live.
 It archives first, preserves committed, dirty, or untracked Git facts unless the operator explicitly authorizes each category, and records worktree and credential cleanup debt independently.
+Resource cleanup applies the same policy to one resource and records its debt without mutating sibling resources.
 Reconciliation does not invoke either destructive operation.
 
 ## Out of scope

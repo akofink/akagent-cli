@@ -25,6 +25,7 @@ type Envelope struct {
 	SchemaVersion int             `json:"schema_version"`
 	Kind          string          `json:"kind"`
 	TaskID        string          `json:"task_id"`
+	ResourceID    string          `json:"resource_id,omitempty"`
 	ObservedAt    time.Time       `json:"observed_at"`
 	Data          json.RawMessage `json:"data"`
 }
@@ -76,6 +77,7 @@ type Manifest struct {
 	Observation            string        `json:"observation,omitempty"`
 	ObservationAt          time.Time     `json:"observation_at,omitempty"`
 	Launch                 *LaunchConfig `json:"launch,omitempty"`
+	ResourceIDs            string        `json:"resource_ids,omitempty"`
 }
 
 // GitFacts are non-secret observations captured for recovery and cleanup
