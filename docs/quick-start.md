@@ -224,7 +224,7 @@ Without that approval, the worktree remains available for direct human recovery 
 Start with `task inspect` and `task reconcile` when observations are unclear or a possibly mutating command fails.
 Use the agent skill for automated lifecycle behavior and manual fallback only after those checks.
 
-If an optional integration launch fails, retry the generic execution or repeat the same compatibility launch command after inspecting and reconciling its state.
+If an optional integration launch fails, retry the generic execution or repeat the same explicit launch command after inspecting and reconciling its state.
 Equivalent repeated creates and launches are idempotent; changing immutable task or launch inputs returns a conflict.
 
 Do not attach when the heartbeat or process observation is stale.

@@ -20,7 +20,7 @@ The local lifecycle currently provides:
 
 - One implicit local worker.
 - Repository registration with `worktree` and `direct` policies.
-- Durable task start, list, inspect, condition publication, finish, stop, archive, clean, and reconcile commands.
+- Durable task create, launch, list, inspect, condition publication, finish, stop, archive, clean, and reconcile commands.
 - Stable task IDs and task-tagged tmux windows.
 - Verified tmux attachment using fresh process identity and heartbeat observations.
 - Git branch and worktree ownership under the `worktree` policy.

@@ -70,7 +70,7 @@ func TestHelp(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"usage: akagent <command>", "repository register <name> <path>", "task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>"} {
+	for _, expected := range []string{"usage: akagent <command>", "repository register <name> <path>", "task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
