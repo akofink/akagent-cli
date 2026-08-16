@@ -98,6 +98,8 @@ A task can own zero or more optional tool-neutral execution records.
 Use `task execution create` to persist an execution without starting tmux, then `task execution launch` to start it.
 Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
 The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
+Managed execution windows publish the shared tmux `@agent_state` option by matching those metadata IDs rather than the display label.
+Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 The compatibility `task launch --target shell` shortcut creates and launches a generic shell execution.
 New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
 One execution can coordinate multiple resources by selecting one resource as its working directory and using the owning task ID for further resource operations.
@@ -130,6 +132,8 @@ A create or launch with different immutable inputs returns a `conflict` error.
 
 The accepted published conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
 Publication updates the durable record and heartbeat.
+Managed execution publication maps active, failed, and none to a cleared `@agent_state` option.
+Stop clears the option, archive preserves `done`, and reconciliation republishes waiting or blocked only when observations remain fresh.
 
 A finish while the task process is running fails without changing the task outcome.
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.

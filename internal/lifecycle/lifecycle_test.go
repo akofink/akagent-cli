@@ -532,6 +532,40 @@ esac
 	}
 }
 
+func TestCommandTmuxExecutionStateUsesIdentityMetadata(t *testing.T) {
+	bin := t.TempDir()
+	logPath := filepath.Join(t.TempDir(), "tmux.log")
+	tmuxPath := filepath.Join(bin, "tmux")
+	const script = `#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "$AKAGENT_TEST_TMUX_LOG"
+case "$1" in
+  list-windows) printf '%s\t%s\t%s\n' '@1' 'other-task' 'other-execution'; printf '%s\t%s\t%s\n' '@2' 'task-66' 'execution-66' ;;
+  set-option) : ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AKAGENT_TEST_TMUX_LOG", logPath)
+	if err := (commandTmux{}).SetExecutionState("execution-66", "task-66", "waiting"); err != nil {
+		t.Fatal(err)
+	}
+	if err := (commandTmux{}).SetExecutionState("execution-66", "task-66", ""); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := strings.Split(strings.TrimSpace(string(content)), "\n")
+	if len(calls) != 4 || calls[1] != "set-option -w -t @2 @agent_state waiting" || calls[3] != "set-option -w -u -t @2 @agent_state" {
+		t.Fatalf("execution state calls = %q, want metadata-targeted state updates", calls)
+	}
+}
+
 func TestReconcileRecordsMissingObservationWithoutDeletingTask(t *testing.T) {
 	manager, tmux := newTestManager(t)
 	if _, err := manager.Start(StartRequest{ID: "task-2", Title: "Recover", Repository: "demo"}); err != nil {

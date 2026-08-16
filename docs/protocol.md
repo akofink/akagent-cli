@@ -69,6 +69,8 @@ execution:
 The task ID and execution ID are both written to owned tmux window metadata.
 The display label is descriptive and never derived from an internal UUID.
 A resource ID is attachment metadata used to select a working directory and verify durable intent; execution lifecycle operations do not mutate or require the resource's archive or cleanup state.
+The managed execution window also publishes the shared tmux `@agent_state` option using those metadata IDs, never its display label.
+Active execution clears the option, while waiting, blocked, and completed execution publish `waiting`, `blocked`, and `done` respectively.
 
 ### Task resource
 
@@ -173,6 +175,7 @@ Direct-policy tasks deliberately use the registered checkout's current branch wh
 The execution operation creates an optional tool-neutral record without a tmux or process side effect.
 `task execution launch` starts that record in a task-tagged tmux window and records the process identity.
 The display label is descriptive, while the task and execution IDs remain in tmux metadata used for lifecycle verification.
+Launch clears any stale `@agent_state` value for an active execution.
 A launch failure leaves the execution in recoverable `starting` state and records recovery debt.
 The historical `task launch --target shell` command remains a direct-human compatibility shortcut built on a generic execution record.
 The optional `task launch --target pi` shortcut delegates to the Pi integration, which creates and launches a generic execution record.
@@ -206,6 +209,8 @@ A task can own zero or more executions, and each execution can be inspected, att
 
 A trusted local integration or shell may publish `active`, `waiting`, `blocked`, `failed`, or `none` with a concise reason and activity.
 Publication updates the durable task record and heartbeat.
+For managed executions, active, failed, and none clear `@agent_state`, while waiting and blocked publish their matching values.
+Finish and archive preserve `done`, stop clears the option, and reconciliation clears stale state when the execution is no longer actively waiting or blocked.
 It does not make a declaration authoritative over contradictory process or Git observations.
 
 ### Inspect and list
@@ -277,7 +282,7 @@ Without worktree approval, the worktree remains available for direct human recov
 ### Reconcile
 
 Execution reconciliation compares each durable execution with its task-tagged tmux and process observations.
-It repairs safe derived metadata, records changes, and reports stale, missing, replaced, or contradictory observations.
+It repairs safe derived metadata, republishes waiting or blocked state only with fresh observations, and clears stale `@agent_state` values.
 It never deletes task state, executions, branches, worktrees, windows, or terminal history.
 Task reconciliation continues to repair legacy task and resource observations.
 

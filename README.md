@@ -54,6 +54,8 @@ The `direct` policy permits the registered checkout itself when that is explicit
 
 `task create` creates a durable record, validates the repository inputs, and creates the required branch and worktree without starting tmux or a process.
 `task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
+Managed execution windows publish the shared tmux `@agent_state` option by matching task and execution metadata, not display names.
+Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 `task launch --target shell` is an explicit direct human shell shortcut built on those generic execution commands.
 Execution stop, archive, attachment, and reconciliation are independent from resource state.
 A task can coordinate multiple resources through one execution by selecting a resource during execution creation.
