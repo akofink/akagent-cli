@@ -39,6 +39,7 @@ The store lives under the XDG state root for the `akagent` application:
 - Each execution has its own mutable manifest, event history, and archive under `executions/<execution-id>`.
 - Execution records contain tool-neutral command and observation metadata, not resource Git state.
 - `archive.json` is an atomically replaced snapshot of the corresponding task, resource, or execution manifest and event history.
+Task archives include resource snapshots so resource metadata and external delivery URLs remain available with the task record.
 - `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
 
 ## Permissions
@@ -88,6 +89,7 @@ Whether strict TOON is also safe for durable mutable records remains an open dec
 
 A resource manifest is keyed by its owning task ID and immutable resource ID.
 Resource mutations use the owning task lock, while Git setup also uses the repository lock.
+Git ownership inputs remain immutable, while non-secret provider-neutral metadata and HTTPS external URLs are mutable through the lifecycle package.
 Resource archive, cleanup, and recovery fields are never inferred from sibling resources.
 
 Legacy task manifests with one embedded Git resource are migrated lazily by lifecycle resource operations.

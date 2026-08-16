@@ -69,6 +69,44 @@ func TestTaskOwnsMultipleIndependentResources(t *testing.T) {
 	}
 }
 
+func TestResourceMetadataSurvivesUpdateArchiveAndReconcile(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "metadata-task", Title: "Delivery metadata"}); err != nil {
+		t.Fatal(err)
+	}
+	resource, created, err := manager.CreateResource("metadata-task", ResourceRequest{ID: "delivery", Repository: "demo", Metadata: map[string]string{"review": "ready"}})
+	if err != nil || !created {
+		t.Fatalf("CreateResource() = %#v, %v, %v", resource, created, err)
+	}
+	resource, err = manager.UpdateResource("metadata-task", "delivery", ResourceUpdateRequest{Metadata: map[string]string{"review": "published"}, ExternalURLs: []string{"https://forge.example/pull/61"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.Metadata["review"] != "published" || len(resource.ExternalURLs) != 1 {
+		t.Fatalf("updated resource = %#v, want metadata and external URL", resource)
+	}
+	if _, err := manager.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	resource, err = manager.InspectResource("metadata-task", "delivery")
+	if err != nil || resource.Metadata["review"] != "published" || resource.ExternalURLs[0] != "https://forge.example/pull/61" {
+		t.Fatalf("reconciled resource = %#v, %v", resource, err)
+	}
+	if _, err := manager.Stop("metadata-task"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Archive("metadata-task"); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := manager.Store.ReadArchive("metadata-task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archive.Resources) != 1 || archive.Resources[0].Metadata["review"] != "published" || archive.Resources[0].ExternalURLs[0] != "https://forge.example/pull/61" {
+		t.Fatalf("task archive resources = %#v, want preserved metadata", archive.Resources)
+	}
+}
+
 func TestLegacySingleResourceMigrationCreatesSeparateRecord(t *testing.T) {
 	manager, _ := newTestManager(t)
 	result, err := manager.Create(CreateRequest{ID: "legacy-resource", Title: "Legacy", Repository: "demo"})

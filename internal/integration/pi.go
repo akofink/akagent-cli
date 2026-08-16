@@ -180,7 +180,7 @@ func LaunchPi(manager *lifecycle.Manager, taskID, executionID string, args []str
 	if err != nil {
 		return markPiFailure(manager, taskID, executionID, "requested credential unavailable")
 	}
-	environment = append(environment, "AKAGENT_TASK_ID="+taskID)
+	environment = append(environment, "AKAGENT_TASK_ID="+taskID, "AKAGENT_EXECUTION_ID="+executionID)
 	if context != "" {
 		environment = append(environment, "AKAGENT_WORKING_CONTEXT="+context)
 	}

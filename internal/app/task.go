@@ -14,20 +14,22 @@ import (
 )
 
 type resourceView struct {
-	ID                   string `json:"id"`
-	Repository           string `json:"repository"`
-	Branch               string `json:"branch,omitempty"`
-	BaseRevision         string `json:"base_revision,omitempty"`
-	WorktreePath         string `json:"worktree_path,omitempty"`
-	Head                 string `json:"head,omitempty"`
-	Committed            bool   `json:"committed"`
-	Dirty                bool   `json:"dirty"`
-	Untracked            bool   `json:"untracked"`
-	RecoveryDebt         string `json:"recovery_debt,omitempty"`
-	ArchiveState         string `json:"archive_state,omitempty"`
-	CleanupState         string `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState string `json:"worktree_cleanup_state,omitempty"`
-	CleanupDebt          bool   `json:"cleanup_debt,omitempty"`
+	ID                   string            `json:"id"`
+	Repository           string            `json:"repository"`
+	Branch               string            `json:"branch,omitempty"`
+	BaseRevision         string            `json:"base_revision,omitempty"`
+	WorktreePath         string            `json:"worktree_path,omitempty"`
+	Head                 string            `json:"head,omitempty"`
+	Committed            bool              `json:"committed"`
+	Dirty                bool              `json:"dirty"`
+	Untracked            bool              `json:"untracked"`
+	RecoveryDebt         string            `json:"recovery_debt,omitempty"`
+	ArchiveState         string            `json:"archive_state,omitempty"`
+	CleanupState         string            `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState string            `json:"worktree_cleanup_state,omitempty"`
+	CleanupDebt          bool              `json:"cleanup_debt,omitempty"`
+	Metadata             map[string]string `json:"metadata,omitempty"`
+	ExternalURLs         []string          `json:"external_urls,omitempty"`
 }
 
 type resourceListView struct {
@@ -526,7 +528,7 @@ func parseExecutionCreate(args []string) (lifecycle.ExecutionRequest, bool) {
 
 func taskResourceCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|archive|clean>", false, "Run `akagent task resource list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|update|archive|clean>", false, "Run `akagent task resource list <task-id>`")
 	}
 	state, err := store.Open()
 	if err != nil {
@@ -536,11 +538,11 @@ func taskResourceCommand(args []string, stdout io.Writer) int {
 	switch args[0] {
 	case "create", "add":
 		if len(args) < 2 {
-			return writeError(stdout, "usage", "Usage: akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>]", false, "Create the task first, then add a Git resource")
+			return writeError(stdout, "usage", "Usage: akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--metadata <key=value>] [--external-url <https-url>]", false, "Create the task first, then add a Git resource")
 		}
 		request, ok := parseResourceCreate(args[2:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>]", false, "Provide a repository and immutable Git inputs")
+			return writeError(stdout, "usage", "Usage: akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--metadata <key=value>] [--external-url <https-url>]", false, "Provide a repository and immutable Git inputs")
 		}
 		if request.ID == "" {
 			id, idErr := uuid.NewV7()
@@ -580,6 +582,19 @@ func taskResourceCommand(args []string, stdout io.Writer) int {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, resourceDetailView{Resource: viewResource(resource)})
+	case "update":
+		if len(args) < 3 {
+			return writeError(stdout, "usage", "Usage: akagent task resource update <task-id> <resource-id> [--metadata <key=value>] [--external-url <https-url>]", false, "Record non-secret delivery metadata for the resource")
+		}
+		request, ok := parseResourceUpdate(args[3:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task resource update <task-id> <resource-id> [--metadata <key=value>] [--external-url <https-url>]", false, "Record non-secret delivery metadata for the resource")
+		}
+		resource, err := manager.UpdateResource(args[1], args[2], request)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, resourceDetailView{Resource: viewResource(resource)})
 	case "archive":
 		if len(args) != 3 {
 			return writeError(stdout, "usage", "Usage: akagent task resource archive <task-id> <resource-id>", false, "Inspect the resource before archiving it")
@@ -603,34 +618,78 @@ func taskResourceCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, resourceDetailView{Resource: viewResource(resource)})
 	default:
-		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|archive|clean>", false, "Run `akagent task resource list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|update|archive|clean>", false, "Run `akagent task resource list <task-id>`")
 	}
 }
 
 func parseResourceCreate(args []string) (lifecycle.ResourceRequest, bool) {
 	var request lifecycle.ResourceRequest
+	metadata, urls, ok := parseResourceMetadata(args, &request.ID, &request.Repository, &request.Branch, &request.BaseRevision, &request.WorktreePath)
+	request.Metadata, request.ExternalURLs = metadata, urls
+	return request, ok && request.Repository != ""
+}
+
+func parseResourceUpdate(args []string) (lifecycle.ResourceUpdateRequest, bool) {
+	var request lifecycle.ResourceUpdateRequest
+	metadata, urls, ok := parseResourceMetadata(args, nil, nil, nil, nil, nil)
+	request.Metadata, request.ExternalURLs = metadata, urls
+	return request, ok && (len(metadata) > 0 || len(urls) > 0)
+}
+
+func parseResourceMetadata(args []string, id, repository, branch, base, worktree *string) (map[string]string, []string, bool) {
+	var metadata map[string]string
+	var urls []string
 	for len(args) > 0 {
 		if len(args) < 2 {
-			return request, false
+			return nil, nil, false
 		}
 		flag, value := args[0], args[1]
 		args = args[2:]
 		switch flag {
 		case "--resource-id", "--id":
-			request.ID = value
+			if id == nil {
+				return nil, nil, false
+			}
+			*id = value
 		case "--repository":
-			request.Repository = value
+			if repository == nil {
+				return nil, nil, false
+			}
+			*repository = value
 		case "--branch":
-			request.Branch = value
+			if branch == nil {
+				return nil, nil, false
+			}
+			*branch = value
 		case "--base":
-			request.BaseRevision = value
+			if base == nil {
+				return nil, nil, false
+			}
+			*base = value
 		case "--worktree":
-			request.WorktreePath = value
+			if worktree == nil {
+				return nil, nil, false
+			}
+			*worktree = value
+		case "--metadata":
+			key, metadataValue, found := strings.Cut(value, "=")
+			if !found || key == "" || metadataValue == "" {
+				return nil, nil, false
+			}
+			if metadata == nil {
+				metadata = map[string]string{}
+			}
+			metadata[key] = metadataValue
+		case "--external-url", "--external-reference", "--url":
+			if value == "" {
+				return nil, nil, false
+			}
+			urls = append(urls, value)
 		default:
-			return request, false
+			return nil, nil, false
 		}
 	}
-	return request, request.Repository != ""
+	return metadata, urls, true
 }
 
 func parseCreate(args []string) (lifecycle.CreateRequest, bool) {
@@ -796,7 +855,7 @@ func actionableResources(resources []store.Resource) bool {
 }
 
 func viewResource(resource store.Resource) resourceView {
-	return resourceView{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CleanupDebt: resource.CleanupDebt}
+	return resourceView{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: resource.Metadata, ExternalURLs: resource.ExternalURLs}
 }
 
 func viewExecution(execution store.Execution, manager *lifecycle.Manager) executionView {
