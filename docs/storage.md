@@ -41,6 +41,7 @@ The store lives under the XDG state root for the `akagent` application:
 - Execution records may contain multiple non-secret session references with a tool identifier, session ID, and optional absolute local reference path.
 - `archive.json` is an atomically replaced snapshot of the corresponding task, resource, or execution manifest and event history.
 Task archives include resource and execution snapshots so delivery metadata and execution session references remain available with the task record.
+- Resource and execution archives are independently recoverable and do not require sibling resource or execution cleanup.
 - `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
 
 ## Permissions

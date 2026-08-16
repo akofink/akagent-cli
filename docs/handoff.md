@@ -27,7 +27,7 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 
 ## Current workflow
 
-`task create` creates durable task intent and can create zero resources without creating a tmux window or starting a process.
+`task create` is state-only task creation: it records durable task intent and can create zero resources without creating a tmux window or starting a process.
 Worktree-policy repository registrations accept an absolute `--worktree-root` for task and resource worktrees.
 When omitted, the root remains the derived `<checkout-parent>/.akagent/worktrees/<name>` path.
 Containment validation, cleanup ownership checks, and reconciliation use the configured root.
@@ -36,7 +36,7 @@ The compatibility `--repository` form creates one initial resource.
 Worktree-policy resources require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 `task execution create` records an optional tool-neutral execution without a process side effect.
-`task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during creation.
+`task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during execution creation.
 `task execution session add` records provider-neutral session provenance without parsing Pi or another provider's session files.
 Execution stop, archive, attach, and reconcile operate independently from resource state.
 The `task launch --target shell` path creates and launches a generic shell execution.
@@ -62,7 +62,7 @@ Credential cleanup remains independent, and cleanup state and recovery debt are 
 
 `task resource archive`, `task resource clean`, and `task resource update` operate on one resource without changing sibling resource state.
 `task execution archive` and `task execution stop` operate on one execution without changing resource state.
-`task reconcile` repairs safe derived observations and Git facts for tasks and resources, while `task execution reconcile` repairs execution observations.
+`task reconcile` repairs safe derived observations and Git facts for tasks and resources, while `task execution reconcile` repairs execution observations without changing resource state.
 It never deletes task state, branches, worktrees, windows, or terminal history.
 Legacy single-resource manifests migrate lazily to a `legacy` resource when resource operations inspect or extend them.
 
