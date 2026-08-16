@@ -79,6 +79,31 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 }
 
+func TestTaskCreateHasNoTmuxSideEffectUntilExplicitLaunch(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	created := runCommand(t, []string{"task", "create", "--task-id", "create-56", "--title", "Create only", "--repository", "demo"})
+	if created.code != 0 || !strings.Contains(created.stdout, "status: created") {
+		t.Fatalf("task create = (%d, %q), want created status", created.code, created.stdout)
+	}
+	if _, err := os.Stat(os.Getenv("AKAGENT_FAKE_TMUX_STATE")); !os.IsNotExist(err) {
+		t.Fatalf("task create touched fake tmux state: %v", err)
+	}
+	launched := runCommand(t, []string{"task", "launch", "create-56", "--target", "shell"})
+	if launched.code != 0 || !strings.Contains(launched.stdout, "execution: shell") {
+		t.Fatalf("task launch = (%d, %q), want shell execution", launched.code, launched.stdout)
+	}
+	if _, err := os.Stat(os.Getenv("AKAGENT_FAKE_TMUX_STATE")); err != nil {
+		t.Fatalf("task launch did not create fake tmux state: %v", err)
+	}
+}
+
 func TestWorktreeTaskStartRequiresDescriptiveBranch(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")

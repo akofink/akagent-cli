@@ -57,7 +57,9 @@ repository:
 ## Task commands
 
 ```text
-akagent task start --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--agent pi --prompt <path>] [--context <value>] [--require <credential>] [--optional <credential>]
+akagent task create --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]
+akagent task launch <task-id> --target <shell|pi> [--prompt <path>] [--context <value>]
+akagent task start --title <title> --repository <name> ... # legacy create-and-launch shortcut
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 akagent task attach <task-id>
@@ -81,11 +83,18 @@ Filters compose as an intersection and results remain sorted by task ID.
 The `worktree` policy requires an explicit descriptive `--branch` value, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`, and creates an isolated worktree under the registered repository's worktree root.
 Explicit `--branch`, `--base`, and `--worktree` values are immutable task inputs.
 The `direct` policy deliberately permits an omitted branch and uses the registered checkout's current branch.
-The start operation creates a task-tagged tmux resource whose display name is derived from the branch after removing its owner prefix.
-The task ID remains in tmux window metadata for lifecycle verification, not in the operator-facing window name.
-Without managed-launch options, that resource runs the user's shell for direct work.
+The create operation persists the task and its single Git resource without creating a tmux window or starting a process.
+The task initially has status `created` and can be inspected, archived after stopping, or launched later.
 
-`--agent pi` selects the supported managed local Pi target.
+The launch operation is the only new execution entry point.
+Use `--target shell` for a detached direct shell or `--target pi` for managed local Pi.
+The task-tagged tmux resource has a display name derived from the branch after removing its owner prefix.
+The task ID remains in tmux window metadata for lifecycle verification, not in the operator-facing window name.
+
+The legacy `task start` command remains available for direct human workflows and retains its historical create-and-launch behavior.
+New integrations should use `task create` followed by an explicit `task launch` operation.
+
+`--target pi` selects the supported managed local Pi target.
 The `pi` executable must be available on `PATH`, and its resolved command path is stored in the task launch configuration.
 
 `--prompt` stores a reference to a regular local prompt file.
@@ -95,11 +104,12 @@ This preserves Pi's interactive mode while keeping prompt content out of process
 `--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
 
 The selected launch target, command path, task worktree, prompt reference, and working context are persisted before tmux starts.
+Create and launch are separate durable operations, so a failed launch can be retried without recreating the task or Git resource.
 The owned pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible while work runs.
-A failed managed launch shows safe recovery guidance in the pane, leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same immutable inputs.
+A failed managed launch shows safe recovery guidance in the pane, leaves the task in recoverable `starting` state, records recovery debt, and can be retried with the same `task launch` inputs.
 
-Equivalent repeated starts, publications, finishes, stops, archives, and completed cleans are successful no-ops.
-A start with different immutable inputs returns a `conflict` error.
+Equivalent repeated creates, launches, publications, finishes, stops, archives, and completed cleans are successful no-ops.
+A create or launch with different immutable inputs returns a `conflict` error.
 
 The accepted published conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
 Publication updates the durable record and heartbeat.

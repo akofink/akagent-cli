@@ -20,7 +20,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -38,8 +38,9 @@ A minimal local flow is:
 ```bash
 akagent integration inspect
 akagent repository register demo /path/to/checkout
-akagent task start --title "Review the build" --repository demo \
+akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
+akagent task launch <task-id> --target shell
 akagent task list
 akagent task inspect <task-id>
 ```
@@ -48,12 +49,13 @@ Registration requires the root of an existing Git checkout.
 The default repository policy creates an isolated branch and Git worktree for each task.
 The `direct` policy permits the registered checkout itself when that is explicitly selected.
 
-`task start` creates a durable record, validates the repository inputs, creates the required branch and worktree, and starts a task-tagged tmux resource.
+`task create` creates a durable record, validates the repository inputs, and creates the required branch and worktree without starting tmux or a process.
+`task launch --target shell` starts a direct shell, while `task launch --target pi` starts managed Pi.
 Worktree-policy tasks require an explicit descriptive branch such as `akofink/51-task-labels`.
 Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
 Tmux displays the branch label without its owner prefix while retaining the task ID in window metadata for lifecycle verification.
-The local CLI can start either a detached shell for direct human work or a managed local Pi process.
-Use `--agent pi` to select the managed launch, `--prompt` to provide a local prompt file, and `--context` to provide one non-secret working-context value.
+The local CLI can launch either a detached shell for direct human work or a managed local Pi process.
+Use `task launch --target pi` to select the managed launch, `--prompt` to provide a local prompt file, and `--context` to provide one non-secret working-context value.
 Use `task attach` for verified human attachment and use `task publish` for durable condition and heartbeat updates.
 
 `task reconcile` compares durable records with tmux and Git observations and repairs safe derived facts.
@@ -67,15 +69,17 @@ Worktree-policy managed launches require an explicit descriptive branch before t
 The validated prompt-file reference is passed to Pi while standard input remains attached to the tmux terminal, preserving Pi's interactive mode.
 Prompt content is never placed in process arguments, task events, or protocol output.
 The pane shows a non-secret startup line before Pi initializes, and Pi's interactive status and tool views remain visible during execution.
-A failed launch prints safe recovery guidance and remains retryable through the same task start command.
+A failed launch prints safe recovery guidance and remains retryable through the same task launch command.
 
 ```bash
-akagent task start --title "Review the build" --repository demo \
-  --branch akofink/review-build --agent pi --prompt /path/to/prompt.txt --context "example"
+akagent task create --title "Review the build" --repository demo \
+  --branch akofink/review-build
+akagent task launch <task-id> --target pi --prompt /path/to/prompt.txt --context "example"
 ```
 
-The start response includes the selected agent, resolved command, prompt reference, and working context.
-A repeated start with the same immutable inputs is an idempotent no-op, while a failed launch remains retryable through the same task start command.
+The launch response includes the selected target, resolved command, prompt reference, and working context.
+A repeated create or launch with the same immutable inputs is an idempotent no-op, while a failed launch remains retryable through the same task launch command.
+The historical `task start` create-and-launch shortcut remains available for direct human workflows.
 The managed process receives a minimal safe environment, `AKAGENT_TASK_ID`, and the requested environment credentials that passed readiness checks.
 Optional credentials produce non-secret warnings and are not injected; file credentials are readiness-only and cannot be injected into the managed environment.
 

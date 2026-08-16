@@ -74,9 +74,9 @@ The generated `_site/` directory is disposable and should not be committed.
 
 ## Current local boundary
 
-The current CLI registers local Git repositories, creates durable task records, creates isolated worktrees under the `worktree` policy, and starts task-tagged tmux resources.
+The current CLI registers local Git repositories, creates durable task records and isolated worktrees under the `worktree` policy, and keeps creation separate from execution.
 
-A task can use a detached shell for direct work or a managed local Pi launch selected with `--agent pi`.
+A task can use an explicit detached shell launch for direct work or a managed local Pi launch selected with `--target pi`.
 Managed launch persists the resolved command, task worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
 
 It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.

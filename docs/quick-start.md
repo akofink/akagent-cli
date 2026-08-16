@@ -77,13 +77,14 @@ akagent repository unregister <name>
 An update that would invalidate a task reference is rejected.
 Unregister removes only the registration and is rejected while tasks still reference it.
 
-## Start and inspect a task
+## Create, launch, and inspect a task
 
-Start a task with a title and registered repository:
+Create a task with a title and registered repository:
 
 ```bash
-akagent task start --title "Review the build" --repository demo \
+akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
+akagent task launch <task-id> --target shell
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 ```
@@ -96,18 +97,20 @@ The `--branch`, `--base`, and `--worktree` options provide explicit immutable Gi
 The default task list shows actionable records only, while `--all` includes archived history.
 Actionable records include non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
 Use `--repository` and `--worktree` to compose deterministic exact-match filters.
-The command also creates a task-tagged tmux resource.
+Task creation does not create a tmux resource or start a process.
+The explicit launch command creates a task-tagged tmux resource.
 Its display name is derived from the branch after removing the owner prefix, while the task ID remains in window metadata for lifecycle verification.
 
-By default, the local CLI starts a shell for direct human or shell-driven work.
-Use `--agent pi` to start a managed local Pi process instead.
+Use `--target shell` for direct human or shell-driven work.
+Use `--target pi` to start a managed local Pi process instead.
 Pi must be installed and available as `pi` on `PATH`.
 
 A minimal managed-launch example uses only placeholder task data and a local prompt-file reference:
 
 ```bash
-akagent task start --title "Review the build" --repository demo \
-  --branch akofink/review-build --agent pi --prompt /path/to/prompt.txt --context "example"
+akagent task create --title "Review the build" --repository demo \
+  --branch akofink/review-build
+akagent task launch <task-id> --target pi --prompt /path/to/prompt.txt --context "example"
 ```
 
 The prompt file must be a regular local file.
@@ -116,13 +119,13 @@ This keeps Pi interactive while prompt contents stay out of process arguments, t
 The task manifest stores the selected target, resolved command path, prompt reference, worktree, and non-secret context before tmux starts.
 The owned pane shows a non-secret startup line before Pi initializes.
 Pi's interactive status and tool views remain visible while the managed task works.
-A failed launch prints safe recovery guidance in the pane and remains retryable through the same task start command.
+A failed launch prints safe recovery guidance in the pane and remains retryable through the same task launch command.
 The managed process receives a minimal safe environment plus `AKAGENT_TASK_ID` and the requested environment credentials that passed readiness checks.
 Optional credentials produce non-secret warnings and are not injected.
 File credentials can be checked for readiness but cannot be injected into the managed environment.
 
 Task status is computed from lifecycle records and observations.
-Lifecycle values are `starting`, `running`, `stopped`, and `finished`.
+Lifecycle values are `created`, `starting`, `running`, `stopped`, and `finished`.
 Computed statuses include `active`, `waiting`, `blocked`, `failed`, `stopped`, `finished`, and `unknown`.
 
 Use TOON output as the protocol boundary rather than parsing human-oriented text:
@@ -211,8 +214,8 @@ Without that approval, the worktree remains available for direct human recovery 
 Start with `task inspect` and `task reconcile` when observations are unclear or a possibly mutating command fails.
 Use the agent skill for automated lifecycle behavior and manual fallback only after those checks.
 
-If a managed launch fails, repeat the same `task start` command to retry the recoverable `starting` task.
-Equivalent repeated starts are idempotent; changing immutable launch inputs returns a conflict.
+If a managed launch fails, repeat the same `task launch` command to retry the recoverable `starting` task.
+Equivalent repeated creates and launches are idempotent; changing immutable task or launch inputs returns a conflict.
 
 Do not attach when the heartbeat or process observation is stale.
 
