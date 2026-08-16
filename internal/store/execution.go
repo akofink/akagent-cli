@@ -35,6 +35,7 @@ type Execution struct {
 	Target            string             `json:"target"`
 	Command           string             `json:"command,omitempty"`
 	Arguments         []string           `json:"arguments,omitempty"`
+	Requirements      string             `json:"requirements,omitempty"`
 	ResourceID        string             `json:"resource_id,omitempty"`
 	WorkingDirectory  string             `json:"working_directory,omitempty"`
 	SessionReferences []SessionReference `json:"session_references,omitempty"`
@@ -443,7 +444,7 @@ func (s *Store) ensureExecutionDir(taskID, executionID string) error {
 }
 
 func sameExecutionInputs(a, b Execution) bool {
-	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory && slices.Equal(a.SessionReferences, b.SessionReferences)
+	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.Requirements == b.Requirements && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory && slices.Equal(a.SessionReferences, b.SessionReferences)
 }
 
 func executionManifestEnvelope(taskID, executionID string, execution Execution) (Envelope, error) {

@@ -26,6 +26,7 @@ The local lifecycle currently provides:
 - Git branch and worktree ownership under the `worktree` policy.
 - Durable manifests, append-only events, repository and task locks.
 - Optional managed local Pi execution integration with interactive prompt-file references, safe environment construction, and requested-credential handling.
+- Local deployment executions with work-scoped credential readiness and durable completion results.
 - Git and process fact collection.
 - Compact TOON output and structured recovery errors.
 - Local credential requirements and non-secret warnings.
@@ -52,7 +53,8 @@ Integrations must be idempotent, independently removable, token-budgeted, and li
 
 ## Tracked follow-ups
 
-- Work-specific secrets and deployment behavior.
+- Broader workflow integrations beyond the stable CLI boundary.
+- Broader local deployment integrations beyond direct executable commands.
 
 ## Metrics that can change decisions
 

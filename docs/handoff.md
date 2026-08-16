@@ -25,6 +25,7 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Task and execution-tagged detached tmux resources, shared `@agent_state` publication by execution metadata, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
 - A provider-neutral `akagent integration launch` workflow entry point that records and launches generic executions only when automation is enabled.
+- Work-scoped deployment executions with readiness checks, in-memory environment injection, and durable success or failure results.
 
 ## Current workflow
 
@@ -134,7 +135,7 @@ akagent credential <list|inspect|doctor|clean>
 akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -143,6 +144,7 @@ akagent worker inspect
 
 ## Tracked follow-ups
 
-- Work-specific secrets and deployment behavior.
+- Destructive worktree and credential cleanup hooks.
+- Broader workflow integrations beyond the stable CLI boundary.
 
 The detailed public delivery map is in [`implementation-plan.md`](implementation-plan.md).

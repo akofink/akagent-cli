@@ -17,7 +17,7 @@ akagent credential <list|inspect|doctor|clean>
 akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -112,6 +112,16 @@ $XDG_STATE_HOME/akagent/
 
 The store uses typed JSON envelopes, atomic manifest replacement, append-only events, descriptor-safe traversal, and per-task locks.
 TOON remains the agent-facing output encoding.
+
+### Local deployments
+
+A deployment is a tool-neutral execution with target `deploy` and a selected resource worktree.
+Its durable record contains the executable, non-secret arguments, credential IDs, lifecycle, result, and recovery observations.
+The worker receives only task and execution IDs in its tmux command.
+It resolves credential values immediately before running the executable and keeps those values in the child environment only.
+Readiness failure leaves the execution in its created state for a safe retry.
+A command failure records a generic failed result, while process interruption is recovered as a stopped execution by reconciliation.
+Deployment execution state remains independent from resource cleanup and task archival.
 
 ### Integrations
 

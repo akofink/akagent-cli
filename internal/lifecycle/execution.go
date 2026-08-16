@@ -21,6 +21,7 @@ type ExecutionRequest struct {
 	Target           string
 	Command          string
 	Arguments        []string
+	Requirements     []string
 	ResourceID       string
 	WorkingDirectory string
 }
@@ -108,7 +109,7 @@ func (m *Manager) CreateExecution(taskID string, request ExecutionRequest) (stor
 			request.WorkingDirectory = workingDirectory
 		}
 	}
-	execution := store.Execution{ID: request.ID, TaskID: taskID, Label: request.Label, Target: request.Target, Command: request.Command, Arguments: append([]string(nil), request.Arguments...), ResourceID: request.ResourceID, WorkingDirectory: request.WorkingDirectory, Lifecycle: "created", Condition: "none", HeartbeatAt: m.now()}
+	execution := store.Execution{ID: request.ID, TaskID: taskID, Label: request.Label, Target: request.Target, Command: request.Command, Arguments: append([]string(nil), request.Arguments...), Requirements: strings.Join(unique(request.Requirements), ","), ResourceID: request.ResourceID, WorkingDirectory: request.WorkingDirectory, Lifecycle: "created", Condition: "none", HeartbeatAt: m.now()}
 	created, existing, err := m.Store.CreateExecution(taskID, execution)
 	if err != nil {
 		return store.Execution{}, false, err
@@ -182,6 +183,13 @@ func (m *Manager) LaunchExecutionRecord(taskID, executionID string) (store.Execu
 	if execution.Command == "" {
 		return store.Execution{}, &store.Error{Kind: store.KindUsage, Message: "execution command is required before launch", Recovery: fmt.Sprintf("Create execution %s with --command", execution.ID)}
 	}
+	if execution.Target == DeploymentTarget {
+		if err := m.checkDeploymentCredentials(execution); err != nil {
+			m.blockDeployment(execution, taskID)
+			return execution, err
+		}
+	}
+	execution.RecoveryDebt = removeDebt(execution.RecoveryDebt, "credential_unavailable")
 	if execution.WorkingDirectory == "" {
 		execution.WorkingDirectory = "."
 	}
@@ -193,7 +201,13 @@ func (m *Manager) LaunchExecutionRecord(taskID, executionID string) (store.Execu
 		return store.Execution{}, err
 	}
 	var process TmuxProcess
-	if tmux, ok := m.Tmux.(ExecutionTmux); ok {
+	if execution.Target == DeploymentTarget {
+		if tmux, ok := m.Tmux.(DeploymentTmux); ok {
+			process, err = tmux.StartDeployment(execution.ID, taskID, execution.Label, execution.WorkingDirectory)
+		} else {
+			err = errors.New("tmux implementation does not support local deployments")
+		}
+	} else if tmux, ok := m.Tmux.(ExecutionTmux); ok {
 		process, err = tmux.StartExecution(execution.ID, taskID, execution.Label, execution.WorkingDirectory, execution.Command, execution.Arguments)
 	} else {
 		// Compatibility for injected implementations from the task launch API.

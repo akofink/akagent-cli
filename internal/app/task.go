@@ -74,6 +74,7 @@ type executionView struct {
 	Label             string `json:"label"`
 	Target            string `json:"target"`
 	Command           string `json:"command,omitempty"`
+	Requirements      string `json:"requirements,omitempty"`
 	ResourceID        string `json:"resource_id,omitempty"`
 	WorkingDirectory  string `json:"working_directory,omitempty"`
 	Status            string `json:"status"`
@@ -147,7 +148,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
 	case "credential":
@@ -184,6 +185,33 @@ func taskCommand(args []string, stdout io.Writer) int {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, taskDetailView{Task: view(request.ID, result.Manifest)})
+	case "deploy":
+		if len(args) < 2 {
+			return writeError(stdout, "usage", "Usage: akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]", false, "Create a local deployment execution with non-secret credential IDs")
+		}
+		request, ok := parseDeployment(args[2:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]", false, "Provide an executable and non-secret arguments")
+		}
+		if request.ResourceID == "" {
+			resources, resourceErr := manager.ListResources(args[1])
+			if resourceErr != nil {
+				return lifecycleError(stdout, resourceErr)
+			}
+			if len(resources) == 1 {
+				request.ResourceID = resources[0].ID
+			} else if len(resources) > 1 {
+				return writeError(stdout, "conflict", "deployment requires a selected resource when a task has multiple resources", false, "Retry with `--resource <resource-id>`")
+			}
+		}
+		execution, _, err := manager.CreateDeployment(args[1], request)
+		if err == nil {
+			execution, err = manager.LaunchExecutionRecord(args[1], execution.ID)
+		}
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, executionDetail(execution, manager))
 	case "launch":
 		if len(args) < 3 {
 			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
@@ -411,11 +439,11 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 	switch args[0] {
 	case "create":
 		if len(args) < 2 {
-			return writeError(stdout, "usage", "Usage: akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--resource <resource-id>] [--worktree <path>]", false, "Create an execution without starting it")
+			return writeError(stdout, "usage", "Usage: akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--require <credential>] [--resource <resource-id>] [--worktree <path>]", false, "Create an execution without starting it")
 		}
 		request, ok := parseExecutionCreate(args[2:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--resource <resource-id>] [--worktree <path>]", false, "Provide a target and immutable execution inputs")
+			return writeError(stdout, "usage", "Usage: akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--require <credential>] [--resource <resource-id>] [--worktree <path>]", false, "Provide a target and immutable execution inputs")
 		}
 		execution, _, err := manager.CreateExecution(args[1], request)
 		if err != nil {
@@ -552,6 +580,32 @@ func parseSessionReference(args []string) (store.SessionReference, bool) {
 	return reference, reference.Tool != "" && reference.SessionID != ""
 }
 
+func parseDeployment(args []string) (lifecycle.ExecutionRequest, bool) {
+	request := lifecycle.ExecutionRequest{Target: lifecycle.DeploymentTarget}
+	for len(args) > 0 {
+		if len(args) < 2 {
+			return request, false
+		}
+		flag, value := args[0], args[1]
+		args = args[2:]
+		switch flag {
+		case "--command":
+			request.Command = value
+		case "--arg":
+			request.Arguments = append(request.Arguments, value)
+		case "--resource":
+			request.ResourceID = value
+		case "--require":
+			request.Requirements = append(request.Requirements, value)
+		case "--label":
+			request.Label = value
+		default:
+			return request, false
+		}
+	}
+	return request, request.Command != ""
+}
+
 func parseExecutionCreate(args []string) (lifecycle.ExecutionRequest, bool) {
 	var request lifecycle.ExecutionRequest
 	for len(args) > 0 {
@@ -569,6 +623,8 @@ func parseExecutionCreate(args []string) (lifecycle.ExecutionRequest, bool) {
 			request.Target = value
 		case "--command":
 			request.Command = value
+		case "--require":
+			request.Requirements = append(request.Requirements, value)
 		case "--resource":
 			request.ResourceID = value
 		case "--worktree":
@@ -863,7 +919,7 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {
@@ -900,7 +956,7 @@ func viewResourceList(resource store.Resource) resourceListItem {
 }
 
 func viewExecution(execution store.Execution, manager *lifecycle.Manager) executionView {
-	return executionView{ID: execution.ID, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: lifecycle.ExecutionStatus(execution, time.Now().UTC(), lifecycle.DefaultHeartbeatTimeout), Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: compactSessionReferences(execution.SessionReferences)}
+	return executionView{ID: execution.ID, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: lifecycle.ExecutionStatus(execution, time.Now().UTC(), lifecycle.DefaultHeartbeatTimeout), Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: compactSessionReferences(execution.SessionReferences)}
 }
 
 func executionDetail(execution store.Execution, manager *lifecycle.Manager) executionDetailView {
