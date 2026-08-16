@@ -17,8 +17,9 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Repository registration with `worktree` and `direct` policies.
 - Durable local task creation, explicit execution launch, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
 - Zero or more independently recoverable task resources with separate Git facts, archives, cleanup state, and recovery debt.
+- Zero or more optional tool-neutral executions with independent identity, tmux metadata, lifecycle observation, archive, stop, and recovery state.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
-- Task-tagged detached tmux resources, managed local Pi launch, and verified attachment using fresh process identity and heartbeat observations.
+- Task and execution-tagged detached tmux resources, managed local Pi compatibility launch, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
 
 ## Current workflow
@@ -28,11 +29,12 @@ The compatibility `--repository` form creates one initial resource.
 `task resource create` adds additional repository, branch, and worktree combinations.
 Worktree-policy resources require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
-`task launch --target shell` or `task launch --target pi` then creates the explicit execution.
-A multi-resource task selects one resource with `--resource`.
-Generic multiple executions remain out of scope.
-Tmux derives its display name from the branch without the owner prefix and keeps the task ID only in window metadata for lifecycle verification.
-Managed launch persists the resolved `pi` command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
+`task execution create` records an optional tool-neutral execution without a process side effect.
+`task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during creation.
+Execution stop, archive, attach, and reconcile operate independently from resource state.
+The compatibility `task launch --target shell` or `task launch --target pi` path materializes a `legacy` execution.
+Tmux derives its display name from the descriptive execution label and stores task and execution IDs in window metadata for lifecycle verification.
+Managed Pi compatibility launch persists the resolved command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
 The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive and a failed launch remains retryable with the same immutable inputs.
 The historical `task start` create-and-launch shortcut remains available for direct human recovery.
 
@@ -45,7 +47,8 @@ The hook preserves the task branch and archive facts, while direct repository ta
 Credential cleanup remains independent, and cleanup state and recovery debt are durable and independently retryable.
 
 `task resource archive` and `task resource clean` operate on one resource without changing sibling resource state.
-`task reconcile` repairs safe derived observations and Git facts for tasks and resources.
+`task execution archive` and `task execution stop` operate on one execution without changing resource state.
+`task reconcile` repairs safe derived observations and Git facts for tasks and resources, while `task execution reconcile` repairs execution observations.
 It never deletes task state, branches, worktrees, windows, or terminal history.
 Legacy single-resource manifests migrate lazily to a `legacy` resource when resource operations inspect or extend them.
 
@@ -68,8 +71,9 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|archive|clean>
+akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```

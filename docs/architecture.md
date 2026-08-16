@@ -17,8 +17,9 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|archive|clean>
+akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -26,8 +27,9 @@ akagent worker inspect
 Task creation persists task intent and may own zero resources without creating tmux or starting a process.
 The compatibility `--repository` form creates one initial resource.
 The resource command creates additional immutable repository, branch, and worktree combinations.
-The explicit launch operation selects one resource and runs a shell for direct work or a managed local Pi process when `--target pi` is selected.
-Generic multiple executions remain out of scope.
+A task may own zero or more optional tool-neutral executions.
+Execution creation, launch, observation, attachment, stop, archive, and recovery are independent from resource state.
+The explicit launch operation remains a compatibility shortcut for a direct shell or managed local Pi process.
 The legacy `task start` command remains a compatibility shortcut for direct human workflows.
 
 ## Components
@@ -54,9 +56,9 @@ The lifecycle layer owns:
 - Independently recoverable resource records, Git facts, archives, cleanup state, and recovery debt.
 - Repository registration and locks.
 - Branch and Git worktree creation.
-- Explicit one-execution launch state.
+- Optional execution records with durable process identity, descriptive tmux labels, observation, attachment, stop, archive, and recovery state.
 - Tmux window identity, observation, attachment, and stop.
-- Managed Pi launch configuration, prompt-file input, and safe process environment.
+- Managed Pi compatibility launch configuration, prompt-file input, and safe process environment.
 - Durable condition publication and heartbeat refresh.
 - Process and Git reconciliation.
 - Archive capture and cleanup-preservation policy.

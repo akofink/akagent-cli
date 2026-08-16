@@ -470,6 +470,9 @@ func (s *Store) recoverTaskLocked(taskID string, result *RecoveryResult) error {
 	if err := s.validateResourcesForRecovery(taskID, result); err != nil {
 		return err
 	}
+	if err := s.validateExecutionsForRecovery(taskID, result); err != nil {
+		return err
+	}
 	return s.validateArchiveForRecovery(taskID, result)
 }
 
@@ -564,6 +567,29 @@ func (s *Store) validateResourcesForRecovery(taskID string, result *RecoveryResu
 		}
 		if _, err := s.ReadResourceArchive(taskID, resourceID); err != nil && !IsKind(err, KindNotFound) {
 			result.MalformedRecords = append(result.MalformedRecords, s.resourceArchivePath(taskID, resourceID))
+		}
+	}
+	return nil
+}
+
+func (s *Store) validateExecutionsForRecovery(taskID string, result *RecoveryResult) error {
+	ids, err := s.ExecutionIDs(taskID)
+	if err != nil {
+		if !IsKind(err, KindNotFound) {
+			result.MalformedRecords = append(result.MalformedRecords, err.Error())
+		}
+		return nil
+	}
+	for _, executionID := range ids {
+		if _, err := s.ReadExecution(taskID, executionID); err != nil {
+			result.MalformedRecords = append(result.MalformedRecords, s.executionManifestPath(taskID, executionID))
+			continue
+		}
+		if _, err := s.ReadExecutionEvents(taskID, executionID); err != nil {
+			result.MalformedRecords = append(result.MalformedRecords, s.executionEventsDir(taskID, executionID))
+		}
+		if _, err := s.ReadExecutionArchive(taskID, executionID); err != nil && !IsKind(err, KindNotFound) {
+			result.MalformedRecords = append(result.MalformedRecords, s.executionArchivePath(taskID, executionID))
 		}
 	}
 	return nil

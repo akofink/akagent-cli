@@ -62,7 +62,7 @@ func Run(args []string, stdout io.Writer) int {
 				"id generate",
 				"repository register <name> <path> [--policy <worktree|direct>]",
 				"repository <list|inspect|update|unregister>",
-				"task <create|resource|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
+				"task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
 				"task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile> (legacy shortcut)",
 				"update [--source <path>]",
 				"worker inspect",

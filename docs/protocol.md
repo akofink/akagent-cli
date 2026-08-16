@@ -6,7 +6,7 @@ The protocol is the stable contract between direct commands, local tasks, and in
 It covers identity, records, lifecycle semantics, output, errors, compatibility, and reconciliation.
 
 It does not standardize cloud provisioning or imply that all workers have identical capabilities.
-Managed local Pi launch is part of the local task contract described here.
+Execution records are tool-neutral; the current local CLI retains its historical managed Pi launch as a compatibility surface until the integration delivery.
 
 ## Resources
 
@@ -28,8 +28,9 @@ The current CLI exposes `akagent worker inspect` for the implicit local worker.
 
 ### Task
 
-A task has an immutable ID, operator request, and mutable execution record.
+A task has an immutable ID, operator request, and zero or more optional execution records.
 A task may own zero or more Git resources.
+Executions and resources are separate records with independent lifecycle and recovery state.
 Task creation can therefore record intent without selecting a repository or creating a worktree.
 
 ```toon
@@ -44,6 +45,29 @@ Task IDs are generated before dispatch and are safe for filenames, tmux options,
 UUIDv7 provides sortable random identity without worker-local coordination.
 
 Titles, branches, tickets, tmux names, and prompts are attributes rather than identity.
+
+### Task execution
+
+An execution is an optional tool-neutral process associated with one task.
+Its durable ID is independent from both the task ID and every resource ID.
+The record stores a descriptive label, target, command metadata, optional resource attachment metadata, lifecycle state, process identity, tmux observations, heartbeat, archive state, and recovery debt.
+The core execution record has no Pi-specific fields.
+
+```toon
+execution:
+  id: 019f...
+  task_id: 019f...
+  label: review-shell
+  target: shell
+  resource_id: 019f...
+  lifecycle: running
+  tmux_window: '@3'
+  observation: fresh
+```
+
+The task ID and execution ID are both written to owned tmux window metadata.
+The display label is descriptive and never derived from an internal UUID.
+A resource ID is attachment metadata used to select a working directory and verify durable intent; execution lifecycle operations do not mutate or require the resource's archive or cleanup state.
 
 ### Task resource
 
@@ -74,12 +98,12 @@ The `direct` policy uses the registered checkout and requires its base revision 
 A credential capability is a named permission needed by a task.
 The task record stores the capability ID and readiness information without storing the value.
 
-### Managed launch
+### Execution launch
 
-A managed launch selects the local `pi` executable and persists its resolved command, task worktree, optional prompt-file reference, and optional non-secret working context.
-The prompt reference identifies a regular local file whose path is passed to Pi as a file reference.
-The launcher keeps standard input attached to the tmux terminal so Pi remains interactive.
-The prompt contents are not copied into process arguments, task events, or protocol output.
+An execution launch persists the resolved command, arguments, working directory, and optional resource attachment before tmux starts.
+The launcher keeps standard input attached to the tmux terminal for interactive tools.
+Credential values and prompt contents are never copied into process arguments, task events, or protocol output.
+The existing managed Pi launch maps its compatibility configuration onto a tool-neutral execution record; Pi-specific launch behavior remains a compatibility implementation rather than part of the execution schema.
 
 The managed process receives a minimal safe runtime environment, `AKAGENT_TASK_ID`, and only requested environment credentials that passed readiness checks.
 Optional requirements are recorded as non-secret warnings and are not injected.
@@ -99,7 +123,7 @@ Agent-declared condition:
 active | waiting | blocked | failed | none
 ```
 
-Observed facts include tmux window existence, process identity and start time, heartbeat, Git status, HEAD, archive status, cleanup status, and credential readiness.
+Observed facts include execution tmux window existence, process identity and start time, heartbeat, Git status, HEAD, archive status, cleanup status, and credential readiness.
 
 The compact `status` field is a computed view:
 
@@ -125,8 +149,9 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|archive|clean>
+akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -138,12 +163,11 @@ A task with no repository starts with zero resources.
 Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 
-The explicit launch operation selects either a detached shell or the managed Pi process in a task-tagged tmux window.
-The tmux display name is derived from the branch after removing its owner prefix, while the task ID remains in the window metadata used for lifecycle verification.
-For managed launch, the configuration is persisted before tmux starts and the launcher replaces itself with Pi so the durable process identity refers to the managed process.
-The launcher prints a non-secret startup line in the owned pane, and Pi's interactive status and tool views remain visible during execution.
-A launch failure prints a safe recovery message in the pane, remains in recoverable `starting` state, and records recovery debt.
-The historical `task start` command remains a compatibility shortcut for direct human workflows, while new integrations should use separate create and launch operations.
+The execution operation creates an optional tool-neutral record without a tmux or process side effect.
+`task execution launch` starts that record in a task-tagged tmux window and records the process identity.
+The display label is descriptive, while the task and execution IDs remain in tmux metadata used for lifecycle verification.
+A launch failure leaves the execution in recoverable `starting` state and records recovery debt.
+The historical `task launch` and `task start` commands remain compatibility shortcuts and also materialize a `legacy` execution record.
 
 ## Lifecycle operations
 
@@ -162,13 +186,13 @@ Neither operation has a tmux or process side effect.
 Repeated equivalent creates return the existing task with exit code `0`.
 Conflicting immutable inputs return a structured conflict.
 
-Resource creation and explicit launch remain separate durable operations.
-Explicit launch persists the selected shell or Pi execution configuration, creates a detached task-tagged tmux resource, and records the observed process identity.
-A launch for a task with resources selects one resource with `--resource` when the selection is not unambiguous.
-Repeated equivalent launches are successful no-ops.
+Resource creation and execution creation remain separate durable operations.
+Execution creation persists target-neutral immutable inputs and never creates a tmux window.
+Execution launch selects an existing execution and records the observed process identity.
+A resource attachment is optional and only supplies verified working-directory metadata.
+Repeated equivalent creates and launches are successful no-ops.
 A failed launch remains retryable without recreating the task or selected resource.
-The current implementation still supports one execution target per task.
-Generic multiple execution records remain out of scope for this delivery.
+A task can own zero or more executions, and each execution can be inspected, attached, stopped, archived, and reconciled independently.
 
 ### Publish state
 
@@ -179,8 +203,9 @@ It does not make a declaration authoritative over contradictory process or Git o
 ### Inspect and list
 
 List views default to compact decision-relevant fields and include a definitive total.
-Task resource operations use the same compact TOON boundary.
+Task resource and execution operations use the same compact TOON boundary.
 `task resource list` returns `resources[]` and `total`, while inspect returns one `resource` object.
+`task execution list` returns `executions[]` and `total`, while inspect returns one `execution` object.
 The default list includes actionable records: non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
 Only fully archived, fully cleaned, debt-free records are hidden by default.
 `task list --all` includes all durable task records.
@@ -195,20 +220,20 @@ total: 1
 
 ### Attach
 
-Attachment first resolves the durable task record by task ID.
-It proceeds only for a running shell or managed Pi task with a fresh heartbeat, a fresh process observation, exactly one matching process, and a matching `@akagent_task_id` tmux window.
+Execution attachment first resolves the durable task and execution records.
+It proceeds only for a running execution with a fresh heartbeat, a fresh process observation, exactly one matching process, and a tmux window containing matching `@akagent_task_id` and `@akagent_execution_id` metadata.
 
-The command rechecks the task option on the selected window immediately before running `tmux attach-session` against that verified window ID.
+The command rechecks both task and execution options on the selected window immediately before running `tmux attach-session` against that verified window ID.
 
 Missing, stale, contradictory, stopped, and finished observations are rejected with structured recovery guidance.
 Attachment does not write durable state and never creates, kills, renames, or retargets tmux resources.
 
 ### Stop
 
-Stop verifies the task through the tagged tmux resource and terminates its task window.
-It preserves the durable task record and Git worktree, then records `stopped` without claiming a successful outcome.
-Terminal history is best-effort: archive runs only after the task is stopped or finished, and stopping ends the tagged window, so the archive may report terminal history as unavailable.
-Stopping an already stopped or finished task is a successful no-op.
+Execution stop verifies the execution's tagged tmux metadata and terminates only that execution window.
+It preserves the task record, execution record, and Git resources, then records `stopped` without claiming a successful outcome.
+Stopping an already stopped or finished execution is a successful no-op.
+The compatibility task stop operation retains its historical task-level behavior.
 
 ### Finish
 
@@ -220,11 +245,12 @@ It does not infer verification success, commit state, or worktree cleanliness fr
 
 ### Archive
 
-Archive accepts stopped or finished tasks after confirming no task process is live.
-It captures the manifest, event history, non-secret Git facts, and terminal history when available.
-`task resource archive` captures one resource's manifest, events, and Git facts without changing another resource's archive state.
+Execution archive accepts a stopped or finished execution after confirming no execution process is live.
+It captures the execution manifest, execution event history, and terminal history when available.
+Execution archive does not require a resource to be archived or cleaned and never changes resource state.
 Unavailable terminal history is recorded as a warning.
 Partial archive attempts remain retryable, and equivalent archives are idempotent.
+The compatibility task and resource archive operations retain their existing scope.
 
 ### Clean
 
@@ -242,9 +268,10 @@ Without worktree approval, the worktree remains available for direct human recov
 
 ### Reconcile
 
-Reconciliation compares durable records with tmux, process, Git, and store observations.
+Execution reconciliation compares each durable execution with its task-tagged tmux and process observations.
 It repairs safe derived metadata, records changes, and reports stale, missing, replaced, or contradictory observations.
-It never deletes task state, branches, worktrees, windows, or terminal history.
+It never deletes task state, executions, branches, worktrees, windows, or terminal history.
+Task reconciliation continues to repair legacy task and resource observations.
 
 ## Output
 
@@ -286,11 +313,12 @@ The signal controls automated invocation only; direct human commands, including 
 
 ## Concurrency and consistency
 
-Task mutation uses a per-task lock.
+Task and execution mutation use the owning task lock.
 Resource mutation uses the owning task lock and a per-repository lock for Git setup.
 Repository mutation uses a per-repository lock.
 Manifest replacement uses atomic rename and synchronization.
-Task ID and operation name form the default idempotency identity.
+Execution event sequences are computed while holding the task lock, so concurrent execution appends cannot overlap or create gaps.
+Task ID, execution ID, and operation name form the default idempotency identity.
 Reads identify observation time and tolerate concurrent change.
 
 ## Compatibility
@@ -301,5 +329,8 @@ Removing fields, changing meanings, or changing lifecycle semantics requires a p
 Interrupted legacy `starting` manifests without a recorded process identity migrate to `created` when the task is created again.
 Legacy manifests with a recorded process remain attached to their observed execution and are not relaunched by migration.
 Legacy manifests with one repository, branch, and worktree are migrated lazily when resource operations inspect or extend them.
-The migration creates a `legacy` resource and preserves the existing task execution fields, Git facts, archive state, cleanup state, and recovery debt.
+Legacy manifests with launch, tmux, or process fields are migrated lazily when execution operations inspect or extend them.
+The migration creates a `legacy` execution and preserves the existing task execution fields, target metadata, process identity, tmux window, observation, archive state, cleanup state, and recovery debt.
+The migration is idempotent and does not start, stop, rename, or archive a process.
+Resource migration and execution migration are independent, so either can be recovered without changing the other record.
 Human-readable text is not a stable parsing interface.
