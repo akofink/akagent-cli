@@ -37,6 +37,7 @@ type taskView struct {
 	AgentCommand           string `json:"agent_command,omitempty"`
 	PromptReference        string `json:"prompt_reference,omitempty"`
 	WorkingContext         string `json:"working_context,omitempty"`
+	Execution              string `json:"execution,omitempty"`
 }
 
 type taskListView struct {
@@ -57,9 +58,39 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
+	case "create":
+		request, ok := parseCreate(args[1:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task create --title <title> --repository <name> [--task-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]", false, "Register a repository, then create the task")
+		}
+		if request.ID == "" {
+			id, idErr := uuid.NewV7()
+			if idErr != nil {
+				return writeError(stdout, "internal", "Failed to generate a task ID", false, "Retry `akagent task create`")
+			}
+			request.ID = id.String()
+		}
+		result, err := manager.Create(request)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, taskDetailView{Task: view(request.ID, result.Manifest)})
+	case "launch":
+		if len(args) < 3 {
+			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
+		}
+		request, ok := parseLaunch(args[2:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--prompt <path>] [--context <value>]", false, "Use --target shell for a direct shell or --target pi for managed Pi")
+		}
+		manifest, err := manager.LaunchExecution(args[1], request)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "start":
 		request, ok := parseStart(args[1:])
 		if !ok {
@@ -241,6 +272,62 @@ func parseTaskList(args []string) (taskListOptions, bool) {
 	return options, true
 }
 
+func parseCreate(args []string) (lifecycle.CreateRequest, bool) {
+	var request lifecycle.CreateRequest
+	for len(args) > 0 {
+		if len(args) < 2 {
+			return request, false
+		}
+		flag, value := args[0], args[1]
+		args = args[2:]
+		switch flag {
+		case "--task-id":
+			request.ID = value
+		case "--title":
+			request.Title = value
+		case "--repository":
+			request.Repository = value
+		case "--branch":
+			request.Branch = value
+		case "--base":
+			request.BaseRevision = value
+		case "--worktree":
+			request.WorktreePath = value
+		case "--require":
+			request.Requirements = append(request.Requirements, value)
+		case "--optional":
+			request.Optional = append(request.Optional, value)
+		default:
+			return request, false
+		}
+	}
+	return request, request.Title != "" && request.Repository != ""
+}
+
+func parseLaunch(args []string) (lifecycle.LaunchRequest, bool) {
+	var request lifecycle.LaunchRequest
+	for len(args) > 0 {
+		if len(args) < 2 {
+			return request, false
+		}
+		flag, value := args[0], args[1]
+		args = args[2:]
+		switch flag {
+		case "--target", "--execution":
+			request.Target = value
+		case "--agent":
+			request.Target = value
+		case "--prompt", "--prompt-ref", "--prompt-reference":
+			request.PromptReference = value
+		case "--context", "--working-context":
+			request.WorkingContext = value
+		default:
+			return request, false
+		}
+	}
+	return request, request.Target != ""
+}
+
 func parseStart(args []string) (lifecycle.StartRequest, bool) {
 	var request lifecycle.StartRequest
 	for len(args) > 0 {
@@ -318,7 +405,7 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {
@@ -335,7 +422,10 @@ func actionable(manifest store.Manifest) bool {
 func view(id string, manifest store.Manifest) taskView {
 	result := taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
 	if manifest.Launch != nil {
-		result.Agent = manifest.Launch.Target
+		result.Execution = manifest.Launch.Target
+		if manifest.Launch.Target == "pi" {
+			result.Agent = manifest.Launch.Target
+		}
 		result.AgentCommand = manifest.Launch.Command
 		result.PromptReference = manifest.Launch.PromptReference
 		result.WorkingContext = manifest.Launch.WorkingContext

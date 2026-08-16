@@ -17,13 +17,14 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
 
-The current task start operation creates a task-tagged tmux resource and a Git worktree when repository policy requires one.
-It runs a shell for direct work by default or a managed local Pi process when `--agent pi` is selected.
+Task creation persists a task and its single Git resource without creating tmux or starting a process.
+The explicit launch operation runs a shell for direct work or a managed local Pi process when `--target pi` is selected.
+The legacy `task start` command remains a compatibility shortcut for direct human workflows.
 
 ## Components
 
@@ -48,6 +49,7 @@ The lifecycle layer owns:
 - Task records and event history.
 - Repository registration and locks.
 - Branch and Git worktree creation.
+- Explicit one-execution launch state.
 - Tmux window identity, observation, attachment, and stop.
 - Managed Pi launch configuration, prompt-file input, and safe process environment.
 - Durable condition publication and heartbeat refresh.

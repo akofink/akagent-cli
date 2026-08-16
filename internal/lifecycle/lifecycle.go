@@ -112,6 +112,28 @@ type StartRequest struct {
 	WorkingContext  string
 }
 
+// CreateRequest contains only durable task and Git resource inputs. It never
+// selects or starts an execution.
+type CreateRequest struct {
+	ID           string
+	Title        string
+	Repository   string
+	Branch       string
+	BaseRevision string
+	WorktreePath string
+	Requirements []string
+	Optional     []string
+}
+
+// LaunchRequest selects one of the currently supported local execution
+// targets. This intentionally models one execution only; later deliveries can
+// add independent execution records without changing task creation.
+type LaunchRequest struct {
+	Target          string
+	PromptReference string
+	WorkingContext  string
+}
+
 type StartResult struct {
 	Manifest store.Manifest
 	Created  bool
@@ -270,6 +292,155 @@ func discoverInstructions(path string) []string {
 		instructions[i] = reversed[len(reversed)-1-i]
 	}
 	return instructions
+}
+
+// Create durably records a task and its single Git resource. It does not
+// inspect, create, or mutate tmux and it never starts a process.
+func (m *Manager) Create(request CreateRequest) (StartResult, error) {
+	if request.ID == "" || request.Title == "" || request.Repository == "" {
+		return StartResult{}, fmt.Errorf("task ID, title, and repository are required")
+	}
+	repository, err := m.Store.ReadRepository(request.Repository)
+	if err != nil {
+		return StartResult{}, err
+	}
+	request.Requirements = unique(request.Requirements)
+	request.Optional = unique(request.Optional)
+	warnings, err := m.checkCredentials(request.Requirements, request.Optional)
+	if err != nil {
+		return StartResult{}, err
+	}
+	var result StartResult
+	err = m.Store.WithRepositoryLock(repository.Name, func() error {
+		existingEnvelope, readErr := m.Store.ReadManifest(request.ID)
+		if readErr == nil {
+			existing, decodeErr := existingEnvelope.DecodeManifest()
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if err := m.validateExistingCreate(request, existing); err != nil {
+				return err
+			}
+			if migrateLegacyCreate(&existing) {
+				if err := m.Store.WriteManifest(request.ID, existing); err != nil {
+					return err
+				}
+				if _, err := m.Store.AppendEvent(request.ID, store.Event{Operation: "migrate", Outcome: "created", Detail: "legacy launch state detached from task creation"}); err != nil {
+					return err
+				}
+			}
+			if existing.Lifecycle == "created" {
+				if err := m.ensureWorktree(request.ID, repository, &existing); err != nil {
+					return err
+				}
+			}
+			result = StartResult{Manifest: existing}
+			return nil
+		}
+		if !store.IsKind(readErr, store.KindNotFound) {
+			return readErr
+		}
+		branch, base, worktree, err := m.startInputs(StartRequest{ID: request.ID, Branch: request.Branch, BaseRevision: request.BaseRevision, WorktreePath: request.WorktreePath}, repository)
+		if err != nil {
+			return err
+		}
+		manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree, Lifecycle: "created", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+		created, existing, err := m.Store.CreateManifest(request.ID, manifest)
+		if err != nil {
+			return err
+		}
+		if !created {
+			if !sameCreate(existing, manifest) {
+				return fmt.Errorf("task inputs conflict with the existing task")
+			}
+			result = StartResult{Manifest: existing}
+			return nil
+		}
+		if _, err := m.Store.AppendEvent(request.ID, store.Event{Operation: "create", Outcome: "intent"}); err != nil {
+			return err
+		}
+		if err := m.ensureWorktree(request.ID, repository, &manifest); err != nil {
+			_, _ = m.Store.AppendEvent(request.ID, store.Event{Operation: "create", Outcome: "failed", Detail: "worktree"})
+			return err
+		}
+		result = StartResult{Manifest: manifest, Created: true}
+		return nil
+	})
+	return result, err
+}
+
+// LaunchExecution starts an explicit shell or managed Pi execution for an
+// existing task. Launch configuration is persisted before tmux is touched.
+func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manifest, error) {
+	if id == "" {
+		return store.Manifest{}, fmt.Errorf("task ID is required")
+	}
+	if request.Target != "shell" && request.Target != "pi" {
+		return store.Manifest{}, &store.Error{Kind: store.KindUsage, Message: "execution target must be shell or pi", Recovery: "Retry with `--target shell` or `--target pi`"}
+	}
+	manifest, err := m.manifest(id)
+	if err != nil {
+		return store.Manifest{}, err
+	}
+	if manifest.Lifecycle == "running" {
+		if request.Target == "pi" && manifest.Launch != nil && manifest.Launch.Target == "pi" {
+			return manifest, nil
+		}
+		if request.Target == "shell" && manifest.Launch != nil && manifest.Launch.Target == "shell" {
+			return manifest, nil
+		}
+		return store.Manifest{}, fmt.Errorf("task already has a different running execution")
+	}
+	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
+		return store.Manifest{}, fmt.Errorf("task cannot launch after it is %s", manifest.Lifecycle)
+	}
+	var launch *store.LaunchConfig
+	if request.Target == "pi" {
+		launch, err = m.prepareLaunch(StartRequest{Agent: "pi", PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
+		if err != nil {
+			return store.Manifest{}, err
+		}
+		if err := m.checkLaunchCredentials(manifest); err != nil {
+			return store.Manifest{}, err
+		}
+	} else {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		launch = &store.LaunchConfig{Target: "shell", Command: shell, WorkingDirectory: manifest.WorktreePath}
+		if request.PromptReference != "" || request.WorkingContext != "" {
+			return store.Manifest{}, fmt.Errorf("shell execution does not accept prompt or context")
+		}
+	}
+	launch.WorkingDirectory = manifest.WorktreePath
+	if manifest.Launch != nil && !sameRequestedLaunch(manifest.Launch, launch) {
+		return store.Manifest{}, fmt.Errorf("execution inputs conflict with the existing task")
+	}
+	if manifest.Launch == nil {
+		manifest.Launch = launch
+	}
+	manifest.Lifecycle = "starting"
+	manifest.Observation = ObservationMissing
+	manifest.HeartbeatAt = m.now()
+	if err := m.Store.WriteManifest(id, manifest); err != nil {
+		return store.Manifest{}, err
+	}
+	if _, err := m.Store.AppendEvent(id, store.Event{Operation: "launch", Outcome: "intent", Detail: request.Target}); err != nil {
+		return store.Manifest{}, err
+	}
+	if err := m.ensureStarted(id, &manifest); err != nil {
+		return store.Manifest{}, err
+	}
+	return manifest, nil
+}
+
+func (m *Manager) checkLaunchCredentials(manifest store.Manifest) error {
+	if manifest.Requirements == "" {
+		return nil
+	}
+	_, err := m.checkCredentials(splitRequirements(manifest.Requirements), nil)
+	return err
 }
 
 func (m *Manager) Start(request StartRequest) (StartResult, error) {
@@ -527,7 +698,7 @@ func (m *Manager) ensureStarted(id string, manifest *store.Manifest) error {
 	}
 	var process TmuxProcess
 	var err error
-	if manifest.Launch != nil {
+	if manifest.Launch != nil && manifest.Launch.Target == "pi" {
 		managed, ok := m.Tmux.(ManagedTmux)
 		if !ok {
 			return fmt.Errorf("tmux implementation does not support managed launch")
@@ -620,6 +791,17 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 		return store.Manifest{}, err
 	}
 	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
+		return manifest, nil
+	}
+	if manifest.Lifecycle == "created" {
+		manifest.Lifecycle, manifest.Condition = "stopped", "none"
+		manifest.Observation, manifest.ObservationAt = ObservationMissing, m.now()
+		if err := m.Store.WriteManifest(id, manifest); err != nil {
+			return store.Manifest{}, err
+		}
+		if _, err := m.Store.AppendEvent(id, store.Event{Operation: "stop", Outcome: "succeeded", Detail: "no execution launched"}); err != nil {
+			return store.Manifest{}, err
+		}
 		return manifest, nil
 	}
 	if err := m.Tmux.Stop(id); err != nil {
@@ -902,6 +1084,53 @@ func sameStart(a, b store.Manifest) bool {
 	return a.Title == b.Title && a.Worker == b.Worker && a.Repository == b.Repository && a.Branch == b.Branch && a.BaseRevision == b.BaseRevision && a.WorktreePath == b.WorktreePath && a.Requirements == b.Requirements && sameLaunch(a.Launch, b.Launch)
 }
 
+func sameCreate(a, b store.Manifest) bool {
+	return a.Title == b.Title && a.Worker == b.Worker && a.Repository == b.Repository && a.Branch == b.Branch && a.BaseRevision == b.BaseRevision && a.WorktreePath == b.WorktreePath && a.Requirements == b.Requirements
+}
+
+func (m *Manager) validateExistingCreate(request CreateRequest, existing store.Manifest) error {
+	if existing.Title != request.Title || existing.Repository != request.Repository || existing.Worker != "local" {
+		return fmt.Errorf("task inputs conflict with the existing task")
+	}
+	if strings.Join(unique(request.Requirements), ",") != existing.Requirements {
+		return fmt.Errorf("task inputs conflict with the existing task")
+	}
+	if request.Branch != "" && request.Branch != existing.Branch {
+		return fmt.Errorf("task inputs conflict with the existing task")
+	}
+	if request.WorktreePath != "" {
+		abs, err := filepath.Abs(request.WorktreePath)
+		if err != nil || abs != existing.WorktreePath {
+			return fmt.Errorf("task inputs conflict with the existing task")
+		}
+	}
+	if request.BaseRevision != "" {
+		repository, err := m.Store.ReadRepository(request.Repository)
+		if err != nil {
+			return err
+		}
+		resolved, err := m.Git.Resolve(repository.Path, request.BaseRevision)
+		if err != nil || resolved != existing.BaseRevision {
+			return fmt.Errorf("task inputs conflict with the existing task")
+		}
+	}
+	return nil
+}
+
+// migrateLegacyCreate converts the only legacy state that is safe to detach:
+// an interrupted pre-split start with no recorded process identity. Running
+// legacy tasks remain attached to their observed execution for recovery.
+func migrateLegacyCreate(manifest *store.Manifest) bool {
+	if manifest.Lifecycle != "starting" || manifest.ProcessPID != 0 || manifest.ProcessStartTime != 0 || manifest.TmuxWindow != "" {
+		return false
+	}
+	manifest.Lifecycle = "created"
+	manifest.Observation = ""
+	manifest.ObservationAt = time.Time{}
+	manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
+	return true
+}
+
 func sameLaunch(a, b *store.LaunchConfig) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
@@ -1152,6 +1381,8 @@ func Status(manifest store.Manifest, now time.Time, heartbeatTimeout time.Durati
 		return "failed"
 	}
 	switch manifest.Lifecycle {
+	case "created":
+		return "created"
 	case "starting":
 		return "starting"
 	case "stopped":

@@ -39,7 +39,9 @@ The local lifecycle implementation established:
 - Default-on automated integration gating with an immediate per-environment disable path.
 - Managed local Pi launch with durable configuration, interactive prompt-file references, safe environment construction, process identity, retry, and recovery behavior.
 
-The current CLI starts a shell for direct human or shell-driven work by default and starts managed Pi when `--agent pi` is selected.
+The current CLI creates tasks and Git resources without execution side effects.
+Explicit `task launch --target shell` starts a shell for direct human or shell-driven work, and `task launch --target pi` starts managed Pi.
+The historical `task start` command remains as a direct-human compatibility shortcut.
 Destructive cleanup hooks are not part of the current implementation.
 
 ## Current orchestration boundary
@@ -59,7 +61,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```

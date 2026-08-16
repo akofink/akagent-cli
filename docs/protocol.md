@@ -71,7 +71,7 @@ File credentials can satisfy readiness requirements but cannot be injected into 
 Lifecycle phase:
 
 ```text
-starting | running | stopped | finished
+created | starting | running | stopped | finished
 ```
 
 Agent-declared condition:
@@ -84,13 +84,14 @@ Observed facts include tmux window existence, process identity and start time, h
 
 The compact `status` field is a computed view:
 
-1. `starting` while recoverable startup is incomplete.
-2. `failed` when the condition or finish outcome records failure.
-3. `waiting` or `blocked` when a fresh process observation has that condition.
-4. `active` when a fresh task process exists without a stronger condition.
-5. `finished` when finish recorded an outcome and no process remains.
-6. `stopped` when stop completed without a finish outcome.
-7. `unknown` when required observations are unavailable, stale, or contradictory.
+1. `created` after durable task and Git resource creation, before an execution is selected.
+2. `starting` while recoverable execution startup is incomplete.
+3. `failed` when the condition or finish outcome records failure.
+4. `waiting` or `blocked` when a fresh process observation has that condition.
+5. `active` when a fresh task process exists without a stronger condition.
+6. `finished` when finish recorded an outcome and no process remains.
+7. `stopped` when stop completed without a finish outcome.
+8. `unknown` when required observations are unavailable, stale, or contradictory.
 
 `committed`, `dirty`, and `untracked` are Git facts.
 Archive and cleanup state are independent recovery facts.
@@ -105,36 +106,44 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
 
-The local task start operation validates the repository and credential requirements, persists a manifest, creates the requested branch and Git worktree when needed, and starts either a detached shell or the selected managed Pi process in a task-tagged tmux window.
+Task creation validates the repository and credential requirements, persists a manifest, and creates the requested branch and Git worktree when needed.
+It does not create a tmux window or start a process.
 Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
+
+The explicit launch operation selects either a detached shell or the managed Pi process in a task-tagged tmux window.
 The tmux display name is derived from the branch after removing its owner prefix, while the task ID remains in the window metadata used for lifecycle verification.
 For managed launch, the configuration is persisted before tmux starts and the launcher replaces itself with Pi so the durable process identity refers to the managed process.
 The launcher prints a non-secret startup line in the owned pane, and Pi's interactive status and tool views remain visible during execution.
 A launch failure prints a safe recovery message in the pane, remains in recoverable `starting` state, and records recovery debt.
+The historical `task start` command remains a compatibility shortcut for direct human workflows, while new integrations should use separate create and launch operations.
 
 ## Lifecycle operations
 
-### Start
+### Create and launch
 
 The operator surface generates a task ID when omitted.
-A start is recoverable and records these steps:
+Task creation is recoverable and records these steps:
 
 1. Resolve and lock the repository.
 2. Validate policy, requested branch, and requested base.
 3. Create or validate the branch and worktree.
 4. Check named required and optional credential capabilities.
-5. Persist the task manifest and start event.
-6. Create a detached task-tagged tmux shell or managed Pi launch.
-7. Record the tmux window, pane, process identity, and successful start.
+5. Persist the task manifest and create event.
 
-Repeated equivalent starts return the existing task with exit code `0`.
+Creation has no tmux or process side effect.
+Repeated equivalent creates return the existing task with exit code `0`.
 Conflicting immutable inputs return a structured conflict.
+
+Explicit launch then persists the selected shell or Pi execution configuration, creates a detached task-tagged tmux resource, and records the observed process identity.
+Repeated equivalent launches are successful no-ops.
+A failed launch remains retryable without recreating the task resource.
+The current implementation supports one execution target per task; multiple resources and generic execution records are later epic work.
 
 ### Publish state
 
@@ -258,4 +267,6 @@ Reads identify observation time and tolerate concurrent change.
 Protocol responses include version metadata where required by the command contract.
 Adding optional fields is compatible.
 Removing fields, changing meanings, or changing lifecycle semantics requires a protocol version change.
+Interrupted legacy `starting` manifests without a recorded process identity migrate to `created` when the task is created again.
+Legacy manifests with a recorded process remain attached to their observed execution and are not relaunched by migration.
 Human-readable text is not a stable parsing interface.

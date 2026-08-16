@@ -107,6 +107,78 @@ func runGit(path string, args ...string) error {
 	return exec.Command("git", append([]string{"-C", path}, args...)...).Run()
 }
 
+func TestCreateDoesNotStartTmuxOrInspectExecution(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	result, err := manager.Create(CreateRequest{ID: "created-1", Title: "Durable task", Repository: "demo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Created || result.Manifest.Lifecycle != "created" {
+		t.Fatalf("Create() = %#v, want a created durable task", result)
+	}
+	if tmux.starts != 0 || len(tmux.observedIDs) != 0 {
+		t.Fatalf("Create() touched tmux: starts=%d observations=%v", tmux.starts, tmux.observedIDs)
+	}
+	events, err := manager.Store.ReadEvents("created-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Event.Operation != "create" {
+		t.Fatalf("create events = %#v, want one create event", events)
+	}
+}
+
+func TestLaunchExecutionStartsExplicitShellAfterCreate(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "launch-1", Title: "Explicit shell", Repository: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := manager.LaunchExecution("launch-1", LaunchRequest{Target: "shell"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Lifecycle != "running" || manifest.Launch == nil || manifest.Launch.Target != "shell" {
+		t.Fatalf("LaunchExecution() = %#v, want running shell execution", manifest)
+	}
+	if tmux.starts != 1 || len(tmux.managedStarts) != 0 {
+		t.Fatalf("launch starts = %d managed=%d, want one direct shell", tmux.starts, len(tmux.managedStarts))
+	}
+}
+
+func TestCreateMigratesInterruptedLegacyStartWithoutStartingTmux(t *testing.T) {
+	manager, tmux := newTestManager(t)
+	repository, err := manager.Store.ReadRepository("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := manager.Git.Head(repository.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch, err := manager.Git.Branch(repository.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := store.Manifest{Title: "Legacy task", Worker: "local", Repository: "demo", Branch: branch, BaseRevision: base, WorktreePath: repository.Path, Lifecycle: "starting", Condition: "none"}
+	if err := manager.Store.WriteManifest("legacy-1", legacy); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.Create(CreateRequest{ID: "legacy-1", Title: legacy.Title, Repository: legacy.Repository, Branch: legacy.Branch, BaseRevision: legacy.BaseRevision, WorktreePath: legacy.WorktreePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Manifest.Lifecycle != "created" || tmux.starts != 0 {
+		t.Fatalf("migrated task = %#v, tmux starts = %d; want created without launch", result.Manifest, tmux.starts)
+	}
+	events, err := manager.Store.ReadEvents("legacy-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Event.Operation != "migrate" {
+		t.Fatalf("migration events = %#v, want one migration event", events)
+	}
+}
+
 func TestManagedStartPersistsExplicitLaunchConfiguration(t *testing.T) {
 	manager, tmux := newTestManager(t)
 	prompt := filepath.Join(t.TempDir(), "prompt.md")

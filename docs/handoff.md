@@ -15,19 +15,21 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - A secure worker-local state store for versioned manifests, append-only events, atomic replacement, locking, archives, and recovery.
 - A local credential manifest with `file:` and `env:` readiness checks plus `credential list`, `inspect`, and `doctor`.
 - Repository registration with `worktree` and `direct` policies.
-- Durable local task start, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
+- Durable local task creation, explicit execution launch, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
 - Task-tagged detached tmux resources, managed local Pi launch, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
 
 ## Current workflow
 
-`task start` creates a durable record, creates or validates the task Git worktree, and starts either a detached shell or a managed local Pi process in a task-tagged tmux window.
+`task create` creates a durable record and creates or validates the task Git worktree without creating a tmux window or starting a process.
 Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
+`task launch --target shell` or `task launch --target pi` then creates the explicit execution.
 Tmux derives its display name from the branch without the owner prefix and keeps the task ID only in window metadata for lifecycle verification.
 Managed launch persists the resolved `pi` command, worktree, optional prompt-file reference, and optional non-secret working context before tmux starts.
 The prompt-file reference is passed to Pi without changing standard input, so Pi remains interactive and a failed launch remains retryable with the same immutable inputs.
+The historical `task start` create-and-launch shortcut remains available for direct human recovery.
 
 `task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.
 `task finish` records a result only after the task process has exited.
@@ -59,7 +61,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
