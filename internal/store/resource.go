@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,24 +16,27 @@ const (
 	KindResourceArchive  = "resource_archive"
 )
 
-// Resource is one immutable repository, branch, and worktree association owned
-// by a task. Its Git, archive, cleanup, and recovery observations are separate
-// from both the task and every other resource.
+// Resource is one repository, branch, and worktree association owned by a
+// task. Git ownership inputs are immutable while delivery metadata is mutable.
+// Its Git, archive, cleanup, and recovery observations are separate from both
+// the task and every other resource.
 type Resource struct {
-	ID                     string   `json:"id"`
-	TaskID                 string   `json:"task_id"`
-	Repository             string   `json:"repository"`
-	Branch                 string   `json:"branch,omitempty"`
-	BaseRevision           string   `json:"base_revision,omitempty"`
-	WorktreeBaseRevision   string   `json:"worktree_base_revision,omitempty"`
-	WorktreePath           string   `json:"worktree_path,omitempty"`
-	Git                    GitFacts `json:"git,omitempty"`
-	RecoveryDebt           string   `json:"recovery_debt,omitempty"`
-	ArchiveState           string   `json:"archive_state,omitempty"`
-	CleanupState           string   `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState   string   `json:"worktree_cleanup_state,omitempty"`
-	CredentialCleanupState string   `json:"credential_cleanup_state,omitempty"`
-	CleanupDebt            bool     `json:"cleanup_debt,omitempty"`
+	ID                     string            `json:"id"`
+	TaskID                 string            `json:"task_id"`
+	Repository             string            `json:"repository"`
+	Branch                 string            `json:"branch,omitempty"`
+	BaseRevision           string            `json:"base_revision,omitempty"`
+	WorktreeBaseRevision   string            `json:"worktree_base_revision,omitempty"`
+	WorktreePath           string            `json:"worktree_path,omitempty"`
+	Metadata               map[string]string `json:"metadata,omitempty"`
+	ExternalURLs           []string          `json:"external_urls,omitempty"`
+	Git                    GitFacts          `json:"git,omitempty"`
+	RecoveryDebt           string            `json:"recovery_debt,omitempty"`
+	ArchiveState           string            `json:"archive_state,omitempty"`
+	CleanupState           string            `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string            `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string            `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool              `json:"cleanup_debt,omitempty"`
 }
 
 // ResourceArchive is an independently recoverable snapshot of one resource.
@@ -57,7 +61,7 @@ func (s *Store) WriteResource(taskID string, resource Resource) error {
 	if err := validateTaskID(taskID); err != nil {
 		return err
 	}
-	if err := validateResourceID(resource.ID); err != nil {
+	if err := validateResource(resource); err != nil {
 		return err
 	}
 	if resource.TaskID != "" && resource.TaskID != taskID {
@@ -71,7 +75,7 @@ func (s *Store) CreateResource(taskID string, resource Resource) (bool, Resource
 	if err := validateTaskID(taskID); err != nil {
 		return false, Resource{}, err
 	}
-	if err := validateResourceID(resource.ID); err != nil {
+	if err := validateResource(resource); err != nil {
 		return false, Resource{}, err
 	}
 	resource.TaskID = taskID
@@ -145,6 +149,9 @@ func (s *Store) UpdateResource(taskID, resourceID string, update func(*Resource)
 		}
 		if resource.ID != resourceID || resource.TaskID != taskID {
 			return newError(KindUsage, "Resource identity cannot be changed", "Retry without changing the resource ID")
+		}
+		if err := validateResource(resource); err != nil {
+			return err
 		}
 		return s.writeResourceLocked(taskID, resource)
 	})
@@ -288,6 +295,9 @@ func (s *Store) WriteResourceArchive(taskID, resourceID string, archive Resource
 	if archive.CapturedAt.IsZero() {
 		return newError(KindUsage, "Resource archive capture time is required", "Retry archive")
 	}
+	if err := validateResource(archive.Resource); err != nil || archive.Resource.TaskID != taskID || archive.Resource.ID != resourceID {
+		return newError(KindUsage, "Resource archive payload identity does not match its path", "Retry archive with the requested resource")
+	}
 	return s.WithLock(taskID, func() error {
 		if err := s.ensureResourceDir(taskID, resourceID); err != nil {
 			return err
@@ -324,7 +334,7 @@ func (s *Store) ReadResourceArchive(taskID, resourceID string) (ResourceArchive,
 		return ResourceArchive{}, err
 	}
 	archive, err := envelope.DecodeResourceArchive()
-	if err != nil || archive.TaskID != taskID || archive.ResourceID != resourceID || archive.CapturedAt.IsZero() {
+	if err != nil || archive.TaskID != taskID || archive.ResourceID != resourceID || archive.CapturedAt.IsZero() || validateResource(archive.Resource) != nil || archive.Resource.TaskID != taskID || archive.Resource.ID != resourceID {
 		return ResourceArchive{}, malformedError(fmt.Sprintf("Malformed archive for resource %s", resourceID), fmt.Sprintf("Inspect and repair %s", path))
 	}
 	return archive, nil
@@ -369,6 +379,27 @@ func sameResource(a, b Resource) bool {
 	return a.ID == b.ID && a.TaskID == b.TaskID && a.Repository == b.Repository && a.Branch == b.Branch && a.BaseRevision == b.BaseRevision && a.WorktreePath == b.WorktreePath
 }
 
+func validateResource(resource Resource) error {
+	if err := validateResourceID(resource.ID); err != nil {
+		return err
+	}
+	if resource.TaskID != "" && !taskIDPattern.MatchString(resource.TaskID) {
+		return newError(KindUsage, "Resource task ID is invalid", "Retry with the owning task ID")
+	}
+	for key, value := range resource.Metadata {
+		if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n") || strings.ContainsAny(value, "\r\n") {
+			return newError(KindUsage, "Resource metadata keys and values must be non-empty single lines", "Retry with non-secret single-line metadata")
+		}
+	}
+	for _, reference := range resource.ExternalURLs {
+		parsed, err := url.ParseRequestURI(reference)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+			return newError(KindUsage, "Resource external references must be HTTPS URLs without credentials", "Retry with a provider-neutral HTTPS reference URL")
+		}
+	}
+	return nil
+}
+
 func decodeResourceEnvelope(path string, data []byte, kind, taskID, resourceID string) (Envelope, error) {
 	envelope, err := decodeEnvelope(path, data, kind, taskID)
 	if err != nil {
@@ -403,6 +434,9 @@ func (e Envelope) DecodeResource() (Resource, error) {
 	}
 	if resource.ID == "" || resource.TaskID == "" || resource.TaskID != e.TaskID {
 		return Resource{}, malformedError("Resource manifest is missing or has mismatched identity", "Inspect and repair the resource record")
+	}
+	if err := validateResource(resource); err != nil {
+		return Resource{}, malformedError("Resource manifest contains invalid metadata", "Inspect and repair the resource record")
 	}
 	return resource, nil
 }

@@ -68,11 +68,14 @@ execution:
 
 The task ID and execution ID are both written to owned tmux window metadata.
 The display label is descriptive and never derived from an internal UUID.
+A managed execution also receives `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` as non-secret environment context.
+An execution can use those values with the local CLI to create, inspect, and update resources for its owning task.
 A resource ID is attachment metadata used to select a working directory and verify durable intent; execution lifecycle operations do not mutate or require the resource's archive or cleanup state.
 
 ### Task resource
 
-A task resource is an immutable association of one registered repository, branch, base revision, and worktree path.
+A task resource has immutable repository, branch, base revision, and worktree ownership inputs.
+Its provider-neutral metadata and external URLs are mutable delivery observations.
 Each resource has its own Git facts, archive state, cleanup state, and recovery debt.
 Resource records are independently archived, inspected, reconciled, and cleaned.
 
@@ -82,6 +85,9 @@ resource:
   repository: backend
   branch: akofink/57-backend
   worktree_path: /path/to/.akagent/worktrees/backend/019f...
+  metadata:
+    delivery: published
+  external_urls[1]: https://forge.example/pull/61
   committed: false
   dirty: false
   untracked: false
@@ -113,8 +119,13 @@ Optional integrations map their provider configuration onto tool-neutral executi
 Pi-specific launch behavior is implemented outside the core task, resource, and execution records.
 
 An optional managed integration may receive a minimal safe runtime environment, `AKAGENT_TASK_ID`, and only requested environment credentials that passed readiness checks.
+Managed executions additionally receive `AKAGENT_EXECUTION_ID`.
 Optional requirements are recorded as non-secret warnings and are not injected.
 File credentials can satisfy readiness requirements but cannot be injected into the managed environment.
+
+External delivery is outside the core lifecycle.
+Agents use provider tooling such as `gh` or Bitbucket tooling to create and manage pull requests, then optionally record a provider-neutral URL with `task resource update`.
+The core CLI has no GitHub, Bitbucket, or Pi-specific delivery API.
 
 ## State model
 
@@ -157,7 +168,7 @@ akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
-akagent task resource <create|list|inspect|archive|clean>
+akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
@@ -190,6 +201,8 @@ Task creation is recoverable and records these steps:
 4. For a compatibility `--repository` input, validate policy, branch, base, and worktree.
 
 Resource creation separately resolves and locks its repository, creates or validates its branch and worktree, and records a resource event.
+It may also record non-secret `--metadata key=value` values and provider-neutral `--external-url https://...` references.
+`task resource update` changes only those mutable metadata fields and records a resource event without changing Git ownership inputs.
 Neither operation has a tmux or process side effect.
 Repeated equivalent creates return the existing task with exit code `0`.
 Conflicting immutable inputs return a structured conflict.
@@ -213,6 +226,7 @@ It does not make a declaration authoritative over contradictory process or Git o
 List views default to compact decision-relevant fields and include a definitive total.
 Task resource and execution operations use the same compact TOON boundary.
 `task resource list` returns `resources[]` and `total`, while inspect returns one `resource` object.
+Metadata and external URLs are emitted when present and are preserved in resource archives, task archive resource snapshots, and reconciliation.
 `task execution list` returns `executions[]` and `total`, while inspect returns one `execution` object.
 The default list includes actionable records: non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
 Only fully archived, fully cleaned, debt-free records are hidden by default.

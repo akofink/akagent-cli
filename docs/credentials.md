@@ -68,7 +68,7 @@ It never reports credential values.
 Credential values must not appear in TOON output, errors, logs, events, prompts, tmux commands, process arguments, or diagnostics.
 
 The current task implementation records named requirements and readiness warnings in the task manifest.
-For the optional Pi integration, the integration worker constructs a minimal environment from safe runtime variables, adds `AKAGENT_TASK_ID`, and injects only requested, ready `env:` credentials.
+For the optional Pi integration, the integration worker constructs a minimal environment from safe runtime variables, adds the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` context, and injects only requested, ready `env:` credentials.
 It excludes ambient variables outside the safe runtime allowlist and filters credential-like names unless they were explicitly requested.
 Optional credentials are never injected.
 

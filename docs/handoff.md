@@ -18,6 +18,8 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Durable local task creation, explicit execution launch, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
 - Zero or more independently recoverable task resources with separate Git facts, archives, cleanup state, and recovery debt.
 - Zero or more optional tool-neutral executions with independent identity, tmux metadata, lifecycle observation, archive, stop, and recovery state.
+- Managed executions receive the owning task ID and execution ID as non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment context.
+- Resources preserve mutable provider-neutral metadata and HTTPS external reference URLs for delivery records.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
 - Task and execution-tagged detached tmux resources, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
@@ -25,6 +27,9 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 ## Current workflow
 
 `task create` creates durable task intent and can create zero resources without creating a tmux window or starting a process.
+Worktree-policy repository registrations accept an absolute `--worktree-root` for task and resource worktrees.
+When omitted, the root remains the derived `<checkout-parent>/.akagent/worktrees/<name>` path.
+Containment validation, cleanup ownership checks, and reconciliation use the configured root.
 The compatibility `--repository` form creates one initial resource.
 `task resource create` adds additional repository, branch, and worktree combinations.
 Worktree-policy resources require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
@@ -37,6 +42,11 @@ The optional `task launch --target pi` path delegates to the Pi integration, whi
 Tmux derives its display name from the descriptive execution label and stores task and execution IDs in window metadata for lifecycle verification.
 The Pi integration passes a validated prompt-file reference without changing standard input, so Pi remains interactive and a failed launch remains retryable.
 The historical `task start` create-and-launch shortcut is rejected with structured migration guidance.
+Managed execution commands inherit the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` context and can call the local CLI directly to create, inspect, and update resources owned by that task.
+Resource metadata is intentionally generic, with `--metadata key=value` and `--external-url https://...` available through `task resource create` and `task resource update`.
+The external URL is a delivery reference only.
+Agents use provider tooling such as `gh` or Bitbucket tooling to create and manage pull requests, then optionally record the resulting URL in `akagent`.
+The core CLI does not call GitHub, Bitbucket, Pi, or another forge delivery API.
 
 `task stop` ends the tagged tmux window and preserves the durable task record and Git worktree.
 `task finish` records a result only after the task process has exited.
@@ -46,7 +56,7 @@ Isolated worktree removal additionally requires `--allow-worktree` and validates
 The hook preserves the task branch and archive facts, while direct repository tasks never remove their registered checkout.
 Credential cleanup remains independent, and cleanup state and recovery debt are durable and independently retryable.
 
-`task resource archive` and `task resource clean` operate on one resource without changing sibling resource state.
+`task resource archive`, `task resource clean`, and `task resource update` operate on one resource without changing sibling resource state.
 `task execution archive` and `task execution stop` operate on one execution without changing resource state.
 `task reconcile` repairs safe derived observations and Git facts for tasks and resources, while `task execution reconcile` repairs execution observations.
 It never deletes task state, branches, worktrees, windows, or terminal history.
@@ -55,6 +65,24 @@ Legacy single-resource manifests migrate lazily to a `legacy` resource when reso
 Agent orchestration is enabled by default over this stable CLI boundary.
 The agent skill owns automated lifecycle behavior and preserves direct human CLI use.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+
+## Task context and delivery metadata
+
+A managed execution receives `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` in its environment.
+These values are task and execution identities, not credentials, and are safe to pass to local `akagent` commands.
+An execution can use the task context without a parent orchestrator, for example:
+
+```bash
+akagent task resource create "$AKAGENT_TASK_ID" --repository backend --resource-id backend-resource --branch akofink/61-backend
+akagent task resource list "$AKAGENT_TASK_ID"
+akagent task resource update "$AKAGENT_TASK_ID" backend-resource --metadata delivery=published --external-url https://forge.example/pull/61
+```
+
+Resource Git ownership inputs remain immutable after creation.
+Resource metadata and external URLs are provider-neutral and are preserved by resource and task archives and reconciliation.
+The external URL boundary is deliberate.
+Agents perform provider-specific pull request operations with tools such as `gh` or Bitbucket tooling, then optionally record a resulting URL with `task resource update`.
+`akagent` does not provide GitHub, Bitbucket, or Pi delivery commands.
 
 ## Integration signal
 
@@ -72,7 +100,7 @@ akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
-akagent task resource <create|list|inspect|archive|clean>
+akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
