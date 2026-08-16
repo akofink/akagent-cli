@@ -139,7 +139,7 @@ func TestCleanRequiresExplicitPreservationAuthorization(t *testing.T) {
 	if !manifest.CleanupDebt || manifest.WorktreeCleanupState != cleanupBlocked {
 		t.Fatalf("manifest = %#v, want preserved cleanup debt", manifest)
 	}
-	if _, err := manager.Clean("clean-1", CleanupOptions{AllowDirty: true}); err != nil {
+	if _, err := manager.Clean("clean-1", CleanupOptions{AllowDirty: true, AllowCredentials: true}); err != nil {
 		t.Fatal(err)
 	}
 	manifest, err = manager.Inspect("clean-1")
@@ -154,7 +154,7 @@ func TestCleanRequiresExplicitPreservationAuthorization(t *testing.T) {
 func TestCleanTracksCredentialDebtIndependentlyAndRetries(t *testing.T) {
 	manager, _ := stoppedManager(t, "clean-2")
 	manager.CleanupCredentials = func(store.Manifest) error { return errors.New("credential cleanup unavailable") }
-	if _, err := manager.Clean("clean-2", CleanupOptions{}); err == nil || !store.IsKind(err, store.KindPartial) {
+	if _, err := manager.Clean("clean-2", CleanupOptions{AllowCredentials: true}); err == nil || !store.IsKind(err, store.KindPartial) {
 		t.Fatalf("Clean() error = %v, want partial error", err)
 	}
 	manifest, err := manager.Inspect("clean-2")
@@ -165,7 +165,7 @@ func TestCleanTracksCredentialDebtIndependentlyAndRetries(t *testing.T) {
 		t.Fatalf("manifest = %#v, want independent cleanup states", manifest)
 	}
 	manager.CleanupCredentials = func(store.Manifest) error { return nil }
-	if _, err := manager.Clean("clean-2", CleanupOptions{}); err != nil {
+	if _, err := manager.Clean("clean-2", CleanupOptions{AllowCredentials: true}); err != nil {
 		t.Fatal(err)
 	}
 	manifest, err = manager.Inspect("clean-2")
@@ -174,6 +174,54 @@ func TestCleanTracksCredentialDebtIndependentlyAndRetries(t *testing.T) {
 	}
 	if manifest.CleanupDebt || manifest.CleanupState != cleanupComplete || manifest.CredentialCleanupState != cleanupComplete {
 		t.Fatalf("manifest = %#v, want debt cleared after retry", manifest)
+	}
+}
+
+func TestCredentialCleanupRequiresApprovalAndRetriesIndependently(t *testing.T) {
+	manager, _ := stoppedManager(t, "credential-cleanup")
+	calls := 0
+	manager.CleanupCredentials = func(store.Manifest) error {
+		calls++
+		return errors.New("provider failure must be redacted")
+	}
+
+	if _, err := manager.CleanCredentials("credential-cleanup", CleanupOptions{}); !store.IsKind(err, store.KindPreservation) {
+		t.Fatalf("CleanCredentials() error = %v, want preservation error", err)
+	}
+	if calls != 0 {
+		t.Fatal("credential hook ran without explicit approval")
+	}
+	manifest, err := manager.Inspect("credential-cleanup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.CredentialCleanupState != cleanupBlocked || !manifest.CleanupDebt {
+		t.Fatalf("manifest = %#v, want blocked credential cleanup debt", manifest)
+	}
+
+	if _, err := manager.CleanCredentials("credential-cleanup", CleanupOptions{AllowCredentials: true}); err == nil || !store.IsKind(err, store.KindPartial) {
+		t.Fatalf("approved CleanCredentials() error = %v, want partial error", err)
+	} else if strings.Contains(err.Error(), "provider failure must be redacted") {
+		t.Fatalf("credential hook error leaked a secret: %v", err)
+	}
+	manifest, err = manager.Inspect("credential-cleanup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.CredentialCleanupState != cleanupPartial || !manifest.CleanupDebt || calls != 1 {
+		t.Fatalf("manifest = %#v, calls = %d; want retryable partial cleanup", manifest, calls)
+	}
+
+	manager.CleanupCredentials = func(store.Manifest) error { calls++; return nil }
+	if _, err := manager.CleanCredentials("credential-cleanup", CleanupOptions{AllowCredentials: true}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err = manager.Inspect("credential-cleanup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.CredentialCleanupState != cleanupComplete || manifest.CleanupDebt || calls != 2 {
+		t.Fatalf("manifest = %#v, calls = %d; want completed independent cleanup", manifest, calls)
 	}
 }
 
@@ -207,7 +255,7 @@ func TestApprovedWorktreeCleanupPreservesArchiveAndReconcileRecovery(t *testing.
 		t.Fatalf("unapproved cleanup removed worktree: %v", err)
 	}
 
-	manifest, err := manager.Clean("cleanup-worktree-task", CleanupOptions{AllowWorktree: true})
+	manifest, err := manager.Clean("cleanup-worktree-task", CleanupOptions{AllowWorktree: true, AllowCredentials: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +310,7 @@ func TestWorktreeCleanupRejectsUnsafeOwnership(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = manager.Clean("unsafe-cleanup-task", CleanupOptions{AllowWorktree: true})
+	_, err = manager.Clean("unsafe-cleanup-task", CleanupOptions{AllowWorktree: true, AllowCredentials: true})
 	if !store.IsKind(err, store.KindConflict) || !strings.Contains(err.Error(), "outside") {
 		t.Fatalf("unsafe cleanup error = %v, want ownership conflict", err)
 	}
@@ -281,7 +329,7 @@ func TestConcurrentApprovedWorktreeCleanupIsIdempotent(t *testing.T) {
 	if _, err := manager.Stop("concurrent-cleanup-task"); err != nil {
 		t.Fatal(err)
 	}
-	options := CleanupOptions{AllowWorktree: true}
+	options := CleanupOptions{AllowWorktree: true, AllowCredentials: true}
 	var group sync.WaitGroup
 	errors := make(chan error, 4)
 	for i := 0; i < 4; i++ {

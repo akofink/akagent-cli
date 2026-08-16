@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func TestTaskOwnsMultipleIndependentResources(t *testing.T) {
 	if one.ArchiveState != archiveComplete || two.ArchiveState != archiveComplete || !one.Git.Dirty || !two.Git.Committed {
 		t.Fatalf("resource archive state = %#v %#v", one, two)
 	}
-	if _, err := manager.CleanResource("multi-task", "one", CleanupOptions{AllowDirty: true, AllowWorktree: true}); err != nil {
+	if _, err := manager.CleanResource("multi-task", "one", CleanupOptions{AllowDirty: true, AllowWorktree: true, AllowCredentials: true}); err != nil {
 		t.Fatalf("CleanResource(one) = %v", err)
 	}
 	two, err = manager.InspectResource("multi-task", "two")
@@ -71,6 +72,54 @@ func TestTaskOwnsMultipleIndependentResources(t *testing.T) {
 	}
 	if two.CleanupState == cleanupComplete {
 		t.Fatal("cleaning one resource changed the other resource")
+	}
+}
+
+func TestResourceCredentialCleanupIsIndependentAndRetryable(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "resource-credential", Title: "Resource credentials"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateResource("resource-credential", ResourceRequest{ID: "resource", Repository: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Stop("resource-credential"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ArchiveResource("resource-credential", "resource"); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	manager.CleanupCredentials = func(store.Manifest) error {
+		calls++
+		return errors.New("credential cleanup unavailable")
+	}
+	if _, err := manager.CleanResource("resource-credential", "resource", CleanupOptions{}); !store.IsKind(err, store.KindPreservation) {
+		t.Fatalf("unapproved resource credential cleanup = %v, want preservation error", err)
+	}
+	if calls != 0 {
+		t.Fatal("resource credential hook ran without explicit approval")
+	}
+	resource, err := manager.InspectResource("resource-credential", "resource")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.CredentialCleanupState != cleanupBlocked || !resource.CleanupDebt {
+		t.Fatalf("resource = %#v, want blocked credential cleanup debt", resource)
+	}
+	if _, err := manager.CleanResource("resource-credential", "resource", CleanupOptions{AllowCredentials: true}); err == nil || !store.IsKind(err, store.KindPartial) {
+		t.Fatalf("failed resource credential cleanup = %v, want partial error", err)
+	}
+	manager.CleanupCredentials = func(store.Manifest) error { calls++; return nil }
+	if _, err := manager.CleanResource("resource-credential", "resource", CleanupOptions{AllowCredentials: true}); err != nil {
+		t.Fatal(err)
+	}
+	resource, err = manager.InspectResource("resource-credential", "resource")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.CredentialCleanupState != cleanupComplete || resource.CleanupDebt || calls != 2 {
+		t.Fatalf("resource = %#v, calls = %d; want complete independent cleanup", resource, calls)
 	}
 }
 

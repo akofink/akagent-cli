@@ -65,6 +65,8 @@ Execution stop verifies that its tagged window is absent before recording `stopp
 Isolated worktree removal additionally requires `--allow-worktree` and validates durable Git ownership before invoking the destructive hook.
 The hook preserves the task branch and archive facts, while direct repository tasks never remove their registered checkout.
 Credential cleanup remains independent, and cleanup state and recovery debt are durable and independently retryable.
+It is exposed through `akagent credential clean <task-id>`, `akagent task credential clean <task-id>`, and the `--allow-credentials` task cleanup approval.
+Credential cleanup refusal and hook failures never mutate the credential manifest or unrelated Git resource state.
 
 `task resource archive`, `task resource clean`, and `task resource update` operate on one resource without changing sibling resource state.
 `task execution archive` and `task execution stop` operate on one execution without changing resource state.
@@ -119,17 +121,20 @@ Agents perform provider-specific pull request operations with tools such as `gh`
 `AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
 At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
 `akagent integration inspect` is read-only and reports the current state.
+The provider-neutral `integration launch` command is the automated workflow entry point and checks the signal before opening the state store or creating an execution.
+When disabled, it returns a skipped success without lifecycle side effects.
+When enabled, it records and launches a generic `workflow` execution through the normal task lifecycle.
 Direct human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
 
 ## Current public command surface
 
 ```text
 akagent
-akagent credential <list|inspect|doctor>
+akagent credential <list|inspect|doctor|clean>
 akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -138,8 +143,6 @@ akagent worker inspect
 
 ## Tracked follow-ups
 
-- Destructive worktree and credential cleanup hooks.
-- Broader workflow integrations beyond the stable CLI boundary.
 - Work-specific secrets and deployment behavior.
 
 The detailed public delivery map is in [`implementation-plan.md`](implementation-plan.md).

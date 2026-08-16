@@ -35,7 +35,7 @@ Task creation records durable intent and can create zero resources without a pro
 Resource creation independently provisions or validates Git state, while generic execution creation and launch manage task-tagged tmux processes.
 The compatibility shell launch and optional managed local Pi target both use generic executions.
 Approved worktree cleanup validates ownership and preserves archive facts and the task branch.
-Credential cleanup remains an independent hook.
+Credential cleanup is an independent approval-gated hook with durable retry state.
 
 ## Phase 2: workflow integrations - default-enabled integration
 

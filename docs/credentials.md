@@ -66,6 +66,11 @@ Credential output reports identity, source kind, readiness, and non-secret warni
 It never reports credential values.
 
 Credential values must not appear in TOON output, errors, logs, events, prompts, tmux commands, process arguments, or diagnostics.
+Credential cleanup is task-scoped and independent from Git worktree cleanup.
+It requires explicit `--allow-credentials` authorization through `akagent credential clean <task-id>`, `akagent task credential clean <task-id>`, or `task clean`.
+The cleanup lifecycle records `pending`, `blocked`, `partial`, and `complete` state in the durable task manifest and records redaction-safe events for refusal, retry, and success.
+A failed hook leaves the task and credential manifest intact and can be retried without repeating worktree cleanup.
+The core credential package does not read credential values or define provider-specific deletion behavior.
 
 The current task implementation records named requirements and readiness warnings in the task manifest.
 For the optional Pi integration, the integration worker constructs a minimal environment from safe runtime variables, adds the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` context, and injects only requested, ready `env:` credentials.
@@ -80,4 +85,5 @@ Git signing should use a scoped signing subkey rather than a primary secret key.
 The protocol must remain understandable when a required capability is missing, a token expires, a source changes, cleanup is retried, or an integration attempts to use an unavailable provider.
 
 The integration gate does not grant credentials.
+Credential cleanup authorization does not grant, print, or rotate credentials.
 It only controls whether automated integrations may invoke automated `akagent` behavior.

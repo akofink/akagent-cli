@@ -15,41 +15,43 @@ import (
 )
 
 type resourceView struct {
-	ID                   string            `json:"id"`
-	Repository           string            `json:"repository"`
-	Branch               string            `json:"branch,omitempty"`
-	BaseRevision         string            `json:"base_revision,omitempty"`
-	WorktreePath         string            `json:"worktree_path,omitempty"`
-	Head                 string            `json:"head,omitempty"`
-	Committed            bool              `json:"committed"`
-	Dirty                bool              `json:"dirty"`
-	Untracked            bool              `json:"untracked"`
-	RecoveryDebt         string            `json:"recovery_debt,omitempty"`
-	ArchiveState         string            `json:"archive_state,omitempty"`
-	CleanupState         string            `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState string            `json:"worktree_cleanup_state,omitempty"`
-	CleanupDebt          bool              `json:"cleanup_debt,omitempty"`
-	Metadata             map[string]string `json:"metadata,omitempty"`
-	ExternalURLs         []string          `json:"external_urls,omitempty"`
+	ID                     string            `json:"id"`
+	Repository             string            `json:"repository"`
+	Branch                 string            `json:"branch,omitempty"`
+	BaseRevision           string            `json:"base_revision,omitempty"`
+	WorktreePath           string            `json:"worktree_path,omitempty"`
+	Head                   string            `json:"head,omitempty"`
+	Committed              bool              `json:"committed"`
+	Dirty                  bool              `json:"dirty"`
+	Untracked              bool              `json:"untracked"`
+	RecoveryDebt           string            `json:"recovery_debt,omitempty"`
+	ArchiveState           string            `json:"archive_state,omitempty"`
+	CleanupState           string            `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string            `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string            `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool              `json:"cleanup_debt,omitempty"`
+	Metadata               map[string]string `json:"metadata,omitempty"`
+	ExternalURLs           []string          `json:"external_urls,omitempty"`
 }
 
 type resourceListItem struct {
-	ID                   string `json:"id"`
-	Repository           string `json:"repository"`
-	Branch               string `json:"branch,omitempty"`
-	BaseRevision         string `json:"base_revision,omitempty"`
-	WorktreePath         string `json:"worktree_path,omitempty"`
-	Head                 string `json:"head,omitempty"`
-	Committed            bool   `json:"committed"`
-	Dirty                bool   `json:"dirty"`
-	Untracked            bool   `json:"untracked"`
-	RecoveryDebt         string `json:"recovery_debt,omitempty"`
-	ArchiveState         string `json:"archive_state,omitempty"`
-	CleanupState         string `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState string `json:"worktree_cleanup_state,omitempty"`
-	CleanupDebt          bool   `json:"cleanup_debt,omitempty"`
-	Metadata             string `json:"metadata,omitempty"`
-	ExternalURLs         string `json:"external_urls,omitempty"`
+	ID                     string `json:"id"`
+	Repository             string `json:"repository"`
+	Branch                 string `json:"branch,omitempty"`
+	BaseRevision           string `json:"base_revision,omitempty"`
+	WorktreePath           string `json:"worktree_path,omitempty"`
+	Head                   string `json:"head,omitempty"`
+	Committed              bool   `json:"committed"`
+	Dirty                  bool   `json:"dirty"`
+	Untracked              bool   `json:"untracked"`
+	RecoveryDebt           string `json:"recovery_debt,omitempty"`
+	ArchiveState           string `json:"archive_state,omitempty"`
+	CleanupState           string `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool   `json:"cleanup_debt,omitempty"`
+	Metadata               string `json:"metadata,omitempty"`
+	ExternalURLs           string `json:"external_urls,omitempty"`
 }
 
 type resourceListView struct {
@@ -145,9 +147,22 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
+	case "credential":
+		if len(args) < 3 || args[1] != "clean" {
+			return writeError(stdout, "usage", "Usage: akagent task credential clean <task-id> [--allow-credentials]", false, "Inspect the task before authorizing credential cleanup")
+		}
+		options, ok := parseCredentialCleanup(args[3:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task credential clean <task-id> [--allow-credentials]", false, "Inspect the task before authorizing credential cleanup")
+		}
+		manifest, err := manager.CleanCredentials(args[2], options)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, taskDetailView{Task: view(args[2], manifest)})
 	case "resource":
 		return taskResourceCommand(args[1:], stdout)
 	case "execution":
@@ -306,11 +321,11 @@ func taskCommand(args []string, stdout io.Writer) int {
 		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "clean":
 		if len(args) < 2 {
-			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]", false, "Inspect the task before authorizing cleanup")
+			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the task before authorizing cleanup")
 		}
 		options, ok := parseCleanup(args[2:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]", false, "Inspect the task before authorizing cleanup")
+			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the task before authorizing cleanup")
 		}
 		manifest, err := manager.Clean(args[1], options)
 		if err != nil {
@@ -645,11 +660,11 @@ func taskResourceCommand(args []string, stdout io.Writer) int {
 		return write(stdout, resourceDetailView{Resource: viewResource(resource)})
 	case "clean":
 		if len(args) < 3 {
-			return writeError(stdout, "usage", "Usage: akagent task resource clean <task-id> <resource-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]", false, "Inspect the resource before authorizing cleanup")
+			return writeError(stdout, "usage", "Usage: akagent task resource clean <task-id> <resource-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the resource before authorizing cleanup")
 		}
 		options, ok := parseCleanup(args[3:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task resource clean <task-id> <resource-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]", false, "Inspect the resource before authorizing cleanup")
+			return writeError(stdout, "usage", "Usage: akagent task resource clean <task-id> <resource-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the resource before authorizing cleanup")
 		}
 		resource, err := manager.CleanResource(args[1], args[2], options)
 		if err != nil {
@@ -805,6 +820,21 @@ func parseCleanup(args []string) (lifecycle.CleanupOptions, bool) {
 			options.AllowUntracked = true
 		case "--allow-worktree":
 			options.AllowWorktree = true
+		case "--allow-credentials", "--allow-credential-cleanup":
+			options.AllowCredentials = true
+		default:
+			return options, false
+		}
+	}
+	return options, true
+}
+
+func parseCredentialCleanup(args []string) (lifecycle.CleanupOptions, bool) {
+	var options lifecycle.CleanupOptions
+	for _, arg := range args {
+		switch arg {
+		case "--allow-credentials", "--allow-credential-cleanup":
+			options.AllowCredentials = true
 		default:
 			return options, false
 		}
@@ -833,7 +863,7 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {
@@ -849,7 +879,7 @@ func actionable(manifest store.Manifest) bool {
 
 func actionableResources(resources []store.Resource) bool {
 	for _, resource := range resources {
-		if resource.ArchiveState != "complete" || resource.CleanupState != "complete" || resource.CleanupDebt || strings.TrimSpace(resource.RecoveryDebt) != "" {
+		if resource.ArchiveState != "complete" || resource.CleanupState != "complete" || resource.CredentialCleanupState != "complete" || resource.CleanupDebt || strings.TrimSpace(resource.RecoveryDebt) != "" {
 			return true
 		}
 	}
@@ -857,7 +887,7 @@ func actionableResources(resources []store.Resource) bool {
 }
 
 func viewResource(resource store.Resource) resourceView {
-	return resourceView{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: resource.Metadata, ExternalURLs: resource.ExternalURLs}
+	return resourceView{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: resource.Metadata, ExternalURLs: resource.ExternalURLs}
 }
 
 func viewResourceList(resource store.Resource) resourceListItem {
@@ -866,7 +896,7 @@ func viewResourceList(resource store.Resource) resourceListItem {
 		metadata = append(metadata, key+"="+value)
 	}
 	sort.Strings(metadata)
-	return resourceListItem{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: strings.Join(metadata, ";"), ExternalURLs: strings.Join(resource.ExternalURLs, ",")}
+	return resourceListItem{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: strings.Join(metadata, ";"), ExternalURLs: strings.Join(resource.ExternalURLs, ",")}
 }
 
 func viewExecution(execution store.Execution, manager *lifecycle.Manager) executionView {
