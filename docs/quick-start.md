@@ -111,6 +111,32 @@ Active execution clears the option, waiting and blocked publish their values, an
 Use `--target shell` for direct human or shell-driven work.
 Use `task execution create` and `task execution launch` when the caller needs explicit generic execution identity.
 A task can create multiple resources and coordinate them through one execution by selecting one resource as its working directory.
+For example, keep the primary worktree under a configured root while attaching a direct checkout for related notes:
+
+```bash
+akagent repository register app /path/to/app --worktree-root /home/user/dev/worktrees/app
+akagent repository register notes /path/to/notes --policy direct
+akagent task create --title "Coordinate the release docs"
+akagent task resource create <task-id> --repository app --resource-id app-resource \
+  --branch akofink/release-docs
+akagent task resource create <task-id> --repository notes --resource-id notes-resource
+akagent task execution create <task-id> --execution-id coordinator \
+  --target shell --command /bin/sh --resource app-resource
+akagent task execution launch <task-id> coordinator
+```
+
+The execution can record provider-neutral session provenance and delivery metadata without importing provider state:
+
+```bash
+akagent task execution session add <task-id> coordinator \
+  --tool example-tool --session-id <session-id> --reference-path /path/to/session-record
+akagent task resource update <task-id> app-resource \
+  --metadata delivery=published --external-url https://forge.example/pull/78
+akagent task inspect <task-id>
+akagent task execution inspect <task-id> coordinator
+```
+
+Task, resource, and execution archives preserve these references.
 Use `--target pi` only to select the optional Pi integration.
 Pi must be installed and available as `pi` on `PATH` when that integration is selected.
 
