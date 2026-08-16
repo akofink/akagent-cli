@@ -70,11 +70,15 @@ execution:
 
 The task ID and execution ID are both written to owned tmux window metadata.
 The display label is descriptive and never derived from an internal UUID.
+Compatibility launches derive that label from the selected resource or task branch, removing the owner prefix, or require `--label <descriptive-label>` when no branch is available.
+The compatibility label must not be `pi`, `shell`, `akagent`, `execution`, or an internal UUID.
 A managed execution also receives `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` as non-secret environment context.
 An execution can use those values with the local CLI to create, inspect, and update resources for its owning task.
 A resource ID is attachment metadata used to select a working directory and verify durable intent; execution lifecycle operations do not mutate or require the resource's archive or cleanup state.
 Integrations record their own session references with the generic execution update surface.
 The core CLI never parses Pi or another provider's session files.
+The managed execution window also publishes the shared tmux `@agent_state` option using those metadata IDs, never its display label.
+Active execution clears the option, while waiting, blocked, and completed execution publish `waiting`, `blocked`, and `done` respectively.
 
 ### Task resource
 
@@ -171,7 +175,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -188,9 +192,11 @@ Direct-policy tasks deliberately use the registered checkout's current branch wh
 The execution operation creates an optional tool-neutral record without a tmux or process side effect.
 `task execution launch` starts that record in a task-tagged tmux window and records the process identity.
 The display label is descriptive, while the task and execution IDs remain in tmux metadata used for lifecycle verification.
+Launch clears any stale `@agent_state` value for an active execution.
 A launch failure leaves the execution in recoverable `starting` state and records recovery debt.
-The historical `task launch --target shell` command remains a direct-human compatibility shortcut built on a generic execution record.
-The optional `task launch --target pi` shortcut delegates to the Pi integration, which creates and launches a generic execution record.
+The `task launch --target shell` command creates and launches a generic execution record.
+The `task launch --target pi` target delegates to the Pi integration, which creates and launches a generic execution record.
+Both compatibility targets use a descriptive branch-derived execution and tmux label, or an explicit `--label` value.
 
 ## Lifecycle operations
 
@@ -224,6 +230,8 @@ A task can own zero or more executions, and each execution can be inspected, att
 
 A trusted local integration or shell may publish `active`, `waiting`, `blocked`, `failed`, or `none` with a concise reason and activity.
 Publication updates the durable task record and heartbeat.
+For managed executions, active, failed, and none clear `@agent_state`, while waiting and blocked publish their matching values.
+Finish and archive preserve `done`, stop clears the option, and reconciliation clears stale state when the execution is no longer actively waiting or blocked.
 It does not make a declaration authoritative over contradictory process or Git observations.
 
 ### Inspect and list
@@ -298,7 +306,7 @@ Without worktree approval, the worktree remains available for direct human recov
 ### Reconcile
 
 Execution reconciliation compares each durable execution with its task-tagged tmux and process observations.
-It repairs safe derived metadata, records changes, and reports stale, missing, replaced, or contradictory observations.
+It repairs safe derived metadata, republishes waiting or blocked state only with fresh observations, and clears stale `@agent_state` values.
 It never deletes task state, executions, branches, worktrees, windows, or terminal history.
 Task reconciliation continues to repair legacy task and resource observations.
 It preserves session references as declared integration metadata and does not inspect provider state.

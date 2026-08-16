@@ -99,8 +99,8 @@ func TestRepositoryUnregisterReferencedTaskIsSafe(t *testing.T) {
 	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
 		t.Fatalf("register = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "start", "--task-id", "ref-18", "--title", "Referenced", "--repository", "demo"}); result.code != 0 {
-		t.Fatalf("task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "ref-18", "--title", "Referenced", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
 	}
 
 	result := runCommand(t, []string{"repository", "unregister", "demo"})

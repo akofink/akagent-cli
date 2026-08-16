@@ -29,36 +29,32 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 
 	const taskID = "task-14"
-	startArgs := []string{"task", "start", "--task-id", taskID, "--title", "Build feature", "--repository", "demo"}
-	startOutput := runCommand(t, startArgs)
-	wantStarted := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: running\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: none\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
-	if startOutput.code != 0 || startOutput.stdout != wantStarted {
-		t.Fatalf("task start = (%d, %q), want (0, %q)", startOutput.code, startOutput.stdout, wantStarted)
+	createArgs := []string{"task", "create", "--task-id", taskID, "--title", "Build feature", "--repository", "demo"}
+	createOutput := runCommand(t, createArgs)
+	wantCreated := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: created\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: none\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
+	if createOutput.code != 0 || createOutput.stdout != wantCreated {
+		t.Fatalf("task create = (%d, %q), want (0, %q)", createOutput.code, createOutput.stdout, wantCreated)
 	}
-	if repeated := runCommand(t, startArgs); repeated.code != 0 || repeated.stdout != wantStarted {
-		t.Fatalf("idempotent task start = (%d, %q), want (0, %q)", repeated.code, repeated.stdout, wantStarted)
+	if repeated := runCommand(t, createArgs); repeated.code != 0 || repeated.stdout != wantCreated {
+		t.Fatalf("idempotent task create = (%d, %q), want (0, %q)", repeated.code, repeated.stdout, wantCreated)
 	}
 
-	wantList := fmt.Sprintf("tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:\n  task-14,Build feature,running,local,main,\"0000000000000000000000000000000000000001\",%s,none,true,false,false\ntotal: 1\n", repositoryPath)
+	wantList := fmt.Sprintf("tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:\n  task-14,Build feature,created,local,main,\"0000000000000000000000000000000000000001\",%s,none,true,false,false\ntotal: 1\n", repositoryPath)
 	if listed := runCommand(t, []string{"task", "list"}); listed.code != 0 || listed.stdout != wantList {
 		t.Fatalf("task list = (%d, %q), want (0, %q)", listed.code, listed.stdout, wantList)
 	}
-	wantInspected := wantStarted + fmt.Sprintf("resources[1]{id,repository,branch,base_revision,worktree_path,head,committed,dirty,untracked}:\n  legacy,demo,main,\"0000000000000000000000000000000000000001\",%s,\"0000000000000000000000000000000000000001\",true,false,false\nexecutions[1]{id,task_id,label,target,working_directory,status,condition,tmux_window}:\n  legacy,task-14,main,shell,%s,running,none,@1\n", repositoryPath, repositoryPath)
+	wantInspected := wantCreated + fmt.Sprintf("resources[1]{id,repository,branch,base_revision,worktree_path,head,committed,dirty,untracked}:\n  legacy,demo,main,\"0000000000000000000000000000000000000001\",%s,\"0000000000000000000000000000000000000001\",true,false,false\n", repositoryPath)
 	if inspected := runCommand(t, []string{"task", "inspect", taskID}); inspected.code != 0 || inspected.stdout != wantInspected {
 		t.Fatalf("task inspect = (%d, %q), want (0, %q)", inspected.code, inspected.stdout, wantInspected)
 	}
 
 	published := runCommand(t, []string{"task", "publish", taskID, "--condition", "active", "--reason", "coding", "--activity", "tests"})
-	wantPublished := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: active\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: active\n  reason: coding\n  activity: tests\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
+	wantPublished := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: created\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: active\n  reason: coding\n  activity: tests\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
 	if published.code != 0 || published.stdout != wantPublished {
 		t.Fatalf("task publish = (%d, %q), want (0, %q)", published.code, published.stdout, wantPublished)
 	}
 	if repeated := runCommand(t, []string{"task", "publish", taskID, "--condition", "active", "--reason", "coding", "--activity", "tests"}); repeated.code != 0 || repeated.stdout != wantPublished {
 		t.Fatalf("idempotent task publish = (%d, %q), want (0, %q)", repeated.code, repeated.stdout, wantPublished)
-	}
-
-	if finishing := runCommand(t, []string{"task", "finish", taskID, "succeeded", "done"}); finishing.code != 1 || !strings.Contains(finishing.stdout, "category: internal") || !strings.Contains(finishing.stdout, "task process is still running") {
-		t.Fatalf("finish while running = (%d, %q), want internal error", finishing.code, finishing.stdout)
 	}
 
 	stopped := runCommand(t, []string{"task", "stop", taskID})
@@ -80,6 +76,28 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 }
 
+func TestTaskStartRejectsWithMigrationGuidanceWithoutMutatingState(t *testing.T) {
+	setupTaskCommandTest(t)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "existing-65", "--title", "Existing"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "execution", "create", "existing-65", "--execution-id", "execution-65", "--target", "shell", "--command", "/bin/sh"}); result.code != 0 {
+		t.Fatalf("execution create = (%d, %q)", result.code, result.stdout)
+	}
+	result := runCommand(t, []string{"task", "start", "--task-id", "existing-65", "--title", "Legacy", "--repository", "demo"})
+	if result.code != 2 || !strings.Contains(result.stdout, "category: usage") || !strings.Contains(result.stdout, "shortcut was removed") || !strings.Contains(result.stdout, "task create") || !strings.Contains(result.stdout, "task launch") {
+		t.Fatalf("task start = (%d, %q), want structured migration guidance", result.code, result.stdout)
+	}
+	inspected := runCommand(t, []string{"task", "inspect", "existing-65"})
+	if inspected.code != 0 || !strings.Contains(inspected.stdout, "title: Existing") {
+		t.Fatalf("task start changed an existing task = (%d, %q)", inspected.code, inspected.stdout)
+	}
+	executions := runCommand(t, []string{"task", "execution", "list", "existing-65"})
+	if executions.code != 0 || !strings.Contains(executions.stdout, "execution-65") {
+		t.Fatalf("task start changed an existing execution = (%d, %q)", executions.code, executions.stdout)
+	}
+}
+
 func TestTaskCreateHasNoTmuxSideEffectUntilExplicitLaunch(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
@@ -96,12 +114,58 @@ func TestTaskCreateHasNoTmuxSideEffectUntilExplicitLaunch(t *testing.T) {
 	if _, err := os.Stat(os.Getenv("AKAGENT_FAKE_TMUX_STATE")); !os.IsNotExist(err) {
 		t.Fatalf("task create touched fake tmux state: %v", err)
 	}
-	launched := runCommand(t, []string{"task", "launch", "create-56", "--target", "shell"})
+	launched := runCommand(t, []string{"task", "launch", "create-56", "--target", "shell", "--label", "create-only"})
 	if launched.code != 0 || !strings.Contains(launched.stdout, "execution: shell") {
 		t.Fatalf("task launch = (%d, %q), want shell execution", launched.code, launched.stdout)
 	}
 	if _, err := os.Stat(os.Getenv("AKAGENT_FAKE_TMUX_STATE")); err != nil {
 		t.Fatalf("task launch did not create fake tmux state: %v", err)
+	}
+}
+
+func TestCompatibilityLaunchUsesDescriptiveBranchLabel(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	for _, taskID := range []string{"shell-label", "pi-label"} {
+		created := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", taskID, "--repository", "demo"})
+		if created.code != 0 {
+			t.Fatalf("task create %s = (%d, %q)", taskID, created.code, created.stdout)
+		}
+	}
+	if launched := runCommand(t, []string{"task", "launch", "shell-label", "--target", "shell"}); launched.code != 0 {
+		t.Fatalf("shell launch = (%d, %q)", launched.code, launched.stdout)
+	}
+	piPath := filepath.Join(strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))[0], "pi")
+	if err := os.WriteFile(piPath, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if launched := runCommand(t, []string{"task", "launch", "pi-label", "--target", "pi"}); launched.code != 0 {
+		t.Fatalf("Pi launch = (%d, %q)", launched.code, launched.stdout)
+	}
+	log, err := os.ReadFile(os.Getenv("AKAGENT_FAKE_TMUX_LOG"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(log); !strings.Contains(got, "-n main") {
+		t.Fatalf("tmux launch log = %q, want descriptive branch label", got)
+	}
+	for _, test := range []struct {
+		taskID string
+		target string
+	}{
+		{taskID: "shell-label", target: "shell"},
+		{taskID: "pi-label", target: "pi"},
+	} {
+		executions := runCommand(t, []string{"task", "execution", "list", test.taskID})
+		if executions.code != 0 || !strings.Contains(executions.stdout, ",main,"+test.target+",") {
+			t.Fatalf("execution list %s = (%d, %q), want descriptive label", test.taskID, executions.code, executions.stdout)
+		}
 	}
 }
 
@@ -129,7 +193,7 @@ func TestTaskResourcesCanBeCreatedAndListedIndependently(t *testing.T) {
 	}
 }
 
-func TestWorktreeTaskStartRequiresDescriptiveBranch(t *testing.T) {
+func TestWorktreeTaskCreateRequiresDescriptiveBranch(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
 	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
@@ -138,9 +202,9 @@ func TestWorktreeTaskStartRequiresDescriptiveBranch(t *testing.T) {
 	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "worktree"}); result.code != 0 {
 		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
 	}
-	result := runCommand(t, []string{"task", "start", "--task-id", "missing-branch", "--title", "Missing branch", "--repository", "demo"})
+	result := runCommand(t, []string{"task", "create", "--task-id", "missing-branch", "--title", "Missing branch", "--repository", "demo"})
 	if result.code != 2 || !strings.Contains(result.stdout, "category: usage") || !strings.Contains(result.stdout, "explicit descriptive --branch") {
-		t.Fatalf("worktree task start = (%d, %q), want explicit branch usage error", result.code, result.stdout)
+		t.Fatalf("worktree task create = (%d, %q), want explicit branch usage error", result.code, result.stdout)
 	}
 }
 
@@ -163,14 +227,14 @@ func TestTaskListHeterogeneousRowsCommandContract(t *testing.T) {
 	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
 		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "start", "--task-id", "a-14", "--title", "Stopped", "--repository", "demo"}); result.code != 0 {
-		t.Fatalf("stopped task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "a-14", "--title", "Stopped", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("stopped task create = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "stop", "a-14"}); result.code != 0 {
 		t.Fatalf("stopped task stop = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "start", "--task-id", "b-14", "--title", "Finished", "--repository", "demo"}); result.code != 0 {
-		t.Fatalf("finished task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "b-14", "--title", "Finished", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("finished task create = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "publish", "b-14", "--condition", "active", "--reason", "coding", "--activity", "tests"}); result.code != 0 {
 		t.Fatalf("finished task publish = (%d, %q)", result.code, result.stdout)
@@ -203,8 +267,8 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 			t.Fatalf("repository %s register = (%d, %q)", name, result.code, result.stdout)
 		}
 	}
-	if result := runCommand(t, []string{"task", "start", "--task-id", "alpha-history", "--title", "Archived", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
-		t.Fatalf("archived task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "alpha-history", "--title", "Archived", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
+		t.Fatalf("archived task create = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "stop", "alpha-history"}); result.code != 0 {
 		t.Fatalf("archived task stop = (%d, %q)", result.code, result.stdout)
@@ -212,8 +276,8 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 	if result := runCommand(t, []string{"task", "clean", "alpha-history", "--allow-committed", "--allow-dirty", "--allow-untracked", "--allow-worktree"}); result.code != 0 {
 		t.Fatalf("archived task clean = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "start", "--task-id", "alpha-pending", "--title", "Pending cleanup", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
-		t.Fatalf("pending task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "alpha-pending", "--title", "Pending cleanup", "--repository", "alpha", "--branch", "main"}); result.code != 0 {
+		t.Fatalf("pending task create = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "stop", "alpha-pending"}); result.code != 0 {
 		t.Fatalf("pending task stop = (%d, %q)", result.code, result.stdout)
@@ -227,8 +291,8 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 		{id: "alpha-active", title: "Alpha", repository: "alpha"},
 		{id: "beta-active", title: "Beta", repository: "beta"},
 	} {
-		if result := runCommand(t, []string{"task", "start", "--task-id", task.id, "--title", task.title, "--repository", task.repository, "--branch", "main"}); result.code != 0 {
-			t.Fatalf("%s task start = (%d, %q)", task.id, result.code, result.stdout)
+		if result := runCommand(t, []string{"task", "create", "--task-id", task.id, "--title", task.title, "--repository", task.repository, "--branch", "main"}); result.code != 0 {
+			t.Fatalf("%s task create = (%d, %q)", task.id, result.code, result.stdout)
 		}
 	}
 
@@ -279,8 +343,8 @@ func TestApprovedWorktreeCleanupCommandContract(t *testing.T) {
 		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
 	}
 	const taskID = "cleanup-14"
-	if result := runCommand(t, []string{"task", "start", "--task-id", taskID, "--title", "Cleanup", "--repository", "demo", "--branch", "main"}); result.code != 0 {
-		t.Fatalf("task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Cleanup", "--repository", "demo", "--branch", "main"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
 	}
 	if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
 		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
@@ -304,15 +368,15 @@ func TestTaskReconcileCommandContract(t *testing.T) {
 	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
 		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "start", "--task-id", "reconcile-14", "--title", "Reconcile", "--repository", "demo"}); result.code != 0 {
-		t.Fatalf("task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "reconcile-14", "--title", "Reconcile", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
 	}
 	if err := os.WriteFile(os.Getenv("AKAGENT_FAKE_TMUX_STATE"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	result := runCommand(t, []string{"task", "reconcile"})
-	want := fmt.Sprintf("tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:\n  reconcile-14,Reconcile,stopped,local,main,\"0000000000000000000000000000000000000001\",%s,none,true,false,false\ntotal: 1\n", repositoryPath)
+	want := fmt.Sprintf("tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:\n  reconcile-14,Reconcile,created,local,main,\"0000000000000000000000000000000000000001\",%s,none,true,false,false\ntotal: 1\n", repositoryPath)
 	if result.code != 0 || result.stdout != want {
 		t.Fatalf("task reconcile = (%d, %q), want (0, %q)", result.code, result.stdout, want)
 	}
@@ -362,7 +426,7 @@ func TestRepositoryRegistrationConflictHasStructuredCategory(t *testing.T) {
 
 func TestTaskUnknownFlagsFailBeforeLifecycleSideEffects(t *testing.T) {
 	setupTaskCommandTest(t)
-	result := runCommand(t, []string{"task", "start", "--title", "No side effects", "--repository", "demo", "--bogus", "value"})
+	result := runCommand(t, []string{"task", "create", "--title", "No side effects", "--repository", "demo", "--bogus", "value"})
 	if result.code != 2 || !strings.HasPrefix(result.stdout, "error:\n  category: usage\n") {
 		t.Fatalf("unknown task flag = (%d, %q), want usage error", result.code, result.stdout)
 	}
@@ -419,13 +483,13 @@ func TestTaskCapabilityFailureAndOptionalWarningRedactCredentialValues(t *testin
 		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
 	}
 
-	missing := runCommand(t, []string{"task", "start", "--task-id", "capability-14", "--title", "Needs capability", "--repository", "demo", "--require", "required"})
+	missing := runCommand(t, []string{"task", "create", "--task-id", "capability-14", "--title", "Needs capability", "--repository", "demo", "--require", "required"})
 	if missing.code != 1 || !strings.Contains(missing.stdout, "category: capability") || !strings.Contains(missing.stdout, "required credential required is unavailable") {
 		t.Fatalf("required capability failure did not return the expected capability error")
 	}
 	assertDoesNotContainCredentialValue(t, missing.stdout, secret)
 
-	optional := runCommand(t, []string{"task", "start", "--task-id", "optional-14", "--title", "Optional capability", "--repository", "demo", "--optional", "optional"})
+	optional := runCommand(t, []string{"task", "create", "--task-id", "optional-14", "--title", "Optional capability", "--repository", "demo", "--optional", "optional"})
 	if optional.code != 0 || !strings.Contains(optional.stdout, "warnings: optional credential optional is unavailable") {
 		t.Fatalf("optional capability warning did not return the expected successful warning")
 	}
@@ -442,8 +506,8 @@ func TestTaskRetryableStoreErrorIsStructured(t *testing.T) {
 		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
 	}
 	const taskID = "locked-14"
-	if result := runCommand(t, []string{"task", "start", "--task-id", taskID, "--title", "Locked task", "--repository", "demo"}); result.code != 0 {
-		t.Fatalf("task start = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Locked task", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
 	}
 
 	state, err := store.Open()
@@ -504,6 +568,7 @@ func setupTaskCommandTest(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv("AKAGENT_FAKE_TMUX_STATE", filepath.Join(root, "tmux-state"))
+	t.Setenv("AKAGENT_FAKE_TMUX_LOG", filepath.Join(root, "tmux.log"))
 	bin := filepath.Join(root, "bin")
 	if err := os.Mkdir(bin, 0o700); err != nil {
 		t.Fatal(err)
@@ -518,6 +583,7 @@ list-windows)
   cat "$state"
   ;;
 new-window)
+  printf '%s\n' "$*" >> "${AKAGENT_FAKE_TMUX_LOG:-/dev/null}"
   count=$(wc -l < "$state" | tr -d ' ')
   window="@$((count + 1))"
   printf '%s\t\n' "$window" >> "$state"

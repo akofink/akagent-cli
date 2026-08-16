@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/akofink/akagent-cli/internal/store"
@@ -11,6 +12,7 @@ type independentExecutionTmux struct {
 	observation TmuxObservation
 	started     int
 	stopped     int
+	states      []string
 }
 
 func (t *independentExecutionTmux) Start(_ string, _ string) (TmuxProcess, error) {
@@ -38,6 +40,36 @@ func (t *independentExecutionTmux) StopExecution(_, _ string) error {
 func (t *independentExecutionTmux) CaptureExecution(_, _ string) (string, error) {
 	return "history", nil
 }
+func (t *independentExecutionTmux) SetExecutionState(_, _, state string) error {
+	t.states = append(t.states, state)
+	return nil
+}
+
+func TestCompatibilityExecutionLabelUsesTaskBranch(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if err := manager.Store.WriteManifest("label-task", store.Manifest{Title: "Descriptive label", Worker: "local", Lifecycle: "created", Branch: "akofink/69-execution-labels"}); err != nil {
+		t.Fatal(err)
+	}
+	label, err := manager.ResolveCompatibilityExecutionLabel("label-task", "", "")
+	if err != nil || label != "69-execution-labels" {
+		t.Fatalf("ResolveCompatibilityExecutionLabel() = %q, %v; want branch-derived label", label, err)
+	}
+}
+
+func TestCompatibilityExecutionLabelRequiresDescriptiveValue(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "label-required", Title: "Label required"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ResolveCompatibilityExecutionLabel("label-required", "", ""); !store.IsKind(err, store.KindUsage) {
+		t.Fatalf("missing compatibility label error = %v, want usage error", err)
+	}
+	for _, label := range []string{"pi", "shell", "akagent", "019fe8f2-ac67-7406-a6e6-2717b2cd31c6"} {
+		if _, err := manager.ResolveCompatibilityExecutionLabel("label-required", "", label); !store.IsKind(err, store.KindUsage) {
+			t.Fatalf("label %q error = %v, want usage error", label, err)
+		}
+	}
+}
 
 func TestExecutionLifecycleIsIndependentFromResources(t *testing.T) {
 	manager, _ := newTestManager(t)
@@ -56,11 +88,26 @@ func TestExecutionLifecycleIsIndependentFromResources(t *testing.T) {
 	if _, err := manager.LaunchExecutionRecord("execution-task", "exec-one"); err != nil {
 		t.Fatal(err)
 	}
-	if tmux.started != 1 {
-		t.Fatalf("execution starts = %d, want 1", tmux.started)
+	if tmux.started != 1 || len(tmux.states) != 1 || tmux.states[0] != "" {
+		t.Fatalf("execution launch state = starts=%d states=%#v, want active state cleared", tmux.started, tmux.states)
+	}
+	if _, err := manager.PublishExecution("execution-task", "exec-one", "waiting", "review", "awaiting review"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.PublishExecution("execution-task", "exec-one", "blocked", "approval", "awaiting approval"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.PublishExecution("execution-task", "exec-one", "active", "coding", "running"); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(tmux.states, "|"); got != "|waiting|blocked|" {
+		t.Fatalf("execution states = %q, want active clear, waiting, blocked, active clear", got)
 	}
 	if _, err := manager.StopExecution("execution-task", "exec-one"); err != nil {
 		t.Fatal(err)
+	}
+	if tmux.states[len(tmux.states)-1] != "" {
+		t.Fatalf("stopped execution state = %q, want clear", tmux.states[len(tmux.states)-1])
 	}
 	if _, err := manager.ArchiveExecution("execution-task", "exec-one"); err != nil {
 		t.Fatal(err)
@@ -95,6 +142,59 @@ func TestExecutionSessionReferencesAreProviderNeutralAndIdempotent(t *testing.T)
 	}
 	if len(execution.SessionReferences) != 1 || execution.SessionReferences[0] != reference {
 		t.Fatalf("session references = %#v, want one provider-neutral reference", execution.SessionReferences)
+	}
+}
+
+func TestTaskFinishPublishesDoneExecutionState(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	if _, err := manager.Create(CreateRequest{ID: "finish-task", Title: "Finish task"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("finish-task", ExecutionRequest{ID: "finish-execution", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.LaunchExecutionRecord("finish-task", "finish-execution"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Finish("finish-task", "succeeded", "complete"); err != nil {
+		t.Fatal(err)
+	}
+	if got := tmux.states[len(tmux.states)-1]; got != "done" {
+		t.Fatalf("finished execution state = %q, want done", got)
+	}
+	tmux.observation = TmuxObservation{Available: true}
+	if _, err := manager.ArchiveExecution("finish-task", "finish-execution"); err != nil {
+		t.Fatal(err)
+	}
+	if got := tmux.states[len(tmux.states)-1]; got != "done" {
+		t.Fatalf("archived execution state = %q, want done", got)
+	}
+}
+
+func TestReconcileClearsStaleExecutionState(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	if _, err := manager.Create(CreateRequest{ID: "reconcile-execution", Title: "Reconcile execution"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("reconcile-execution", ExecutionRequest{ID: "reconcile-one", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.LaunchExecutionRecord("reconcile-execution", "reconcile-one"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.PublishExecution("reconcile-execution", "reconcile-one", "waiting", "review", "awaiting review"); err != nil {
+		t.Fatal(err)
+	}
+	tmux.observation = TmuxObservation{Available: true}
+	if _, err := manager.ReconcileExecutions("reconcile-execution"); err != nil {
+		t.Fatal(err)
+	}
+	if got := tmux.states[len(tmux.states)-1]; got != "" {
+		t.Fatalf("reconciled stale execution state = %q, want clear", got)
 	}
 }
 

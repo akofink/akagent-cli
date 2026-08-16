@@ -43,7 +43,7 @@ Task and resource creation, cleanup ownership checks, and reconciliation use the
 The current CLI creates tasks and Git resources without execution side effects.
 Explicit `task launch --target shell` starts a generic execution for direct human or shell-driven work.
 The optional `task launch --target pi` shortcut delegates to the Pi execution integration.
-The historical `task start` command remains as a direct-human compatibility shortcut.
+The removed `task start` shortcut is rejected with migration guidance.
 Destructive cleanup hooks are not part of the current implementation.
 
 ## Current orchestration boundary
@@ -63,7 +63,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```

@@ -20,7 +20,7 @@ akagent credential <list|inspect|doctor>
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|resource|execution|launch|start|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|resource|execution|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
@@ -55,7 +55,11 @@ The `direct` policy permits the registered checkout itself when that is explicit
 `task create` creates a durable record, validates the repository inputs, and creates the required branch and worktree without starting tmux or a process.
 `task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
 `task execution session add` records non-secret provider-neutral tool and session provenance without parsing provider files.
-`task launch --target shell` is an explicit direct human shell shortcut built on those generic execution commands.
+Managed execution windows publish the shared tmux `@agent_state` option by matching task and execution metadata, not display names.
+Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
+`task launch --target shell` is the explicit direct human shell workflow built on those generic execution commands.
+Compatibility shell and Pi launches derive their execution and tmux display label from the selected resource or task branch, without the owner prefix.
+Pass `--label <descriptive-label>` when no descriptive branch is available.
 Execution stop, archive, attachment, and reconciliation are independent from resource state.
 A task can coordinate multiple resources through one execution by selecting a resource during execution creation.
 Worktree-policy tasks require an explicit descriptive branch such as `akofink/51-task-labels`.
@@ -70,7 +74,7 @@ It never deletes task state, branches, worktrees, windows, or terminal history.
 
 Pi is an optional execution integration and must be installed as `pi` on `PATH` only when selected.
 Core task, resource, and generic execution creation do not inspect or require Pi.
-The compatibility `task launch --target pi` shortcut creates a generic execution and delegates process setup to the Pi integration.
+The `task launch --target pi` target creates a generic execution and delegates process setup to the Pi integration.
 The integration passes the owning task ID as `AKAGENT_TASK_ID`, preserves interactive standard input, and keeps prompt content out of durable records and protocol output.
 Use the direct shell target when a human wants a shell without any provider integration.
 

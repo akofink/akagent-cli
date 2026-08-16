@@ -103,7 +103,10 @@ Actionable records include non-archived tasks and archived tasks with incomplete
 Use `--repository` and `--worktree` to compose deterministic exact-match filters.
 Task creation does not create a tmux resource or start a process.
 The explicit shell launch command creates a generic execution in a task-tagged tmux window.
-Its display name is descriptive, while the task and execution IDs remain in window metadata for lifecycle verification.
+Its display name is derived from the selected resource or task branch without the owner prefix, or supplied with `--label <descriptive-label>` when no branch is available.
+The task and execution IDs remain in window metadata for lifecycle verification.
+Managed execution windows publish `@agent_state` by matching those metadata IDs.
+Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 
 Use `--target shell` for direct human or shell-driven work.
 Use `task execution create` and `task execution launch` when the caller needs explicit generic execution identity.
@@ -156,6 +159,8 @@ akagent task publish <task-id> --condition waiting --reason "needs review"
 
 The accepted conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
 Publication changes durable task state and refreshes its heartbeat.
+For managed executions, active, failed, and none clear `@agent_state`.
+Reconciliation clears stale waiting or blocked state when process observations are no longer fresh.
 
 Attach a direct shell or optional Pi execution only after inspecting it:
 
@@ -224,7 +229,7 @@ Without that approval, the worktree remains available for direct human recovery 
 Start with `task inspect` and `task reconcile` when observations are unclear or a possibly mutating command fails.
 Use the agent skill for automated lifecycle behavior and manual fallback only after those checks.
 
-If an optional integration launch fails, retry the generic execution or repeat the same compatibility launch command after inspecting and reconciling its state.
+If an optional integration launch fails, retry the generic execution or repeat the same explicit launch command after inspecting and reconciling its state.
 Equivalent repeated creates and launches are idempotent; changing immutable task or launch inputs returns a conflict.
 
 Do not attach when the heartbeat or process observation is stale.

@@ -25,6 +25,49 @@ type ExecutionRequest struct {
 	WorkingDirectory string
 }
 
+// ResolveCompatibilityExecutionLabel returns a descriptive label for the
+// compatibility launch commands. An explicit label wins, while an omitted
+// label is derived from the selected resource or task branch.
+func (m *Manager) ResolveCompatibilityExecutionLabel(taskID, resourceID, requested string) (string, error) {
+	label := strings.TrimSpace(requested)
+	if label == "" {
+		manifest, err := m.Inspect(taskID)
+		if err != nil {
+			return "", err
+		}
+		branch := manifest.Branch
+		if resourceID != "" {
+			resource, err := m.InspectResource(taskID, resourceID)
+			if err != nil {
+				return "", err
+			}
+			branch = resource.Branch
+		}
+		if strings.TrimSpace(branch) == "" {
+			return "", &store.Error{Kind: store.KindUsage, Message: "compatibility execution requires a descriptive task branch or label", Recovery: "Retry with `--label <descriptive-label>` or create the task with `--branch <branch>`"}
+		}
+		label = tmuxWindowName(branch)
+	}
+	if err := validateCompatibilityExecutionLabel(label); err != nil {
+		return "", err
+	}
+	return label, nil
+}
+
+func validateCompatibilityExecutionLabel(label string) error {
+	if label == "" || strings.ContainsAny(label, "\r\n") {
+		return &store.Error{Kind: store.KindUsage, Message: "execution label must be a non-empty single line", Recovery: "Retry with `--label <descriptive-label>`"}
+	}
+	switch strings.ToLower(label) {
+	case "pi", "shell", "akagent", "execution":
+		return &store.Error{Kind: store.KindUsage, Message: fmt.Sprintf("execution label %q is not descriptive", label), Recovery: "Retry with `--label <descriptive-label>` or use a descriptive task branch"}
+	}
+	if _, err := uuid.Parse(label); err == nil {
+		return &store.Error{Kind: store.KindUsage, Message: "execution label must not be an internal ID", Recovery: "Retry with `--label <descriptive-label>` or use a descriptive task branch"}
+	}
+	return nil
+}
+
 func (m *Manager) CreateExecution(taskID string, request ExecutionRequest) (store.Execution, bool, error) {
 	if taskID == "" || request.Target == "" {
 		return store.Execution{}, false, fmt.Errorf("task ID and execution target are required")
@@ -160,6 +203,7 @@ func (m *Manager) LaunchExecutionRecord(taskID, executionID string) (store.Execu
 		execution.RecoveryDebt = addDebt(execution.RecoveryDebt, "launch_failed")
 		execution.Observation = ObservationMissing
 		_ = m.Store.WriteExecution(taskID, execution)
+		m.publishExecutionState(execution)
 		_, _ = m.Store.AppendExecutionEvent(taskID, execution.ID, store.Event{Operation: "launch", Outcome: "failed"})
 		return execution, fmt.Errorf("start execution tmux window: %w", err)
 	}
@@ -173,6 +217,7 @@ func (m *Manager) LaunchExecutionRecord(taskID, executionID string) (store.Execu
 	if _, err := m.Store.AppendExecutionEvent(taskID, execution.ID, store.Event{Operation: "launch", Outcome: "succeeded"}); err != nil {
 		return store.Execution{}, err
 	}
+	m.publishExecutionState(execution)
 	return execution, nil
 }
 
@@ -224,6 +269,7 @@ func (m *Manager) PublishExecution(taskID, executionID, condition, reason, activ
 	if changed {
 		_, err = m.Store.AppendExecutionEvent(taskID, executionID, store.Event{Operation: "publish", Outcome: condition})
 	}
+	m.publishExecutionState(execution)
 	return execution, err
 }
 
@@ -233,6 +279,7 @@ func (m *Manager) StopExecution(taskID, executionID string) (store.Execution, er
 		return store.Execution{}, err
 	}
 	if execution.Lifecycle == "stopped" || execution.Lifecycle == "finished" {
+		m.publishExecutionState(execution)
 		return execution, nil
 	}
 	if tmux, ok := m.Tmux.(ExecutionTmux); ok {
@@ -252,6 +299,7 @@ func (m *Manager) StopExecution(taskID, executionID string) (store.Execution, er
 		return store.Execution{}, err
 	}
 	_, err = m.Store.AppendExecutionEvent(taskID, executionID, store.Event{Operation: "stop", Outcome: "succeeded"})
+	m.publishExecutionState(execution)
 	return execution, err
 }
 
@@ -298,6 +346,7 @@ func (m *Manager) ArchiveExecution(taskID, executionID string) (store.Execution,
 	}
 	if execution.ArchiveState == "complete" {
 		if _, err := m.Store.ReadExecutionArchive(taskID, executionID); err == nil {
+			m.publishExecutionState(execution)
 			return execution, nil
 		}
 	}
@@ -346,6 +395,7 @@ func (m *Manager) ArchiveExecution(taskID, executionID string) (store.Execution,
 	if _, err := m.Store.AppendExecutionEvent(taskID, executionID, store.Event{Operation: "archive", Outcome: "succeeded"}); err != nil {
 		return store.Execution{}, err
 	}
+	m.publishExecutionState(execution)
 	return execution, nil
 }
 
@@ -369,7 +419,8 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 				return nil, observeErr
 			}
 			before := execution
-			applyExecutionObservation(&execution, observation, m.now(), m.heartbeatTimeout())
+			now := m.now()
+			applyExecutionObservation(&execution, observation, now, m.heartbeatTimeout())
 			if observation.Available && len(observation.Processes) == 0 {
 				execution.Lifecycle, execution.Condition = "stopped", "none"
 			}
@@ -379,6 +430,9 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 				}
 				_, _ = m.Store.AppendExecutionEvent(taskID, id, store.Event{Operation: "reconcile", Outcome: observationOutcome(execution.Observation)})
 			}
+			m.publishExecutionStateValue(execution, reconciledExecutionState(execution, now, m.heartbeatTimeout()))
+		} else {
+			m.publishExecutionState(execution)
 		}
 		result = append(result, execution)
 	}
@@ -498,7 +552,7 @@ func (m *Manager) updateExecutionFromManifest(taskID string, manifest store.Mani
 		return nil
 	}
 	id := ids[0]
-	_, err := m.Store.UpdateExecution(taskID, id, func(execution *store.Execution) error {
+	execution, err := m.Store.UpdateExecution(taskID, id, func(execution *store.Execution) error {
 		execution.Lifecycle, execution.Condition, execution.Reason, execution.Activity = manifest.Lifecycle, manifest.Condition, manifest.Reason, manifest.Activity
 		execution.HeartbeatAt, execution.Result = manifest.HeartbeatAt, manifest.Result
 		execution.TmuxWindow, execution.ProcessPID, execution.ProcessStartTime = manifest.TmuxWindow, manifest.ProcessPID, manifest.ProcessStartTime
@@ -506,7 +560,61 @@ func (m *Manager) updateExecutionFromManifest(taskID string, manifest store.Mani
 		execution.Observation, execution.ObservationAt, execution.ArchiveState, execution.RecoveryDebt = manifest.Observation, manifest.ObservationAt, manifest.ArchiveState, manifest.RecoveryDebt
 		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	m.publishExecutionState(execution)
+	return nil
+}
+
+func (m *Manager) syncExecutionStates(taskID string) error {
+	ids, err := m.Store.ExecutionIDs(taskID)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		execution, err := m.Store.ReadExecution(taskID, id)
+		if err != nil {
+			return err
+		}
+		m.publishExecutionState(execution)
+	}
+	return nil
+}
+
+func (m *Manager) publishExecutionState(execution store.Execution) {
+	m.publishExecutionStateValue(execution, desiredExecutionState(execution))
+}
+
+func (m *Manager) publishExecutionStateValue(execution store.Execution, state string) {
+	if tmux, ok := m.Tmux.(ExecutionStateTmux); ok {
+		_ = tmux.SetExecutionState(execution.ID, execution.TaskID, state)
+	}
+}
+
+func desiredExecutionState(execution store.Execution) string {
+	if execution.Lifecycle == "finished" {
+		return "done"
+	}
+	if execution.Lifecycle != "running" {
+		return ""
+	}
+	switch execution.Condition {
+	case "waiting", "blocked":
+		return execution.Condition
+	default:
+		return ""
+	}
+}
+
+func reconciledExecutionState(execution store.Execution, now time.Time, timeout time.Duration) string {
+	if execution.Lifecycle == "finished" {
+		return "done"
+	}
+	if execution.Lifecycle != "running" || execution.Observation != ObservationFresh || execution.HeartbeatAt.IsZero() || now.Sub(execution.HeartbeatAt) > timeout {
+		return ""
+	}
+	return desiredExecutionState(execution)
 }
 
 func shellCommand() string {

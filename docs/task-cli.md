@@ -64,8 +64,7 @@ repository:
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
 akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile> ...
-akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--prompt <path>] [--context <value>]
-akagent task start --title <title> --repository <name> ... # legacy create-and-launch shortcut
+akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
 akagent task attach <task-id>
@@ -101,6 +100,8 @@ Execution attachment, stop, archive, and reconcile operate on one execution and 
 Use `task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]` to record provider-neutral session provenance.
 The optional path is an absolute local reference only; `akagent` never reads provider session files.
 The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
+Managed execution windows publish the shared tmux `@agent_state` option by matching those metadata IDs rather than the display label.
+Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 The managed process also receives those IDs as the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment variables.
 An execution can use them directly with the local CLI:
 
@@ -109,7 +110,10 @@ akagent task resource create "$AKAGENT_TASK_ID" --repository backend --resource-
 akagent task resource list "$AKAGENT_TASK_ID"
 akagent task resource update "$AKAGENT_TASK_ID" backend-resource --metadata delivery=published --external-url https://forge.example/pull/61
 ```
-The compatibility `task launch --target shell` shortcut creates and launches a generic shell execution.
+The `task launch --target shell` command creates and launches a generic shell execution.
+Compatibility shell and Pi launches derive the execution and tmux display label from the selected resource or task branch, without the owner prefix.
+Use `--label <descriptive-label>` when no descriptive branch is available.
+Labels must not be `pi`, `shell`, `akagent`, `execution`, or an internal UUID.
 New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
 One execution can coordinate multiple resources by selecting one resource as its working directory and using the owning task ID for further resource operations.
 Resource lifecycle remains independent from execution lifecycle.
@@ -122,7 +126,7 @@ akagent task execution create <task-id> --execution-id coordinator --target shel
 akagent task execution launch <task-id> coordinator
 ```
 
-`--target pi` is an optional integration shortcut.
+`--target pi` is an optional integration target.
 It checks for `pi` only when selected, then creates a generic execution whose worker integration starts Pi.
 Core task, resource, and generic execution commands do not require Pi to be installed.
 
@@ -144,6 +148,8 @@ A create or launch with different immutable inputs returns a `conflict` error.
 
 The accepted published conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
 Publication updates the durable record and heartbeat.
+Managed execution publication maps active, failed, and none to a cleared `@agent_state` option.
+Stop clears the option, archive preserves `done`, and reconciliation republishes waiting or blocked only when observations remain fresh.
 
 A finish while the task process is running fails without changing the task outcome.
 Stop preserves the durable record and worktree but ends the task's tagged tmux window.
