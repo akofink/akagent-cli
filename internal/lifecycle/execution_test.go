@@ -74,6 +74,30 @@ func TestExecutionLifecycleIsIndependentFromResources(t *testing.T) {
 	}
 }
 
+func TestExecutionSessionReferencesAreProviderNeutralAndIdempotent(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "session-task", Title: "Session task"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("session-task", ExecutionRequest{ID: "session-execution", Target: "tool", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	reference := store.SessionReference{Tool: "pi", SessionID: "pi-session"}
+	if _, err := manager.AddExecutionSessionReference("session-task", "session-execution", reference); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.RecordExecutionSessionReference("session-task", "session-execution", reference); err != nil {
+		t.Fatal(err)
+	}
+	execution, err := manager.InspectExecution("session-task", "session-execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(execution.SessionReferences) != 1 || execution.SessionReferences[0] != reference {
+		t.Fatalf("session references = %#v, want one provider-neutral reference", execution.SessionReferences)
+	}
+}
+
 func TestLegacyExecutionMigrationPreservesTaskObservation(t *testing.T) {
 	manager, _ := newTestManager(t)
 	if err := manager.Store.WriteManifest("legacy-execution", store.Manifest{Title: "legacy", Worker: "local", Lifecycle: "running", Condition: "none", Branch: "review", TmuxWindow: "@1", ProcessPID: 41, ProcessStartTime: 401, Observation: ObservationFresh, Launch: &store.LaunchConfig{Target: "other", Command: "/usr/bin/tool"}}); err != nil {

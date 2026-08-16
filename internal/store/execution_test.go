@@ -1,6 +1,8 @@
 package store
 
 import (
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +31,47 @@ func TestExecutionRoundTripAndIndependentArchive(t *testing.T) {
 	}
 	if _, err := state.ReadExecutionArchive(taskID, "missing"); !IsKind(err, KindNotFound) {
 		t.Fatalf("ReadExecutionArchive(missing) = %v, want not found", err)
+	}
+}
+
+func TestExecutionSessionReferencesRoundTripAndArchive(t *testing.T) {
+	state := openTest(t)
+	taskID := validTaskID(t)
+	if err := state.WriteManifest(taskID, Manifest{Title: "sessions", Lifecycle: "stopped"}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "session.json")
+	if err := os.WriteFile(path, []byte("provider state"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missingPath := filepath.Join(t.TempDir(), "gone.json")
+	if err := os.WriteFile(missingPath, []byte("historical provider state"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	execution := Execution{
+		ID: "sessioned", TaskID: taskID, Label: "provider", Target: "tool", Lifecycle: "stopped", Condition: "none",
+		SessionReferences: []SessionReference{
+			{Tool: "pi", SessionID: "session-one", ReferencePath: path},
+			{Tool: "other", SessionID: "session-two", ReferencePath: missingPath},
+		},
+	}
+	if _, _, err := state.CreateExecution(taskID, execution); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(missingPath); err != nil {
+		t.Fatal(err)
+	}
+	got, err := state.ReadExecution(taskID, execution.ID)
+	if err != nil || len(got.SessionReferences) != 2 {
+		t.Fatalf("ReadExecution() = %#v, %v", got, err)
+	}
+	archive := ExecutionArchive{TaskID: taskID, ExecutionID: execution.ID, CapturedAt: time.Now().UTC(), Execution: got}
+	if err := state.WriteExecutionArchive(taskID, execution.ID, archive); err != nil {
+		t.Fatal(err)
+	}
+	archived, err := state.ReadExecutionArchive(taskID, execution.ID)
+	if err != nil || len(archived.Execution.SessionReferences) != 2 {
+		t.Fatalf("ReadExecutionArchive() = %#v, %v", archived, err)
 	}
 }
 

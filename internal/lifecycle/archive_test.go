@@ -63,6 +63,32 @@ func TestArchiveCapturesDurableAndAvailableHistoryIdempotently(t *testing.T) {
 	}
 }
 
+func TestTaskArchivePreservesExecutionSessionReferences(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "archive-session", Title: "Archive session"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("archive-session", ExecutionRequest{ID: "provider", Target: "tool", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.AddExecutionSessionReference("archive-session", "provider", store.SessionReference{Tool: "pi", SessionID: "saved"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Stop("archive-session"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Archive("archive-session"); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := manager.Store.ReadArchive("archive-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archive.Executions) != 1 || len(archive.Executions[0].SessionReferences) != 1 || archive.Executions[0].SessionReferences[0].SessionID != "saved" {
+		t.Fatalf("archive executions = %#v, want session reference", archive.Executions)
+	}
+}
+
 func TestArchivePersistsPartialStateAndRetries(t *testing.T) {
 	manager, _ := stoppedManager(t, "archive-2")
 	archivePath := filepath.Join(manager.Store.Root(), "tasks", "archive-2", "archive.json")

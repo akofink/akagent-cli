@@ -176,6 +176,38 @@ func (m *Manager) LaunchExecutionRecord(taskID, executionID string) (store.Execu
 	return execution, nil
 }
 
+// AddExecutionSessionReference records provider-neutral resumable session
+// provenance. Integrations supply the reference they own; the core lifecycle
+// never reads or interprets provider session files.
+func (m *Manager) AddExecutionSessionReference(taskID, executionID string, reference store.SessionReference) (store.Execution, error) {
+	var changed bool
+	execution, err := m.Store.UpdateExecution(taskID, executionID, func(execution *store.Execution) error {
+		for _, existing := range execution.SessionReferences {
+			if existing == reference {
+				return nil
+			}
+		}
+		execution.SessionReferences = append(execution.SessionReferences, reference)
+		changed = true
+		return nil
+	})
+	if err != nil {
+		return store.Execution{}, err
+	}
+	if changed {
+		if _, err := m.Store.AppendExecutionEvent(taskID, executionID, store.Event{Operation: "session_reference", Outcome: "recorded"}); err != nil {
+			return store.Execution{}, err
+		}
+	}
+	return execution, nil
+}
+
+// RecordExecutionSessionReference is an integration-friendly alias for
+// AddExecutionSessionReference.
+func (m *Manager) RecordExecutionSessionReference(taskID, executionID string, reference store.SessionReference) (store.Execution, error) {
+	return m.AddExecutionSessionReference(taskID, executionID, reference)
+}
+
 func (m *Manager) PublishExecution(taskID, executionID, condition, reason, activity string) (store.Execution, error) {
 	if !validCondition(condition) {
 		return store.Execution{}, fmt.Errorf("condition must be active, waiting, blocked, failed, or none")

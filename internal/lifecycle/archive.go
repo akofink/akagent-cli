@@ -79,6 +79,10 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 	if err != nil {
 		return m.archiveFailure(id, manifest, err)
 	}
+	executions, err := m.ListExecutions(id)
+	if err != nil {
+		return m.archiveFailure(id, manifest, err)
+	}
 	manifest, err = m.manifest(id)
 	if err != nil {
 		return m.archiveFailure(id, manifest, err)
@@ -99,6 +103,7 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 		Manifest:   manifest,
 		Events:     events,
 		Resources:  resources,
+		Executions: executions,
 		Git:        facts,
 		Terminal:   terminal,
 		Warnings:   warnings,
@@ -130,6 +135,11 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 		return m.archiveFailure(id, manifest, err)
 	}
 	archive.Resources = resources
+	executions, err = m.ListExecutions(id)
+	if err != nil {
+		return m.archiveFailure(id, manifest, err)
+	}
+	archive.Executions = executions
 	if err := m.Store.WriteArchive(id, archive); err != nil {
 		return m.archiveFailure(id, manifest, err)
 	}
