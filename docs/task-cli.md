@@ -83,9 +83,9 @@ akagent task reconcile [<task-id>]
 A task ID is generated when `--task-id` is omitted.
 
 The default task list shows actionable records only.
-It includes every non-archived task and every archived task with incomplete cleanup or recovery debt.
+It includes every non-archived task and every archived task with incomplete task or resource cleanup, cleanup debt, or recovery debt.
 A fully archived, fully cleaned, debt-free task is hidden from the default list.
-Use `--all` to include all durable task records.
+Use `--all` to include all durable task records, including historical records that are complete.
 `--repository <name>` filters by registered repository name, and `--worktree <path>` filters by exact task worktree path.
 Filters compose as an intersection and results remain sorted by task ID.
 

@@ -261,7 +261,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 				if resourceErr != nil {
 					return lifecycleError(stdout, resourceErr)
 				}
-				if manifest.Repository != "" || !actionableResources(resources) {
+				if !actionableResources(resources) {
 					continue
 				}
 			}
@@ -955,13 +955,27 @@ func taskListUsage(stdout io.Writer) int {
 func actionable(manifest store.Manifest) bool {
 	return manifest.ArchiveState != "complete" ||
 		manifest.CleanupState != "complete" ||
+		(manifest.WorktreeCleanupState != "" && manifest.WorktreeCleanupState != "complete") ||
+		(manifest.CredentialCleanupState != "" && manifest.CredentialCleanupState != "complete") ||
 		manifest.CleanupDebt ||
 		strings.TrimSpace(manifest.RecoveryDebt) != ""
 }
 
 func actionableResources(resources []store.Resource) bool {
 	for _, resource := range resources {
-		if resource.ArchiveState != "complete" || resource.CleanupState != "complete" || resource.CredentialCleanupState != "complete" || resource.CleanupDebt || strings.TrimSpace(resource.RecoveryDebt) != "" {
+		// Legacy resources mirror task-level cleanup and may predate independent resource state.
+		if resource.ID == "legacy" {
+			if resource.CleanupDebt || strings.TrimSpace(resource.RecoveryDebt) != "" {
+				return true
+			}
+			continue
+		}
+		if resource.ArchiveState != "complete" ||
+			resource.CleanupState != "complete" ||
+			(resource.WorktreeCleanupState != "" && resource.WorktreeCleanupState != "complete") ||
+			(resource.CredentialCleanupState != "" && resource.CredentialCleanupState != "complete") ||
+			resource.CleanupDebt ||
+			strings.TrimSpace(resource.RecoveryDebt) != "" {
 			return true
 		}
 	}

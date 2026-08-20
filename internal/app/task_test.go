@@ -336,15 +336,58 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 	if scoped.code != 0 || !strings.Contains(scoped.stdout, "total: 1") || !strings.Contains(scoped.stdout, "alpha-active") || strings.Contains(scoped.stdout, "alpha-history") || strings.Contains(scoped.stdout, "beta-active") {
 		t.Fatalf("composed task filters = (%d, %q), want one alpha worktree task", scoped.code, scoped.stdout)
 	}
-	if _, err := state.UpdateManifest("alpha-history", func(manifest *store.Manifest) error {
-		manifest.RecoveryDebt = "launch_failed"
+	resourceIDs, err := state.ResourceIDs("alpha-history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resourceIDs) != 1 {
+		t.Fatalf("alpha-history resource IDs = %v, want one resource", resourceIDs)
+	}
+	if _, err := state.UpdateResource("alpha-history", resourceIDs[0], func(resource *store.Resource) error {
+		resource.RecoveryDebt = "launch_failed"
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	debtList := runCommand(t, []string{"task", "list"})
 	if debtList.code != 0 || !strings.Contains(debtList.stdout, "total: 4") || !strings.Contains(debtList.stdout, "alpha-history") {
-		t.Fatalf("debt-bearing task list = (%d, %q), want archived task retained", debtList.code, debtList.stdout)
+		t.Fatalf("resource debt task list = (%d, %q), want archived task retained", debtList.code, debtList.stdout)
+	}
+}
+
+func TestTaskListRetainsIndependentCleanupDebt(t *testing.T) {
+	setupTaskCommandTest(t)
+	const taskID = "cleanup-debt-104"
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Cleanup debt"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
+		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "archive", taskID}); result.code != 0 {
+		t.Fatalf("task archive = (%d, %q)", result.code, result.stdout)
+	}
+	state, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.UpdateManifest(taskID, func(manifest *store.Manifest) error {
+		manifest.CleanupState = "complete"
+		manifest.WorktreeCleanupState = "partial"
+		manifest.CredentialCleanupState = "complete"
+		manifest.CleanupDebt = false
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result := runCommand(t, []string{"task", "list"})
+	if result.code != 0 || !strings.Contains(result.stdout, taskID) || !strings.Contains(result.stdout, "total: 1") {
+		t.Fatalf("independent cleanup debt list = (%d, %q), want task retained", result.code, result.stdout)
+	}
+	all := runCommand(t, []string{"task", "list", "--all"})
+	if all.code != 0 || !strings.Contains(all.stdout, taskID) || !strings.Contains(all.stdout, "total: 1") {
+		t.Fatalf("all task list = (%d, %q), want historical task", all.code, all.stdout)
 	}
 }
 
