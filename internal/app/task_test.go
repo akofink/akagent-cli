@@ -425,6 +425,54 @@ func TestTaskListHidesArchivedResourcesWithAbsentCleanupState(t *testing.T) {
 	}
 }
 
+func TestTaskListHidesTaskArchiveWithUnrecordedResourceArchive(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	const taskID = "task-archive-resource-112"
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Archived task resource"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "resource", "create", taskID, "--resource-id", "resource", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("resource create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
+		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "archive", taskID}); result.code != 0 {
+		t.Fatalf("task archive = (%d, %q)", result.code, result.stdout)
+	}
+
+	defaultList := runCommand(t, []string{"task", "list"})
+	if defaultList.code != 0 || defaultList.stdout != "tasks: []\ntotal: 0\n" {
+		t.Fatalf("default task list = (%d, %q), want archived task hidden", defaultList.code, defaultList.stdout)
+	}
+	all := runCommand(t, []string{"task", "list", "--all"})
+	if all.code != 0 || !strings.Contains(all.stdout, taskID) || !strings.Contains(all.stdout, "total: 1") {
+		t.Fatalf("all task list = (%d, %q), want archived task", all.code, all.stdout)
+	}
+
+	state, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.UpdateResource(taskID, "resource", func(resource *store.Resource) error {
+		resource.CleanupState = "partial"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pending := runCommand(t, []string{"task", "list"})
+	if pending.code != 0 || !strings.Contains(pending.stdout, taskID) || !strings.Contains(pending.stdout, "total: 1") {
+		t.Fatalf("pending resource cleanup task list = (%d, %q), want archived task retained", pending.code, pending.stdout)
+	}
+}
+
 func TestTaskListRetainsIndependentCleanupDebt(t *testing.T) {
 	setupTaskCommandTest(t)
 	const taskID = "cleanup-debt-104"
