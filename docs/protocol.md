@@ -347,20 +347,21 @@ Exit code `0` means success or no-op.
 Exit code `1` means the requested operation could not be completed.
 Exit code `2` means the command or its arguments are invalid.
 
-## Orchestration and integration signal
+## Self-service and optional integration signal
 
-Agent orchestration is enabled by default over this stable CLI protocol.
-The agent skill owns automated lifecycle behavior and direct human commands remain available independently.
+Agent self-service is the normal workflow over this stable CLI protocol.
+Coding agents create, inspect, update, reconcile, and archive their own task, resource, and execution state through direct CLI commands.
+Optional integrations may use the same lifecycle, while direct human commands remain available independently.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
-`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
-`akagent integration inspect` reports the read-only state.
-`akagent integration launch` is the provider-neutral automated workflow adapter.
+`AKAGENT_ENABLED` is the immediate per-environment compatibility signal for optional automated integrations.
+At the CLI boundary, optional automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
+`akagent integration inspect` reports the read-only compatibility state and is not a prerequisite for direct CLI use.
+`akagent integration launch` is an optional provider-neutral automated workflow entry point.
 It requires a stable execution ID, checks the signal before opening the state store, and uses the generic execution lifecycle with target `workflow`.
 When disabled, it returns a skipped success and creates no lifecycle state.
-The signal controls automated invocation only.
-Direct human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
+The signal controls optional automated integration invocation only.
+Direct agent and human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
 
 ## Concurrency and consistency
 

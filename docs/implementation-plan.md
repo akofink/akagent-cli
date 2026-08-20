@@ -36,7 +36,7 @@ The local lifecycle implementation established:
 - Durable condition publication, finish, stop, and reconciliation.
 - Archive capture and cleanup-preservation policy.
 - Independent archive, worktree-cleanup, credential-cleanup, and recovery-debt state.
-- Default-on automated integration gating with an immediate per-environment disable path.
+- An optional automated integration compatibility signal, enabled by default for integrations, with an immediate per-environment disable path.
 - Generic execution primitives with optional provider integrations, including managed local Pi, layered on top of task and resource state.
 
 Task and resource creation, cleanup ownership checks, and reconciliation use the registered worktree root.
@@ -47,16 +47,17 @@ The removed `task start` shortcut is rejected with migration guidance.
 Approval-gated worktree and credential cleanup hooks are implemented for task and resource cleanup.
 Credential cleanup is task-scoped, independently approval-gated, durable, and retryable without repeating Git cleanup.
 
-## Current orchestration boundary
+## Current self-service and integration boundary
 
-Agent orchestration is enabled by default over the stable CLI boundary.
-The agent skill owns automated lifecycle behavior, while direct human CLI commands remain available.
+Agent self-service is the normal workflow over the stable CLI boundary.
+The coding agent owns task, resource, and execution state through direct CLI commands, while optional integrations may use the same lifecycle.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
-`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
-The provider-neutral `integration launch` command is the first broader workflow adapter.
+`AKAGENT_ENABLED` remains the immediate per-environment compatibility signal for optional automated integrations.
+At the CLI boundary, optional automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
+The optional provider-neutral `integration launch` command is a compatibility entry point for automated workflows.
 It requires a stable execution ID, persists a generic execution, and delegates process startup to the existing lifecycle.
+The signal is not a prerequisite for direct CLI commands or optional execution targets.
 
 ## Current command surface
 

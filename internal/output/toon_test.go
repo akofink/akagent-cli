@@ -91,13 +91,13 @@ func TestSchemaOutputs(t *testing.T) {
 			name: "home view with empty task list",
 			value: homeView{
 				Bin:         "~/bin/akagent",
-				Description: "Orchestrate local coding agents",
+				Description: "Manage local coding-agent tasks with durable state",
 				Tasks:       []string{},
 				Help: []string{
 					"Run `akagent id generate` to create a task ID",
 				},
 			},
-			want: "bin: ~/bin/akagent\ndescription: Orchestrate local coding agents\ntasks: []\nhelp[1]: Run `akagent id generate` to create a task ID\n",
+			want: "bin: ~/bin/akagent\ndescription: Manage local coding-agent tasks with durable state\ntasks: []\nhelp[1]: Run `akagent id generate` to create a task ID\n",
 		},
 		{
 			name: "worker inspect",

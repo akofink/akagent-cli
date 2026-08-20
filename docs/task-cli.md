@@ -1,7 +1,8 @@
 # Task CLI contract
 
-The task command is the stable command boundary for local task lifecycle operations.
-Automated local workflow integrations use the separate `integration launch` command and still persist generic executions through this boundary.
+The task command is the stable command boundary for self-service local task lifecycle operations.
+Coding agents normally use task, resource, and execution commands directly to maintain their own durable work state.
+Optional automated local workflow integrations can use the separate `integration launch` command and still persist generic executions through this boundary.
 
 All protocol data and errors are written to stdout as TOON.
 Diagnostics are not mixed into protocol output.
@@ -248,16 +249,16 @@ Resource inspect and mutation output uses one `resource` object.
 Task inspection additionally emits `resources[<n>]` and `executions[<n>]` snapshots so it is sufficient for durable work-state recovery.
 Execution inspection emits full `session_references[<n>]` entries; execution list output uses a compact session summary.
 
-## Orchestration and integration signal
+## Self-service and optional integration signal
 
-Agent orchestration is enabled by default over the stable task CLI boundary.
-The agent skill owns automated lifecycle behavior and direct human commands remain available independently.
+Agent self-service is the normal workflow over the stable task CLI boundary.
+Coding agents use direct task, resource, and execution commands to own durable lifecycle state, while optional integrations may use the same boundary.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 
-`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-Automation is enabled at the CLI boundary unless `AKAGENT_ENABLED` is set to the exact value `0`.
-`akagent integration inspect` reports the read-only state.
-Direct human commands, including explicit shell execution and optional Pi selection, are unaffected.
+`AKAGENT_ENABLED` remains the immediate per-environment compatibility signal for optional automated integrations.
+Optional automation is enabled at the CLI boundary unless `AKAGENT_ENABLED` is set to the exact value `0`.
+`akagent integration inspect` reports the read-only compatibility state and is not a prerequisite for direct CLI use.
+Direct agent and human commands, including explicit shell execution and optional Pi selection, are unaffected.
 
 ## Errors
 

@@ -16,7 +16,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const description = "Orchestrate local coding agents through tmux and Git worktrees"
+const description = "Manage local coding-agent tasks with durable state, Git worktrees, and tmux recovery"
 
 type homeView struct {
 	Bin         string   `json:"bin"`
@@ -193,6 +193,8 @@ func home() homeView {
 		Description: description,
 		Tasks:       []string{},
 		Help: []string{
+			"Use `akagent task ...` directly for self-service task lifecycle management",
+			"Run `akagent integration inspect` only to inspect optional integration compatibility",
 			"Run `akagent credential doctor` to check local credential readiness",
 			"Run `akagent id generate` to create a task ID",
 			"Run `akagent update` to update from the local source checkout",
