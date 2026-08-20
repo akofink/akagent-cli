@@ -86,8 +86,8 @@ When `--worktree` is omitted, its directory name is the branch label after the o
 Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
 The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.
 The default task list shows actionable records only, while `--all` includes archived history.
-Actionable records include non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
-Use `--repository` and `--worktree` to compose deterministic exact-match filters.
+Actionable records include non-archived tasks and archived tasks with incomplete task or resource cleanup, cleanup debt, or recovery debt.
+Use `--all` to include fully archived history, and use `--repository` and `--worktree` to compose deterministic exact-match filters.
 Task creation does not create a tmux resource or start a process.
 The explicit shell launch command creates a generic execution in a task-tagged tmux window when the agent or operator wants an interactive surface.
 Its display name is derived from the selected resource or task branch without the owner prefix, or supplied with `--label <descriptive-label>` when no branch is available.

@@ -244,9 +244,9 @@ Task resource and execution operations use the same compact TOON boundary.
 `task resource list` returns `resources[]` and `total`, while inspect returns one `resource` object.
 Metadata and external URLs are emitted when present and are preserved in resource archives, task archive resource snapshots, and reconciliation.
 `task execution list` returns `executions[]` and `total`, while inspect returns one `execution` object.
-The default list includes actionable records: non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
+The default list includes actionable records: non-archived tasks and archived tasks with incomplete task or resource cleanup, cleanup debt, or recovery debt.
 Only fully archived, fully cleaned, debt-free records are hidden by default.
-`task list --all` includes all durable task records.
+`task list --all` includes all durable task records, including historical records that are complete.
 `--repository <name>` and `--worktree <path>` apply deterministic exact-match filters that compose with `--all`.
 Detail views include task identity, computed status, branch and worktree facts, conditions, results, recovery fields, all task resources, and all task executions when present.
 Execution detail includes full session references, while execution list output includes a compact `tool:session-id` summary.
