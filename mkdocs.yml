@@ -11,6 +11,9 @@ nav:
   - Home: README.md
   - Getting started:
       - Quick start: quick-start.md
+      - Agent integration: agent-integration.md
+      - AGENTS template: AGENTS.md
+      - Lifecycle skill: skills/akagent-lifecycle/SKILL.md
   - Concepts:
       - Architecture: architecture.md
       - Protocol: protocol.md

@@ -29,6 +29,7 @@ No launch adapter or daemon is required.
 - A per-environment integration signal inspected by `akagent integration inspect`.
 - A stable CLI boundary that lets coding agents manage task, resource, and execution lifecycle without a parent orchestrator.
 - Work-scoped deployment executions with readiness checks, in-memory environment injection, and durable success or failure results.
+- Public coding-agent scaffolding from #108, delivered by this PR, including the integration guide, generic `AGENTS.md` template, and reusable lifecycle skill.
 
 ## Current workflow
 
@@ -125,7 +126,7 @@ Agents perform provider-specific pull request operations with tools such as `gh`
 ## Self-service adoption boundary
 
 The coding agent owns the durable lifecycle through `akagent`.
-The normal sequence is to create task intent, create or select resources, create or launch executions, publish conditions and activity, record session and delivery metadata, reconcile observations, and archive the result.
+The self-service workflow is to create task intent, create or select resources, create or launch an execution, publish conditions and activity, record session and delivery metadata, reconcile uncertain mutations, then finish and archive the result.
 
 `akagent integration inspect` remains a read-only compatibility signal for optional integrations.
 It is not a prerequisite for direct CLI use, and the core workflow does not require a launch adapter or daemon.
@@ -148,9 +149,8 @@ akagent worker inspect
 
 ## Tracked follow-ups
 
-- Skill-guided adoption in ordinary coding workflows.
+- Skill-guided adoption in ordinary coding workflows remains the primary follow-up.
 - Durable examples for session provenance, pull-request metadata, reconciliation, and archive recovery.
-- Destructive worktree and credential cleanup hooks.
 - Broader local deployment integrations beyond direct executable commands.
 
 Launch adapters, resident daemons, and remote orchestration are explicitly out of scope for the normal workflow.

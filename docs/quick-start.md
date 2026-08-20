@@ -7,6 +7,8 @@ Agents use it directly for durable task records, Git worktrees, status, recovery
 Tmux-backed interaction is optional visibility and recovery, not the durable source of truth.
 It writes protocol data and errors as TOON on stdout.
 
+For a reusable integration, start with the [progressive agent integration guide](agent-integration.md), its [generic `AGENTS.md` template](AGENTS.md), and its [lifecycle skill](skills/akagent-lifecycle/SKILL.md).
+
 ## Install or update
 
 Build the binary from a public source checkout:
