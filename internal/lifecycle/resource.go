@@ -225,7 +225,9 @@ func (m *Manager) CleanResource(taskID, resourceID string, options CleanupOption
 	if err != nil {
 		return store.Resource{}, err
 	}
-	if resource.CleanupState == cleanupComplete && resource.CredentialCleanupState == cleanupComplete {
+	if resource.CleanupState == cleanupComplete &&
+		resource.WorktreeCleanupState == cleanupComplete &&
+		resource.CredentialCleanupState == cleanupComplete {
 		return resource, nil
 	}
 	if resource.ArchiveState != archiveComplete {

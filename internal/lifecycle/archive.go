@@ -184,7 +184,9 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 	if err != nil {
 		return store.Manifest{}, err
 	}
-	if manifest.CleanupState == cleanupComplete && manifest.CredentialCleanupState == cleanupComplete {
+	if manifest.CleanupState == cleanupComplete &&
+		manifest.WorktreeCleanupState == cleanupComplete &&
+		manifest.CredentialCleanupState == cleanupComplete {
 		return manifest, nil
 	}
 	live, available, err := m.taskLive(id)

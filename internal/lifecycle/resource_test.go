@@ -123,6 +123,42 @@ func TestResourceCredentialCleanupIsIndependentAndRetryable(t *testing.T) {
 	}
 }
 
+func TestCleanResourceRetriesWorktreeWhenOtherCleanupStatesAreComplete(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if _, err := manager.Create(CreateRequest{ID: "resource-worktree-retry", Title: "Retry resource cleanup"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateResource("resource-worktree-retry", ResourceRequest{ID: "resource", Repository: "demo"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Stop("resource-worktree-retry"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ArchiveResource("resource-worktree-retry", "resource"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateResource("resource-worktree-retry", "resource", func(resource *store.Resource) error {
+		resource.CleanupState = cleanupComplete
+		resource.WorktreeCleanupState = cleanupPartial
+		resource.CredentialCleanupState = cleanupComplete
+		resource.CleanupDebt = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	manager.CleanupWorktree = func(store.Manifest, store.GitFacts) error {
+		called = true
+		return nil
+	}
+	if _, err := manager.CleanResource("resource-worktree-retry", "resource", CleanupOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("CleanResource() skipped incomplete worktree cleanup")
+	}
+}
+
 func TestResourceMetadataSurvivesUpdateArchiveAndReconcile(t *testing.T) {
 	manager, _ := newTestManager(t)
 	if _, err := manager.Create(CreateRequest{ID: "metadata-task", Title: "Delivery metadata"}); err != nil {

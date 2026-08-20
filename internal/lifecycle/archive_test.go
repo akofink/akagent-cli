@@ -151,6 +151,33 @@ func TestCleanRequiresExplicitPreservationAuthorization(t *testing.T) {
 	}
 }
 
+func TestCleanRetriesWorktreeWhenOtherCleanupStatesAreComplete(t *testing.T) {
+	manager, _ := stoppedManager(t, "cleanup-worktree-retry")
+	if _, err := manager.Archive("cleanup-worktree-retry"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateManifest("cleanup-worktree-retry", func(manifest *store.Manifest) error {
+		manifest.CleanupState = cleanupComplete
+		manifest.WorktreeCleanupState = cleanupPartial
+		manifest.CredentialCleanupState = cleanupComplete
+		manifest.CleanupDebt = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	manager.CleanupWorktree = func(store.Manifest, store.GitFacts) error {
+		called = true
+		return nil
+	}
+	if _, err := manager.Clean("cleanup-worktree-retry", CleanupOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("Clean() skipped incomplete worktree cleanup")
+	}
+}
+
 func TestCleanTracksCredentialDebtIndependentlyAndRetries(t *testing.T) {
 	manager, _ := stoppedManager(t, "clean-2")
 	manager.CleanupCredentials = func(store.Manifest) error { return errors.New("credential cleanup unavailable") }
