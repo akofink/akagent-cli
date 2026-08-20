@@ -187,6 +187,13 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 	if manifest.CleanupState == cleanupComplete &&
 		manifest.WorktreeCleanupState == cleanupComplete &&
 		manifest.CredentialCleanupState == cleanupComplete {
+		resolvedDebt := removeDebt(manifest.RecoveryDebt, "uncommitted_work")
+		if resolvedDebt != manifest.RecoveryDebt {
+			manifest.RecoveryDebt = resolvedDebt
+			if err := m.Store.WriteManifest(id, manifest); err != nil {
+				return manifest, err
+			}
+		}
 		return manifest, nil
 	}
 	live, available, err := m.taskLive(id)
@@ -321,6 +328,14 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 	}
 	if err := appendOperationEvent(m.Store, id, "cleanup", "succeeded", "cleanup complete"); err != nil {
 		return m.cleanupFailure(id, manifest, err)
+	}
+	resolved := manifest
+	resolved.RecoveryDebt = removeDebt(resolved.RecoveryDebt, "uncommitted_work")
+	if resolved.RecoveryDebt != manifest.RecoveryDebt {
+		if err := m.Store.WriteManifest(id, resolved); err != nil {
+			return m.cleanupFailure(id, manifest, err)
+		}
+		manifest = resolved
 	}
 	return manifest, nil
 }
