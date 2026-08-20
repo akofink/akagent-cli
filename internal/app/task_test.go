@@ -473,6 +473,61 @@ func TestTaskListHidesTaskArchiveWithUnrecordedResourceArchive(t *testing.T) {
 	}
 }
 
+func TestResourceCleanupClearsResolvedDebtFromDefaultTaskList(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "worktree"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	const taskID = "cleanup-debt-114"
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Cleanup debt", "--repository", "demo", "--branch", "main"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
+		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "archive", taskID}); result.code != 0 {
+		t.Fatalf("task archive = (%d, %q)", result.code, result.stdout)
+	}
+
+	state, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resourceIDs, err := state.ResourceIDs(taskID)
+	if err != nil || len(resourceIDs) != 1 {
+		t.Fatalf("resource IDs = %v, %v; want one resource", resourceIDs, err)
+	}
+	if _, err := state.UpdateResource(taskID, resourceIDs[0], func(resource *store.Resource) error {
+		resource.Git.Committed = false
+		resource.Git.Dirty = true
+		resource.Git.Untracked = true
+		resource.RecoveryDebt = "uncommitted_work"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cleaned := runCommand(t, []string{"task", "resource", "clean", taskID, resourceIDs[0], "--allow-dirty", "--allow-untracked", "--allow-worktree", "--allow-credentials"})
+	if cleaned.code != 0 || !strings.Contains(cleaned.stdout, "cleanup_state: complete") {
+		t.Fatalf("resource cleanup = (%d, %q), want completed cleanup", cleaned.code, cleaned.stdout)
+	}
+	defaultList := runCommand(t, []string{"task", "list"})
+	if defaultList.code != 0 || defaultList.stdout != "tasks: []\ntotal: 0\n" {
+		t.Fatalf("default task list after resolved cleanup = (%d, %q), want no actionable tasks", defaultList.code, defaultList.stdout)
+	}
+	resource, err := state.ReadResource(taskID, resourceIDs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.RecoveryDebt != "" {
+		t.Fatalf("cleaned resource recovery debt = %q, want empty", resource.RecoveryDebt)
+	}
+}
+
 func TestTaskListRetainsIndependentCleanupDebt(t *testing.T) {
 	setupTaskCommandTest(t)
 	const taskID = "cleanup-debt-104"

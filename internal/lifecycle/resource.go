@@ -228,6 +228,13 @@ func (m *Manager) CleanResource(taskID, resourceID string, options CleanupOption
 	if resource.CleanupState == cleanupComplete &&
 		resource.WorktreeCleanupState == cleanupComplete &&
 		resource.CredentialCleanupState == cleanupComplete {
+		resolvedDebt := removeDebt(resource.RecoveryDebt, "uncommitted_work")
+		if resolvedDebt != resource.RecoveryDebt {
+			resource.RecoveryDebt = resolvedDebt
+			if err := m.Store.WriteResource(taskID, resource); err != nil {
+				return resource, err
+			}
+		}
 		return resource, nil
 	}
 	if resource.ArchiveState != archiveComplete {
@@ -306,6 +313,14 @@ func (m *Manager) CleanResource(taskID, resourceID string, options CleanupOption
 	}
 	if _, err := m.Store.AppendResourceEvent(taskID, resource.ID, store.Event{Operation: "cleanup", Outcome: "succeeded"}); err != nil {
 		return m.resourceCleanupFailure(resource, err)
+	}
+	resolved := resource
+	resolved.RecoveryDebt = removeDebt(resolved.RecoveryDebt, "uncommitted_work")
+	if resolved.RecoveryDebt != resource.RecoveryDebt {
+		if err := m.Store.WriteResource(taskID, resolved); err != nil {
+			return m.resourceCleanupFailure(resource, err)
+		}
+		resource = resolved
 	}
 	return resource, nil
 }

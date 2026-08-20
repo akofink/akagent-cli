@@ -123,6 +123,87 @@ func TestResourceCredentialCleanupIsIndependentAndRetryable(t *testing.T) {
 	}
 }
 
+func TestCleanResourceClearsResolvedWorktreeRecoveryDebt(t *testing.T) {
+	manager, _ := newTestManager(t)
+	repository := registerWorktreeRepository(t, manager, "resolved-worktree-debt")
+	if _, err := manager.Create(CreateRequest{ID: "resolved-worktree-debt", Title: "Resolved worktree debt"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateResource("resolved-worktree-debt", ResourceRequest{ID: "resource", Repository: repository.Name, Branch: "akofink/resolved-worktree-debt"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Stop("resolved-worktree-debt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ArchiveResource("resolved-worktree-debt", "resource"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateResource("resolved-worktree-debt", "resource", func(resource *store.Resource) error {
+		resource.Git.Committed = false
+		resource.Git.Dirty = true
+		resource.Git.Untracked = true
+		resource.RecoveryDebt = "uncommitted_work;launch_failed"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resource, err := manager.CleanResource("resolved-worktree-debt", "resource", CleanupOptions{AllowDirty: true, AllowUntracked: true, AllowWorktree: true, AllowCredentials: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.RecoveryDebt != "launch_failed" {
+		t.Fatalf("cleaned resource recovery debt = %q, want unresolved debt preserved without uncommitted work", resource.RecoveryDebt)
+	}
+	resource, err = manager.InspectResource("resolved-worktree-debt", "resource")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.RecoveryDebt != "launch_failed" || resource.CleanupState != cleanupComplete || resource.WorktreeCleanupState != cleanupComplete {
+		t.Fatalf("persisted resource = %#v, want complete cleanup and launch debt only", resource)
+	}
+}
+
+func TestCleanResourcePreservesDebtWhenWorktreeCleanupFails(t *testing.T) {
+	manager, _ := newTestManager(t)
+	repository := registerWorktreeRepository(t, manager, "failed-worktree-debt")
+	if _, err := manager.Create(CreateRequest{ID: "failed-worktree-debt", Title: "Failed worktree cleanup"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateResource("failed-worktree-debt", ResourceRequest{ID: "resource", Repository: repository.Name, Branch: "akofink/failed-worktree-debt"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Stop("failed-worktree-debt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ArchiveResource("failed-worktree-debt", "resource"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateResource("failed-worktree-debt", "resource", func(resource *store.Resource) error {
+		resource.Git.Committed = false
+		resource.Git.Dirty = true
+		resource.Git.Untracked = true
+		resource.RecoveryDebt = "uncommitted_work;cleanup_failed"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager.CleanupWorktree = func(store.Manifest, store.GitFacts) error {
+		return errors.New("worktree cleanup unavailable")
+	}
+
+	if _, err := manager.CleanResource("failed-worktree-debt", "resource", CleanupOptions{AllowDirty: true, AllowUntracked: true, AllowWorktree: true, AllowCredentials: true}); err == nil {
+		t.Fatal("CleanResource() succeeded despite worktree cleanup failure")
+	}
+	resource, err := manager.InspectResource("failed-worktree-debt", "resource")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resource.RecoveryDebt != "uncommitted_work;cleanup_failed" {
+		t.Fatalf("failed cleanup recovery debt = %q, want all unresolved debt preserved", resource.RecoveryDebt)
+	}
+}
+
 func TestCleanResourceRetriesWorktreeWhenOtherCleanupStatesAreComplete(t *testing.T) {
 	manager, _ := newTestManager(t)
 	if _, err := manager.Create(CreateRequest{ID: "resource-worktree-retry", Title: "Retry resource cleanup"}); err != nil {
