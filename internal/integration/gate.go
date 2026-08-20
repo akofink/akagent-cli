@@ -1,4 +1,4 @@
-// Package integration defines the default-on gate for automated akagent integrations.
+// Package integration defines compatibility signals and optional integrations for akagent.
 package integration
 
 import (

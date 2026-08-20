@@ -77,6 +77,20 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+func TestHomeHelpPromotesSelfService(t *testing.T) {
+	var stdout bytes.Buffer
+
+	if exitCode := Run(nil, &stdout); exitCode != 0 {
+		t.Fatalf("Run() exit code = %d, want 0", exitCode)
+	}
+
+	for _, expected := range []string{"Manage local coding-agent tasks", "self-service task lifecycle management", "optional integration compatibility"} {
+		if !strings.Contains(stdout.String(), expected) {
+			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
+		}
+	}
+}
+
 func TestUpdateRejectsUnknownArguments(t *testing.T) {
 	var stdout bytes.Buffer
 

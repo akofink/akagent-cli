@@ -5,7 +5,7 @@
 Standardize task identity, lifecycle operations, durable records, and recovery behavior.
 Do not make unlike execution environments appear identical.
 
-The current system is a local task coordinator with a stable CLI protocol.
+The current system is a local self-service task boundary with a stable CLI protocol.
 
 ## One executable and current surfaces
 
@@ -45,7 +45,7 @@ The CLI:
 - Validates named credential requirements.
 - Invokes local lifecycle operations.
 - Emits concise TOON data and structured errors.
-- Provides read-only integration-gate inspection.
+- Provides read-only compatibility inspection for optional integrations.
 
 The first release has one implicit local worker.
 
@@ -128,9 +128,10 @@ Deployment execution state remains independent from resource cleanup and task ar
 Shell helpers, LLM hooks, plugins, and installable skills are optional adapters.
 They must invoke the CLI, request small field sets, preserve structured errors, and never write the task store directly.
 
-Automated integrations are enabled unless `AKAGENT_ENABLED=0` is present.
-The provider-neutral `integration launch` adapter checks the gate before opening the state store, records a generic workflow execution, and delegates startup to the lifecycle.
-A disabled adapter has no lifecycle side effects, while direct human commands, including explicit shell execution and optional Pi selection, remain available.
+Optional automated integrations are enabled unless `AKAGENT_ENABLED=0` is present.
+The optional provider-neutral `integration launch` entry point checks the compatibility signal before opening the state store, records a generic workflow execution, and delegates startup to the lifecycle.
+A disabled integration has no lifecycle side effects, while direct agent and human commands, including explicit shell execution and optional Pi selection, remain available.
+The compatibility signal is not a prerequisite for direct CLI use.
 Forge and provider-specific behavior remains outside the core lifecycle.
 
 ## Failure assumptions
