@@ -989,8 +989,53 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 	return manifest, err
 }
 
-// Reconcile repairs derived observations and Git facts. It only removes a
-// window when its task and execution metadata are both verified.
+// ReconcileTask repairs one task's derived observations and Git facts. It
+// only removes a window when its task and execution metadata are both
+// verified, and never changes another task's state.
+func (m *Manager) ReconcileTask(taskID string) (store.Manifest, error) {
+	if _, err := m.Store.Recover(); err != nil {
+		return store.Manifest{}, err
+	}
+	return m.reconcileTask(taskID)
+}
+
+func (m *Manager) reconcileTask(taskID string) (store.Manifest, error) {
+	observation, err := m.Tmux.Observe(taskID)
+	if err != nil {
+		return store.Manifest{}, err
+	}
+	var changed bool
+	manifest, err := m.Store.UpdateManifest(taskID, func(manifest *store.Manifest) error {
+		beforeObservation, beforeLifecycle := manifest.Observation, manifest.Lifecycle
+		beforeGit := *manifest
+		legacyProcess := manifest.ProcessPID == 0 || manifest.ProcessStartTime == 0
+		applyObservation(manifest, observation, m.now(), m.heartbeatTimeout())
+		if legacyProcess && observation.Available && len(observation.Processes) == 0 && manifest.Lifecycle == "running" {
+			manifest.Lifecycle, manifest.Condition = "stopped", "none"
+		}
+		m.refreshGit(manifest)
+		changed = beforeObservation != manifest.Observation || beforeLifecycle != manifest.Lifecycle || !sameGitFacts(beforeGit, *manifest)
+		return nil
+	})
+	if err != nil {
+		return store.Manifest{}, err
+	}
+	if err := m.reconcileResources(taskID, manifest); err != nil {
+		return store.Manifest{}, err
+	}
+	if _, err := m.ReconcileExecutions(taskID); err != nil {
+		return store.Manifest{}, err
+	}
+	if changed {
+		if _, err := m.Store.AppendEvent(taskID, store.Event{Operation: "reconcile", Outcome: observationOutcome(manifest.Observation)}); err != nil {
+			return store.Manifest{}, err
+		}
+	}
+	return manifest, nil
+}
+
+// Reconcile repairs all tasks' derived observations and Git facts. It only
+// removes a window when its task and execution metadata are both verified.
 func (m *Manager) Reconcile() ([]store.Manifest, error) {
 	if _, err := m.Store.Recover(); err != nil {
 		return nil, err
@@ -1001,36 +1046,9 @@ func (m *Manager) Reconcile() ([]store.Manifest, error) {
 	}
 	manifests := make([]store.Manifest, 0, len(ids))
 	for _, id := range ids {
-		observation, err := m.Tmux.Observe(id)
+		manifest, err := m.reconcileTask(id)
 		if err != nil {
 			return nil, err
-		}
-		var changed bool
-		manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
-			beforeObservation, beforeLifecycle := manifest.Observation, manifest.Lifecycle
-			beforeGit := *manifest
-			legacyProcess := manifest.ProcessPID == 0 || manifest.ProcessStartTime == 0
-			applyObservation(manifest, observation, m.now(), m.heartbeatTimeout())
-			if legacyProcess && observation.Available && len(observation.Processes) == 0 && manifest.Lifecycle == "running" {
-				manifest.Lifecycle, manifest.Condition = "stopped", "none"
-			}
-			m.refreshGit(manifest)
-			changed = beforeObservation != manifest.Observation || beforeLifecycle != manifest.Lifecycle || !sameGitFacts(beforeGit, *manifest)
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		if err := m.reconcileResources(id, manifest); err != nil {
-			return nil, err
-		}
-		if _, err := m.ReconcileExecutions(id); err != nil {
-			return nil, err
-		}
-		if changed {
-			if _, err := m.Store.AppendEvent(id, store.Event{Operation: "reconcile", Outcome: observationOutcome(manifest.Observation)}); err != nil {
-				return nil, err
-			}
 		}
 		manifests = append(manifests, manifest)
 	}

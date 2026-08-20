@@ -245,6 +245,119 @@ func TestReconcileStopsStaleTerminalExecutionWindow(t *testing.T) {
 	}
 }
 
+func TestReconcileRecoversExitedExecutionAndPreservesSessionReference(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	if _, err := manager.Create(CreateRequest{ID: "orphaned-execution-task", Title: "Orphaned execution"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("orphaned-execution-task", ExecutionRequest{ID: "orphaned-execution", Target: "pi", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.LaunchExecutionRecord("orphaned-execution-task", "orphaned-execution"); err != nil {
+		t.Fatal(err)
+	}
+	reference := store.SessionReference{Tool: "pi", SessionID: "resume-me"}
+	if _, err := manager.AddExecutionSessionReference("orphaned-execution-task", "orphaned-execution", reference); err != nil {
+		t.Fatal(err)
+	}
+	tmux.observation = TmuxObservation{Available: true}
+
+	if _, err := manager.ReconcileTask("orphaned-execution-task"); err != nil {
+		t.Fatal(err)
+	}
+	execution, err := manager.InspectExecution("orphaned-execution-task", "orphaned-execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Lifecycle != "stopped" || execution.Condition != "none" || execution.Observation != ObservationMissing {
+		t.Fatalf("reconciled orphan = %#v, want stopped, none, missing", execution)
+	}
+	if len(execution.SessionReferences) != 1 || execution.SessionReferences[0] != reference {
+		t.Fatalf("reconciled session references = %#v, want %#v", execution.SessionReferences, []store.SessionReference{reference})
+	}
+}
+
+func TestReconcileRecoversActiveCreatedExecutionButPreservesLaunchIntent(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	if _, err := manager.Create(CreateRequest{ID: "created-orphan-task", Title: "Created orphan"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("created-orphan-task", ExecutionRequest{ID: "active-created", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.PublishExecution("created-orphan-task", "active-created", "active", "delegated", "working"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ReconcileTask("created-orphan-task"); err != nil {
+		t.Fatal(err)
+	}
+	execution, err := manager.InspectExecution("created-orphan-task", "active-created")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Lifecycle != "stopped" || execution.Condition != "none" {
+		t.Fatalf("reconciled active created execution = %#v, want stopped and none", execution)
+	}
+
+	if _, _, err := manager.CreateExecution("created-orphan-task", ExecutionRequest{ID: "launch-intent", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ReconcileTask("created-orphan-task"); err != nil {
+		t.Fatal(err)
+	}
+	intent, err := manager.InspectExecution("created-orphan-task", "launch-intent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if intent.Lifecycle != "created" || intent.Condition != "none" {
+		t.Fatalf("plain launch intent = %#v, want unchanged created and none", intent)
+	}
+}
+
+func TestReconcileTaskDoesNotTouchAnotherTask(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	for _, taskID := range []string{"scoped-orphan", "scoped-other"} {
+		if _, err := manager.Create(CreateRequest{ID: taskID, Title: taskID}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := manager.CreateExecution(taskID, ExecutionRequest{ID: "execution", Target: "shell", Command: "/bin/sh"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := manager.Store.UpdateExecution("scoped-orphan", "execution", func(execution *store.Execution) error {
+		execution.Lifecycle = "starting"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateExecution("scoped-other", "execution", func(execution *store.Execution) error {
+		execution.Lifecycle = "starting"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ReconcileTask("scoped-orphan"); err != nil {
+		t.Fatal(err)
+	}
+	orphan, err := manager.InspectExecution("scoped-orphan", "execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := manager.InspectExecution("scoped-other", "execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orphan.Lifecycle != "stopped" || other.Lifecycle != "starting" {
+		t.Fatalf("scoped reconciliation changed executions: orphan=%#v other=%#v", orphan, other)
+	}
+}
+
 func TestReconcileClearsStaleExecutionState(t *testing.T) {
 	manager, _ := newTestManager(t)
 	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}

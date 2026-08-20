@@ -433,7 +433,8 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 		if observeErr != nil {
 			return nil, observeErr
 		}
-		if observation.Available && len(observation.Processes) > 0 && execution.Lifecycle != "running" {
+		hadTaggedWindow := observation.Available && len(observation.Processes) > 0
+		if hadTaggedWindow && execution.Lifecycle != "running" {
 			if err := m.stopExecutionWindow(taskID, id); err != nil {
 				return nil, err
 			}
@@ -445,7 +446,7 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 		before := execution
 		now := m.now()
 		applyExecutionObservation(&execution, observation, now, m.heartbeatTimeout())
-		if execution.Lifecycle == "running" && observation.Available && len(observation.Processes) == 0 {
+		if observation.Available && len(observation.Processes) == 0 && (executionNeedsRecovery(execution) || hadTaggedWindow) {
 			execution.Lifecycle, execution.Condition = "stopped", "none"
 		}
 		if reflect.DeepEqual(execution, before) {
@@ -460,6 +461,19 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 		result = append(result, execution)
 	}
 	return result, nil
+}
+
+func executionNeedsRecovery(execution store.Execution) bool {
+	switch execution.Lifecycle {
+	case "running", "starting":
+		return true
+	case "created":
+		// A plain created record is an intentional launch opportunity. Only
+		// recover it when another durable field proves that work had started.
+		return execution.Condition != "none" || execution.TmuxWindow != "" || execution.ProcessPID != 0 || execution.ProcessStartTime != 0 || execution.ProcessPane != "" || len(execution.SessionReferences) > 0
+	default:
+		return false
+	}
 }
 
 func (m *Manager) stopExecutionWindow(taskID, executionID string) error {
