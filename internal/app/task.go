@@ -361,14 +361,25 @@ func taskCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "reconcile":
-		if len(args) != 1 {
+		if len(args) > 2 || (len(args) == 2 && strings.HasPrefix(args[1], "-")) {
 			return taskUsage(stdout)
 		}
-		manifests, err := manager.Reconcile()
-		if err != nil {
-			return lifecycleError(stdout, err)
+		var manifests []store.Manifest
+		var ids []string
+		if len(args) == 2 {
+			manifest, err := manager.ReconcileTask(args[1])
+			if err != nil {
+				return lifecycleError(stdout, err)
+			}
+			manifests, ids = []store.Manifest{manifest}, []string{args[1]}
+		} else {
+			var err error
+			manifests, err = manager.Reconcile()
+			if err != nil {
+				return lifecycleError(stdout, err)
+			}
+			ids, _ = state.TaskIDs()
 		}
-		ids, _ := state.TaskIDs()
 		items := make([]taskView, 0, len(manifests))
 		for index, manifest := range manifests {
 			items = append(items, view(ids[index], manifest))

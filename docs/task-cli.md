@@ -76,7 +76,7 @@ akagent task finish <task-id> <succeeded|failed> <result>
 akagent task stop <task-id>
 akagent task archive <task-id>
 akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]
-akagent task reconcile
+akagent task reconcile [<task-id>]
 ```
 
 A task ID is generated when `--task-id` is omitted.
@@ -188,7 +188,9 @@ Credential cleanup is a separate destructive hook and requires `--allow-credenti
 A refused or failed credential hook records `blocked` or `partial` credential cleanup state and preserves retryable cleanup debt.
 
 Reconciliation repairs derived observations and Git facts for the task and each resource.
+Use `task reconcile <task-id>` to recover one task without touching other tasks.
 It preserves integration-owned session references without parsing provider files.
+Missing tagged windows recover executions that were starting or active, while a plain created execution remains a launch intent.
 For non-running executions, it safely closes and verifies any matching tagged window left by a stale observation.
 A failed verification is retryable and does not claim the execution is stopped.
 It never deletes task state, branches, worktrees, terminal history, or unverified windows.

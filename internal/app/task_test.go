@@ -404,6 +404,13 @@ func TestTaskReconcileCommandContract(t *testing.T) {
 	if result.code != 0 || result.stdout != want {
 		t.Fatalf("task reconcile = (%d, %q), want (0, %q)", result.code, result.stdout, want)
 	}
+	if result := runCommand(t, []string{"task", "create", "--task-id", "reconcile-other", "--title", "Other"}); result.code != 0 {
+		t.Fatalf("other task create = (%d, %q)", result.code, result.stdout)
+	}
+	result = runCommand(t, []string{"task", "reconcile", "reconcile-14"})
+	if result.code != 0 || result.stdout != want {
+		t.Fatalf("scoped task reconcile = (%d, %q), want (0, %q)", result.code, result.stdout, want)
+	}
 }
 
 func TestSerializationFailureHasStructuredCategory(t *testing.T) {
