@@ -66,7 +66,7 @@ akagent task create --title <title> [--task-id <id>] [--repository <name>] [--re
 akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]
 akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile> ...
-akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]
+akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]
 akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]
 akagent task list [--all] [--repository <name>] [--worktree <path>]
 akagent task inspect <task-id>
@@ -144,6 +144,9 @@ akagent task execution launch <task-id> coordinator
 `--target pi` is an optional integration target.
 It checks for `pi` only when selected, then creates a generic execution whose worker integration starts Pi.
 Core task, resource, and generic execution commands do not require Pi to be installed.
+Managed Pi launches explicitly pass `--provider openai-codex --model gpt-5.6-luna --thinking high` by default.
+Use `--provider`, `--model`, and `--thinking` to request a validated non-secret override.
+The policy is persisted as launch arguments and never includes provider credentials.
 
 `--prompt` stores a reference to a regular local prompt file.
 The Pi integration passes only the validated file reference to Pi and leaves standard input attached to the tmux terminal.

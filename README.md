@@ -83,9 +83,12 @@ Use the direct shell target when a human wants a shell without any provider inte
 ```bash
 akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
-akagent task launch <task-id> --target pi --prompt /path/to/prompt.txt --context "example"
+akagent task launch <task-id> --target pi --provider openai-codex --model gpt-5.6-luna --thinking high \
+  --prompt /path/to/prompt.txt --context "example"
 ```
 
+Managed Pi launches default to the explicit policy `--provider openai-codex --model gpt-5.6-luna --thinking high`.
+Use `--provider`, `--model`, and `--thinking` for validated non-secret overrides.
 A Pi launch failure leaves the generic execution recoverable and does not change resource state.
 The managed process receives a minimal safe environment and only requested environment credentials that pass readiness checks.
 Optional credentials produce non-secret warnings; file credentials are readiness-only and cannot be injected.

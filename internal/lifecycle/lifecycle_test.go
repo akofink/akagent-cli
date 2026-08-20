@@ -186,11 +186,12 @@ func TestManagedStartPersistsExplicitLaunchConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.ResolveAgent = func(string) (string, error) { return "/usr/local/bin/pi", nil }
-	result, err := manager.Start(StartRequest{ID: "managed-1", Title: "Managed Pi", Repository: "demo", Agent: "pi", PromptReference: prompt, WorkingContext: "issue-22"})
+	request := StartRequest{ID: "managed-1", Title: "Managed Pi", Repository: "demo", Agent: "pi", Provider: "anthropic", Model: "claude-sonnet", Thinking: "low", PromptReference: prompt, WorkingContext: "issue-22"}
+	result, err := manager.Start(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Manifest.Launch == nil || result.Manifest.Launch.Target != "pi" || result.Manifest.Launch.Command != "/usr/local/bin/pi" || result.Manifest.Launch.PromptReference != prompt || result.Manifest.Launch.WorkingContext != "issue-22" {
+	if result.Manifest.Launch == nil || result.Manifest.Launch.Target != "pi" || result.Manifest.Launch.Command != "/usr/local/bin/pi" || result.Manifest.Launch.Provider != "anthropic" || result.Manifest.Launch.Model != "claude-sonnet" || result.Manifest.Launch.Thinking != "low" || result.Manifest.Launch.PromptReference != prompt || result.Manifest.Launch.WorkingContext != "issue-22" {
 		t.Fatalf("launch config = %#v, want explicit durable Pi configuration", result.Manifest.Launch)
 	}
 	if len(tmux.managedStarts) != 1 || tmux.managedStarts[0].WorkingDirectory != result.Manifest.WorktreePath {
@@ -202,7 +203,7 @@ func TestManagedStartPersistsExplicitLaunchConfiguration(t *testing.T) {
 	if result.Manifest.ProcessPID != 52 || result.Manifest.ProcessStartTime != 120 {
 		t.Fatalf("process identity = %d/%d, want managed process identity", result.Manifest.ProcessPID, result.Manifest.ProcessStartTime)
 	}
-	if repeated, err := manager.Start(StartRequest{ID: "managed-1", Title: "Managed Pi", Repository: "demo", Agent: "pi", PromptReference: prompt, WorkingContext: "issue-22"}); err != nil || repeated.Created {
+	if repeated, err := manager.Start(request); err != nil || repeated.Created {
 		t.Fatalf("repeated managed start = %#v, %v; want idempotent no-op", repeated, err)
 	}
 }
@@ -238,7 +239,7 @@ func TestManagedLaunchUsesInteractivePiWithPromptReference(t *testing.T) {
 	if gotCommand != "/usr/local/bin/pi" {
 		t.Fatalf("agent command = %q, want Pi executable", gotCommand)
 	}
-	wantArgs := []string{"/usr/local/bin/pi", "@" + prompt}
+	wantArgs := []string{"/usr/local/bin/pi", "--provider", "openai-codex", "--model", "gpt-5.6-luna", "--thinking", "high", "@" + prompt}
 	if strings.Join(gotArgs, "\x00") != strings.Join(wantArgs, "\x00") {
 		t.Fatalf("agent args = %#v, want %#v", gotArgs, wantArgs)
 	}

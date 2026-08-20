@@ -12,6 +12,7 @@ import (
 
 	"github.com/akofink/akagent-cli/internal/credential"
 	"github.com/akofink/akagent-cli/internal/lifecycle"
+	"github.com/akofink/akagent-cli/internal/pi"
 	"github.com/akofink/akagent-cli/internal/store"
 	"github.com/google/uuid"
 )
@@ -23,6 +24,9 @@ const PiTarget = "pi"
 type LaunchRequest struct {
 	Label           string
 	ResourceID      string
+	Provider        string
+	Model           string
+	Thinking        string
 	PromptReference string
 	WorkingContext  string
 }
@@ -31,6 +35,10 @@ type LaunchRequest struct {
 // integration. Pi is checked only when this integration is selected, so task
 // and resource commands do not require Pi to be installed.
 func Launch(manager *lifecycle.Manager, taskID string, request LaunchRequest) (store.Execution, error) {
+	policy, err := pi.ResolveLaunchPolicy(request.Provider, request.Model, request.Thinking)
+	if err != nil {
+		return store.Execution{}, &store.Error{Kind: store.KindUsage, Message: err.Error(), Recovery: "Retry with a supported provider, model, and thinking level"}
+	}
 	if _, err := exec.LookPath("pi"); err != nil {
 		return store.Execution{}, &store.Error{Kind: store.KindConflict, Message: "Pi agent command is unavailable", Recovery: "Install Pi or use `--target shell`"}
 	}
@@ -66,6 +74,7 @@ func Launch(manager *lifecycle.Manager, taskID string, request LaunchRequest) (s
 		return store.Execution{}, errors.New("akagent executable could not be resolved")
 	}
 	arguments := []string{"worker", "launch-pi", taskID, executionID.String(), "--"}
+	arguments = append(arguments, policy.Args()...)
 	if prompt != "" {
 		arguments = append(arguments, "@"+prompt)
 	}
@@ -151,7 +160,8 @@ func validatePrompt(reference string) error {
 // LaunchPi is the worker entrypoint for the optional integration. It replaces
 // the worker process with Pi, preserving the process identity recorded for the
 // generic execution. The argument list after `--` is integration-owned and
-// contains only a prompt file reference and non-secret context.
+// contains only a validated non-secret launch policy, a prompt file reference,
+// and context.
 func LaunchPi(manager *lifecycle.Manager, taskID, executionID string, args []string, stderr io.Writer, execAgent func(string, []string, []string) error) error {
 	execution, err := manager.InspectExecution(taskID, executionID)
 	if err != nil {
@@ -164,7 +174,7 @@ func LaunchPi(manager *lifecycle.Manager, taskID, executionID string, args []str
 	if err != nil {
 		return markPiFailure(manager, taskID, executionID, "Pi agent command is unavailable")
 	}
-	prompt, context, err := parsePiArguments(args)
+	policy, prompt, context, err := parsePiArguments(args)
 	if err != nil {
 		return markPiFailure(manager, taskID, executionID, err.Error())
 	}
@@ -198,7 +208,7 @@ func LaunchPi(manager *lifecycle.Manager, taskID, executionID string, args []str
 	if execAgent == nil {
 		execAgent = syscall.Exec
 	}
-	piArgs := []string{command}
+	piArgs := append([]string{command}, policy.Args()...)
 	if prompt != "" {
 		piArgs = append(piArgs, "@"+prompt)
 	}
@@ -220,27 +230,45 @@ func buildEnvironment(manifest *credential.Manifest, requirements []string) ([]s
 	return credential.BuildEnvironment(manifest, requirements, os.Environ())
 }
 
-func parsePiArguments(args []string) (string, string, error) {
+func parsePiArguments(args []string) (pi.LaunchPolicy, string, string, error) {
 	if len(args) > 0 && args[0] == "--" {
 		args = args[1:]
 	}
-	if len(args) == 0 {
-		return "", "", nil
-	}
+	provider, model, thinking := "", "", ""
 	prompt := ""
 	context := ""
 	for index := 0; index < len(args); index++ {
-		switch {
-		case strings.HasPrefix(args[index], "@") && prompt == "":
-			prompt = strings.TrimPrefix(args[index], "@")
-		case args[index] == "--context" && index+1 < len(args):
-			context = args[index+1]
-			index++
-		default:
-			return "", "", errors.New("invalid Pi integration arguments")
+		if index+1 < len(args) {
+			switch args[index] {
+			case "--provider":
+				provider = args[index+1]
+				index++
+				continue
+			case "--model":
+				model = args[index+1]
+				index++
+				continue
+			case "--thinking":
+				thinking = args[index+1]
+				index++
+				continue
+			case "--context":
+				context = args[index+1]
+				index++
+				continue
+			}
 		}
+		if strings.HasPrefix(args[index], "@") && prompt == "" {
+			prompt = strings.TrimPrefix(args[index], "@")
+			continue
+		}
+		return pi.LaunchPolicy{}, "", "", errors.New("invalid Pi integration arguments")
 	}
-	return prompt, context, nil
+	policy, err := pi.ResolveLaunchPolicy(provider, model, thinking)
+	if err != nil {
+		return pi.LaunchPolicy{}, "", "", err
+	}
+	return policy, prompt, context, nil
 }
 
 func markPiFailure(manager *lifecycle.Manager, taskID, executionID, detail string) error {
