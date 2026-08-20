@@ -970,7 +970,7 @@ func actionableResources(resources []store.Resource) bool {
 			}
 			continue
 		}
-		if resource.ArchiveState != "complete" ||
+		if (resource.ArchiveState != "" && resource.ArchiveState != "complete") ||
 			(resource.CleanupState != "" && resource.CleanupState != "complete") ||
 			(resource.WorktreeCleanupState != "" && resource.WorktreeCleanupState != "complete") ||
 			(resource.CredentialCleanupState != "" && resource.CredentialCleanupState != "complete") ||
