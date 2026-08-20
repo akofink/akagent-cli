@@ -954,7 +954,7 @@ func taskListUsage(stdout io.Writer) int {
 
 func actionable(manifest store.Manifest) bool {
 	return manifest.ArchiveState != "complete" ||
-		manifest.CleanupState != "complete" ||
+		(manifest.CleanupState != "" && manifest.CleanupState != "complete") ||
 		(manifest.WorktreeCleanupState != "" && manifest.WorktreeCleanupState != "complete") ||
 		(manifest.CredentialCleanupState != "" && manifest.CredentialCleanupState != "complete") ||
 		manifest.CleanupDebt ||
@@ -971,7 +971,7 @@ func actionableResources(resources []store.Resource) bool {
 			continue
 		}
 		if resource.ArchiveState != "complete" ||
-			resource.CleanupState != "complete" ||
+			(resource.CleanupState != "" && resource.CleanupState != "complete") ||
 			(resource.WorktreeCleanupState != "" && resource.WorktreeCleanupState != "complete") ||
 			(resource.CredentialCleanupState != "" && resource.CredentialCleanupState != "complete") ||
 			resource.CleanupDebt ||
