@@ -1,17 +1,33 @@
 # akagent documentation
 
-`akagent` is a local-first orchestration protocol and CLI for coding tasks.
-It preserves direct Git worktree and tmux operation while adding stable identity, structured state, recovery, and optional integrations.
+`akagent` is a local-first orchestration protocol and CLI for coding agents.
+An agent invokes the CLI directly during ordinary coding work to create task state, update durable status, and record recovery and delivery facts.
+Git worktrees remain the implementation boundary, while tmux provides visibility and recovery rather than durable state.
 
-Use the [quick start](quick-start.md) for installation and the public task lifecycle.
-This page indexes the design documentation and current decisions.
+Use the [quick start](quick-start.md) for installation and the self-service task lifecycle.
+This page is the project charter and indexes the design documentation and current decisions.
 
 The installed binary is `akagent`.
 `aka` is an optional interactive shell alias and is not a second protocol entry point.
 
 ## Public starting point
 
-- [`quick-start.md`](quick-start.md) provides the agent-safe installation, integration-gate, repository, task, attachment, reconciliation, archive, cleanup, and recovery path.
+- [`quick-start.md`](quick-start.md) provides the agent-safe installation, repository, task, resource, execution, status, delivery, reconciliation, archive, cleanup, and recovery path.
+
+## Normal agent workflow
+
+The coding agent is the owner of its local lifecycle.
+It uses `akagent` as a self-service protocol instead of handing state to a parent orchestrator.
+
+1. Register the checkout once and create a durable task with the requested branch and worktree facts.
+2. Create or select resources and executions from the task context.
+3. Publish conditions, activity, heartbeats, and recovery reasons as work changes.
+4. Record provider-neutral session provenance and pull-request metadata when they become available.
+5. Reconcile observations after disconnects, failures, or terminal changes.
+6. Finish, archive, and clean only after reviewing the durable Git and recovery facts.
+
+Tmux windows and process inspection make active work visible and attachable.
+`akagent task inspect` and `akagent task reconcile` remain the durable source of truth when a terminal, provider session, or parent process disappears.
 
 ## Documents
 
@@ -49,15 +65,16 @@ The generated `_site/` directory is disposable and should not be committed.
 
 ## Current decisions
 
-1. Use one executable with direct human commands and a directly inspectable local worker.
-2. Keep the CLI as the permanent boundary for humans, agents, integrations, plugins, and skills.
-3. Prove local task lifecycle, tmux integration, Git worktrees, generic executions, optional Pi integration, status, reconciliation, archive, and safe cleanup.
-4. Use one implicit local worker.
-5. Keep infrastructure provisioning separate from task orchestration.
-6. Use TOON for agent-consumed stdout and treat token use as an interface constraint.
-7. Keep worker-local durable task records and derive status from reconciled observations.
-8. Keep application source and releases in this repository while allowing an external installer to install the binary.
-9. Source credentials locally, validate named requirements, and never expose credential values.
+1. Use one executable that coding agents invoke directly during ordinary work.
+2. Keep the CLI as the permanent boundary for humans, agents, skills, and optional provider integrations.
+3. Make task, resource, and execution lifecycle self-service, durable, inspectable, and recoverable.
+4. Use tmux for interactive visibility and recovery, never as the durable source of truth.
+5. Keep one implicit local worker and local Git worktree boundaries.
+6. Keep infrastructure provisioning, launch adapters, and daemon processes outside the protocol.
+7. Use TOON for agent-consumed stdout and treat token use as an interface constraint.
+8. Keep worker-local durable task records and derive status from reconciled observations.
+9. Keep application source and releases in this repository while allowing an external installer to install the binary.
+10. Source credentials locally, validate named requirements, and never expose credential values.
 
 ## Design constraints
 
@@ -69,7 +86,7 @@ The generated `_site/` directory is disposable and should not be committed.
 - Do not trust a declared condition without checking process, tmux, filesystem, and Git facts where required.
 - Avoid fields and ambient context that do not change the next agent decision.
 - Expose worker capability and persistence differences instead of claiming false backend transparency.
-- Keep automated integrations enabled by default, with `AKAGENT_ENABLED=0` as the immediate disable signal.
+- Keep optional integrations replaceable and never require a launch adapter or daemon for the normal local workflow.
 - Never expose credential values in commands, output, logs, task records, or tmux metadata.
 
 ## Current local boundary
@@ -79,6 +96,7 @@ The current CLI registers local Git repositories, records state-only task intent
 A task can use an explicit detached shell execution for direct work or the optional Pi integration selected with `--target pi`.
 Both paths use the generic execution primitives, while task and resource creation remain independent of Pi availability.
 One execution can coordinate multiple task resources by selecting a resource worktree.
+No launch adapter or daemon is required to use these primitives.
 
 It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
 Worktree cleanup requires explicit approval and validates durable ownership before removal.
@@ -88,8 +106,14 @@ Credential cleanup is an independent approval-gated hook with durable retry stat
 
 ### Tmux as the database
 
-Tmux is an excellent human interaction and recovery surface.
+Tmux is an excellent human visibility and recovery surface.
 Window names, process inspection, and scrollback are not sufficient durable orchestration state.
+The CLI records the task, resource, execution, session, delivery, Git, and reconciliation facts that must survive a lost terminal or process.
+
+### A daemon or launch adapter as a prerequisite
+
+A local coding agent should not need a resident daemon, remote scheduler, or launch adapter to use the protocol.
+The agent calls `akagent` directly, and optional integrations remain replaceable callers of the same CLI boundary.
 
 ### One opaque secret bundle
 

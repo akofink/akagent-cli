@@ -1,5 +1,5 @@
 site_name: akagent
-site_description: Local-first orchestration protocol and CLI for coding tasks.
+site_description: Local-first orchestration protocol and CLI for coding agents.
 site_url: https://akofink.github.io/akagent-cli/
 repo_name: akofink/akagent-cli
 repo_url: https://github.com/akofink/akagent-cli
