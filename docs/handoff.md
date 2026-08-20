@@ -2,7 +2,10 @@
 
 ## Goal
 
-Build a local-first task protocol that preserves ordinary Git worktree and tmux recovery paths.
+Make `akagent` a local-first orchestration protocol and CLI for coding agents.
+Agents should use the CLI directly during ordinary coding work to maintain durable task state while preserving ordinary Git worktree and tmux recovery paths.
+Tmux is visibility and recovery; the CLI is durable state.
+No launch adapter or daemon is required.
 
 ## Shipped behavior
 
@@ -24,7 +27,7 @@ Build a local-first task protocol that preserves ordinary Git worktree and tmux 
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
 - Task and execution-tagged detached tmux resources, shared `@agent_state` publication by execution metadata, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
-- A provider-neutral `akagent integration launch` workflow entry point that records and launches generic executions only when automation is enabled.
+- A stable CLI boundary that lets coding agents manage task, resource, and execution lifecycle without a parent orchestrator.
 - Work-scoped deployment executions with readiness checks, in-memory environment injection, and durable success or failure results.
 
 ## Current workflow
@@ -39,10 +42,9 @@ Worktree-policy resources require an explicit descriptive branch, conventionally
 When `--worktree` is omitted, the worktree directory uses the branch label after the owner prefix beneath the registered root, such as `80-worktree-labels` for `akofink/80-worktree-labels`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 `task execution create` records an optional tool-neutral execution without a process side effect.
-The provider-neutral `akagent integration launch` command is the smallest automated workflow adapter: it checks `AKAGENT_ENABLED` before opening the state store, persists a `workflow` execution, and launches it through the same generic lifecycle.
-A disabled integration returns a skipped success without creating task, resource, execution, or tmux state.
-The command requires a caller-supplied stable execution ID so retries remain idempotent.
-`task execution launch` starts the selected execution, and a multi-resource task may attach one resource with `--resource` during execution creation.
+A coding agent can call the stable CLI directly from its task context without a parent orchestrator or launch adapter.
+`task execution launch` starts the selected execution when an interactive local process is useful, and a multi-resource task may attach one resource with `--resource` during execution creation.
+The execution ID, resource ID, branch, worktree, and process facts remain durable even when no tmux window is available.
 `task execution session add` records provider-neutral session provenance without parsing Pi or another provider's session files.
 Execution stop, archive, attach, and reconcile operate independently from resource state.
 The `task launch --target shell` path creates and launches a generic shell execution.
@@ -78,9 +80,10 @@ Reconciliation may close a matching tagged window for a non-running execution an
 It never deletes task state, branches, worktrees, terminal history, or unverified windows.
 Legacy single-resource manifests migrate lazily to a `legacy` resource when resource operations inspect or extend them.
 
-Agent orchestration is enabled by default over this stable CLI boundary.
-The agent skill owns automated lifecycle behavior and preserves direct human CLI use.
+Agent self-service is the normal workflow over this stable CLI boundary.
+The agent skill should guide direct CLI use while preserving direct human commands and optional provider integrations.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+No daemon, remote scheduler, or launch adapter is part of the required lifecycle.
 
 ## Durable work-state model and migration boundary
 
@@ -119,15 +122,14 @@ The external URL boundary is deliberate.
 Agents perform provider-specific pull request operations with tools such as `gh` or Bitbucket tooling, then optionally record a resulting URL with `task resource update`.
 `akagent` does not provide GitHub, Bitbucket, or Pi delivery commands.
 
-## Integration signal
+## Self-service adoption boundary
 
-`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
-`akagent integration inspect` is read-only and reports the current state.
-The provider-neutral `integration launch` command is the automated workflow entry point and checks the signal before opening the state store or creating an execution.
-When disabled, it returns a skipped success without lifecycle side effects.
-When enabled, it records and launches a generic `workflow` execution through the normal task lifecycle.
-Direct human commands, including explicit shell execution and optional Pi selection, remain available regardless of the signal.
+The coding agent owns the durable lifecycle through `akagent`.
+The normal sequence is to create task intent, create or select resources, create or launch executions, publish conditions and activity, record session and delivery metadata, reconcile observations, and archive the result.
+
+`akagent integration inspect` remains a read-only compatibility signal for optional integrations.
+It is not a prerequisite for direct CLI use, and the core workflow does not require a launch adapter or daemon.
+Direct human commands and optional Pi selection remain available without changing the durable task, resource, and execution model.
 
 ## Current public command surface
 
@@ -146,7 +148,10 @@ akagent worker inspect
 
 ## Tracked follow-ups
 
+- Skill-guided adoption in ordinary coding workflows.
+- Durable examples for session provenance, pull-request metadata, reconciliation, and archive recovery.
 - Destructive worktree and credential cleanup hooks.
-- Broader workflow integrations beyond the stable CLI boundary.
+- Broader local deployment integrations beyond direct executable commands.
 
+Launch adapters, resident daemons, and remote orchestration are explicitly out of scope for the normal workflow.
 The detailed public delivery map is in [`implementation-plan.md`](implementation-plan.md).

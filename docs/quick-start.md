@@ -2,7 +2,9 @@
 
 This guide uses only public commands and generic local paths.
 
-`akagent` is a local-first CLI for durable task records, Git worktrees, and tmux-backed human or optional managed local Pi interaction.
+`akagent` is a local-first orchestration protocol and CLI for coding agents.
+Agents use it directly for durable task records, Git worktrees, status, recovery, and delivery metadata.
+Tmux-backed interaction is optional visibility and recovery, not the durable source of truth.
 It writes protocol data and errors as TOON on stdout.
 
 ## Install or update
@@ -26,32 +28,16 @@ akagent update --source /path/to/akagent-cli
 The updater fetches `origin`, fast-forwards the source checkout to `origin/main`, builds in a temporary detached worktree, and atomically replaces the installed binary.
 It does not discard source changes.
 
-## Control automated orchestration
+## Use akagent during ordinary coding work
 
-Agent orchestration is enabled by default over the stable `akagent` CLI boundary.
-Repository implementation work uses the managed `akagent` lifecycle when the integration gate reports enabled.
-The agent skill owns automated lifecycle behavior and direct human `akagent` commands remain available.
+The coding agent owns its own task, resource, and execution lifecycle.
+It calls `akagent` directly from the worktree instead of depending on a parent orchestrator, launch adapter, or daemon.
+
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
+The CLI remains usable when tmux, a provider session, or a network connection is unavailable.
 
-`AKAGENT_ENABLED` remains the immediate per-environment disable signal.
-At the CLI boundary, automated integrations are enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
-
-```bash
-akagent integration inspect
-```
-
-The inspection command is read-only.
-Disable automation immediately for the current shell with:
-
-```bash
-export AKAGENT_ENABLED=0
-```
-
-Re-enable automation when the integration is needed again:
-
-```bash
-unset AKAGENT_ENABLED
-```
+Tmux is useful for interactive visibility and human attachment.
+The CLI records the durable task identity, branch and worktree facts, status, session provenance, delivery metadata, observations, and recovery state.
 
 ## Register a repository
 
@@ -103,11 +89,12 @@ The default task list shows actionable records only, while `--all` includes arch
 Actionable records include non-archived tasks and archived tasks with incomplete cleanup or recovery debt.
 Use `--repository` and `--worktree` to compose deterministic exact-match filters.
 Task creation does not create a tmux resource or start a process.
-The explicit shell launch command creates a generic execution in a task-tagged tmux window.
+The explicit shell launch command creates a generic execution in a task-tagged tmux window when the agent or operator wants an interactive surface.
 Its display name is derived from the selected resource or task branch without the owner prefix, or supplied with `--label <descriptive-label>` when no branch is available.
 The task and execution IDs remain in window metadata for lifecycle verification.
 Managed execution windows publish `@agent_state` by matching those metadata IDs.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
+The window is a visibility and recovery aid; `akagent task inspect` remains the durable work-state view.
 
 Use `--target shell` for direct human or shell-driven work.
 Use `task execution create` and `task execution launch` when the caller needs explicit generic execution identity.
@@ -139,26 +126,9 @@ akagent task execution inspect <task-id> coordinator
 
 Task, resource, and execution archives preserve these references.
 
-Automated local workflows can use the provider-neutral integration entry point:
-
-```bash
-akagent integration launch <task-id> --execution-id workflow-run \
-  --command /path/to/workflow --arg --mode --arg check --resource app-resource \
-  --label workflow-check
-```
-
-The caller supplies a stable execution ID so retries are idempotent.
-The command and arguments are opaque non-secret local process inputs.
-The integration records a generic `workflow` execution before starting tmux.
-If `AKAGENT_ENABLED=0` is set, the command returns a skipped success without creating task, resource, execution, or tmux state.
-After an enabled launch failure, inspect and reconcile the execution before retrying:
-
-```bash
-akagent task execution inspect <task-id> workflow-run
-akagent task execution reconcile <task-id>
-```
-
 Use `--target pi` only to select the optional Pi integration.
+This integration is not required for the self-service local workflow.
+Agents that use another provider record its non-secret session reference through the generic execution commands rather than adding provider state to the core protocol.
 Pi must be installed and available as `pi` on `PATH` when that integration is selected.
 
 A minimal managed-launch example uses only placeholder task data and a local prompt-file reference:
@@ -185,7 +155,7 @@ Resource metadata and external URLs are provider-neutral delivery records.
 Agents use provider tooling such as `gh` or Bitbucket tooling for pull request operations, then optionally record the resulting URL with `akagent`.
 Optional credentials produce non-secret warnings and are not injected.
 File credentials can be checked for readiness but cannot be injected into the managed environment.
-The core CLI does not provide GitHub, Bitbucket, or Pi delivery commands.
+The core CLI does not provide GitHub, Bitbucket, or Pi delivery commands, and no launch adapter or daemon is needed.
 
 Task status is computed from lifecycle records and observations.
 Lifecycle values are `created`, `starting`, `running`, `stopped`, and `finished`.
@@ -199,6 +169,21 @@ akagent task list [--all] [--repository <name>] [--worktree <path>]
 ```
 
 ## Publish, attach, and reconcile
+
+Self-service agents should publish durable state as part of normal work:
+
+```bash
+akagent task publish <task-id> --condition active --activity "running tests"
+akagent task publish <task-id> --condition waiting --reason "needs review"
+akagent task execution session add <task-id> <execution-id> \
+  --tool example-tool --session-id <session-id> \
+  --reference-path /path/to/session-record
+akagent task resource update <task-id> <resource-id> \
+  --metadata pull-request=opened \
+  --external-url https://forge.example/pull/78
+```
+
+The CLI stores these facts independently of the terminal or provider session.
 
 Publish a condition and heartbeat from a trusted local integration, managed workflow, or shell:
 
@@ -287,7 +272,7 @@ akagent credential clean <task-id> --allow-credentials
 Start with `task inspect` and `task reconcile` when observations are unclear or a possibly mutating command fails.
 Use the agent skill for automated lifecycle behavior and manual fallback only after those checks.
 
-If an optional integration launch fails, retry the generic execution or repeat the same explicit launch command after inspecting and reconciling its state.
+If an execution launch fails, inspect and reconcile its state before retrying the same explicit command.
 Equivalent repeated creates and launches are idempotent; changing immutable task or launch inputs returns a conflict.
 
 Do not attach when the heartbeat or process observation is stale.

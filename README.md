@@ -1,7 +1,8 @@
 # akagent
 
-`akagent` is a local-first orchestration protocol and CLI for coding tasks.
-It preserves Git worktree and tmux workflows while providing durable task identity, structured state, reconciliation, and recovery.
+`akagent` is a Local-first orchestration protocol and CLI for coding agents.
+Agents invoke it directly during ordinary coding work to preserve durable task identity, structured state, reconciliation, and recovery around local Git worktrees.
+Tmux provides interactive visibility and recovery, while the `akagent` CLI is the durable source of truth.
 
 The installed binary is `akagent`.
 `aka` may be configured as an optional shell alias, but it is not a second binary or protocol entry point.
@@ -10,7 +11,8 @@ The installed binary is `akagent`.
 
 The repository provides the protocol foundation and the initial local task lifecycle.
 Task, resource, and execution manifests and append-only events are durable state.
-Tmux is an observed interaction surface and a human attachment surface.
+Coding agents create, inspect, update, reconcile, and archive that state themselves through the CLI.
+Tmux is an observed interaction surface for visibility, attachment, and recovery, not the durable state store.
 
 Current commands:
 
@@ -33,19 +35,21 @@ See [`docs/toon.md`](docs/toon.md).
 
 ## Quick start
 
-See [`docs/quick-start.md`](docs/quick-start.md) for public installation, update, integration-gate, repository, task, attachment, reconciliation, archive, cleanup, and recovery examples.
+See [`docs/quick-start.md`](docs/quick-start.md) for public installation, update, repository, task, resource, execution, status, delivery, reconciliation, archive, cleanup, and recovery examples.
 
-A minimal local flow is:
+A coding agent can own the normal local flow directly:
 
 ```bash
-akagent integration inspect
 akagent repository register demo /path/to/checkout --worktree-root /path/to/worktrees/demo
 akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
 akagent task launch <task-id> --target shell
-akagent task list
 akagent task inspect <task-id>
+akagent task publish <task-id> --condition active --activity "running tests"
+akagent task reconcile <task-id>
 ```
+
+No parent orchestrator, launch adapter, or daemon is required.
 
 Registration requires the root of an existing Git checkout.
 The default repository policy creates an isolated branch and Git worktree for each task.
@@ -70,7 +74,8 @@ Use `task attach` for verified human attachment and use `task publish` for durab
 
 `task reconcile` compares durable records with tmux and Git observations and repairs safe derived facts.
 `task inspect` is the durable work-state view for resources, executions, activity, results, delivery metadata, and session references.
-It never deletes task state, branches, worktrees, windows, or terminal history.
+Agents should call these commands directly when work starts, changes, disconnects, or needs recovery.
+They never delete task state, branches, worktrees, windows, or terminal history.
 
 ## Optional Pi integration
 
@@ -100,24 +105,24 @@ Credential cleanup is a separate destructive hook and requires `--allow-credenti
 The hook validates ownership, removes only the task worktree, preserves its branch and archive facts, and never removes a direct registered checkout.
 Credential cleanup can be retried independently with `akagent credential clean <task-id> --allow-credentials` or `akagent task credential clean <task-id> --allow-credentials`.
 
-## Orchestration workflow
+## Self-service workflow
 
-Agent orchestration is enabled by default over the stable `akagent` CLI boundary.
-Repository implementation work uses the managed `akagent` lifecycle when the integration gate reports enabled.
-The agent skill owns automated lifecycle behavior instead of bypassing the CLI.
-After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
-Direct human `akagent` commands remain available regardless of the integration signal.
+The coding agent owns the task, resource, and execution lifecycle through the stable CLI boundary.
+The normal workflow is to create durable intent, select or create a resource, start an execution when interactive work is useful, and publish state as work progresses.
 
-`AKAGENT_ENABLED` remains the immediate per-environment disable signal for automated integrations.
-At the CLI boundary, automation is enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
+Agents can record non-secret session provenance and delivery metadata without requiring a provider-specific parent process:
 
 ```bash
-akagent integration inspect
-export AKAGENT_ENABLED=0
-unset AKAGENT_ENABLED # Re-enable automation
+akagent task execution session add <task-id> <execution-id> \
+  --tool example-tool --session-id <session-id> \
+  --reference-path /path/to/session-record
+akagent task resource update <task-id> <resource-id> \
+  --metadata pull-request=opened \
+  --external-url https://forge.example/pull/78
 ```
 
-`integration inspect` is read-only.
+After a possibly mutating failure, agents inspect the task and reconcile observations before retrying.
+Optional integrations may call the same CLI, but the protocol does not require a launch adapter or daemon.
 
 ## Credentials
 
@@ -178,9 +183,10 @@ Automatic update on every invocation remains intentionally deferred because ordi
 ## Direction
 
 The current CLI remains local-first: it uses the registered checkout, Git worktrees, and tmux on the invoking machine.
-The provider-neutral `integration launch` command starts an automated local workflow command through a generic execution, while direct human execution commands remain independent.
-Forge and provider-specific delivery behavior remains outside the core lifecycle.
-The tracked follow-up is work-specific secrets and deployment behavior.
+The next priority is skill-guided adoption so coding agents use the self-service lifecycle during ordinary implementation, review, and recovery work.
+Forge and provider-specific delivery behavior remains outside the core lifecycle and is recorded only through provider-neutral metadata and session references.
+A daemon, remote scheduler, or launch adapter is intentionally outside the normal workflow.
+Tracked follow-ups are broader skill guidance and work-specific secrets and deployment behavior.
 
 ## Design documentation
 

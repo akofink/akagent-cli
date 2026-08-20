@@ -38,23 +38,29 @@ The compatibility shell launch and optional managed local Pi target both use gen
 Approved worktree cleanup validates ownership and preserves archive facts and the task branch.
 Credential cleanup is an independent approval-gated hook with durable retry state.
 
-## Phase 2: workflow integrations - default-enabled integration
+## Phase 2: agent self-service adoption - next
 
-Agent orchestration is enabled by default over the stable CLI boundary.
-The agent skill owns automated lifecycle behavior and should inspect and reconcile before a manual fallback after a possibly mutating failure.
+Make skill-guided use of the durable CLI the normal coding-agent workflow.
+The agent skill should teach agents to create task intent, manage resources and executions, publish status, record session and pull-request metadata, reconcile observations, and archive recoverable history.
 
-`AKAGENT_ENABLED` remains the immediate per-environment disable signal.
-At the CLI boundary, automated integrations are enabled unless `AKAGENT_ENABLED` is set to the exact value `0`.
-Direct CLI commands, including explicit shell execution and optional Pi launch, remain available when the signal disables automation.
-The provider-neutral `akagent integration launch` adapter is the first broader workflow integration.
-It requires a stable execution ID, persists generic execution state, and delegates startup to the existing lifecycle.
-Disabled automation returns a skipped success without lifecycle side effects.
-Integrations must be idempotent, independently removable, token-budgeted, and limited to CLI operations.
+The adoption work should prioritize:
+
+- Short, deterministic CLI sequences that fit ordinary implementation and review loops.
+- Durable inspection and reconciliation after disconnects, failed mutations, and provider changes.
+- Explicit branch, worktree, session, and delivery facts that another agent can recover without tmux scrollback.
+- Direct CLI use that remains useful without a provider integration, launch adapter, daemon, or network connection.
+- Idempotent operations with structured recovery guidance and bounded output.
+
+Tmux remains an interactive visibility and recovery surface.
+The `akagent` CLI remains the durable source of truth.
 
 ## Tracked follow-ups
 
-- Broader workflow integrations beyond the stable CLI boundary.
+- Skill-guided adoption in ordinary coding workflows.
+- Broader documentation for provider-neutral session and delivery records.
 - Broader local deployment integrations beyond direct executable commands.
+
+A resident daemon, remote scheduler, and launch-adapter requirement are explicitly out of scope.
 
 ## Metrics that can change decisions
 
