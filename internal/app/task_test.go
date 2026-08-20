@@ -325,7 +325,7 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 	}
 
 	defaultList := runCommand(t, []string{"task", "list"})
-	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 3") || !strings.Contains(defaultList.stdout, "alpha-active") || !strings.Contains(defaultList.stdout, "alpha-pending") || !strings.Contains(defaultList.stdout, "beta-active") || strings.Contains(defaultList.stdout, "alpha-history") {
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 2") || !strings.Contains(defaultList.stdout, "alpha-active") || strings.Contains(defaultList.stdout, "alpha-pending") || !strings.Contains(defaultList.stdout, "beta-active") || strings.Contains(defaultList.stdout, "alpha-history") {
 		t.Fatalf("default task list = (%d, %q), want only actionable tasks", defaultList.code, defaultList.stdout)
 	}
 	allAlpha := runCommand(t, []string{"task", "list", "--all", "--repository", "alpha"})
@@ -350,8 +350,78 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	debtList := runCommand(t, []string{"task", "list"})
-	if debtList.code != 0 || !strings.Contains(debtList.stdout, "total: 4") || !strings.Contains(debtList.stdout, "alpha-history") {
+	if debtList.code != 0 || !strings.Contains(debtList.stdout, "total: 3") || !strings.Contains(debtList.stdout, "alpha-history") {
 		t.Fatalf("resource debt task list = (%d, %q), want archived task retained", debtList.code, debtList.stdout)
+	}
+}
+
+func TestTaskListHidesArchivedTasksWithAbsentCleanupState(t *testing.T) {
+	setupTaskCommandTest(t)
+	for index := 0; index < 10; index++ {
+		taskID := fmt.Sprintf("archived-%02d", index)
+		if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", taskID}); result.code != 0 {
+			t.Fatalf("task create %s = (%d, %q)", taskID, result.code, result.stdout)
+		}
+		if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
+			t.Fatalf("task stop %s = (%d, %q)", taskID, result.code, result.stdout)
+		}
+		if result := runCommand(t, []string{"task", "archive", taskID}); result.code != 0 {
+			t.Fatalf("task archive %s = (%d, %q)", taskID, result.code, result.stdout)
+		}
+	}
+	if result := runCommand(t, []string{"task", "create", "--task-id", "active-110", "--title", "Active task"}); result.code != 0 {
+		t.Fatalf("active task create = (%d, %q)", result.code, result.stdout)
+	}
+
+	defaultList := runCommand(t, []string{"task", "list"})
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 1") || !strings.Contains(defaultList.stdout, "active-110") {
+		t.Fatalf("default task list = (%d, %q), want only the active task", defaultList.code, defaultList.stdout)
+	}
+	for index := 0; index < 10; index++ {
+		if strings.Contains(defaultList.stdout, fmt.Sprintf("archived-%02d", index)) {
+			t.Fatalf("default task list = (%d, %q), unexpectedly included archived task", defaultList.code, defaultList.stdout)
+		}
+	}
+
+	all := runCommand(t, []string{"task", "list", "--all"})
+	if all.code != 0 || !strings.Contains(all.stdout, "total: 11") {
+		t.Fatalf("all task list = (%d, %q), want all 11 tasks", all.code, all.stdout)
+	}
+}
+
+func TestTaskListHidesArchivedResourcesWithAbsentCleanupState(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	const taskID = "archived-resource-110"
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Archived resource"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "resource", "create", taskID, "--resource-id", "resource", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("resource create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "stop", taskID}); result.code != 0 {
+		t.Fatalf("task stop = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "resource", "archive", taskID, "resource"}); result.code != 0 {
+		t.Fatalf("resource archive = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "archive", taskID}); result.code != 0 {
+		t.Fatalf("task archive = (%d, %q)", result.code, result.stdout)
+	}
+
+	defaultList := runCommand(t, []string{"task", "list"})
+	if defaultList.code != 0 || defaultList.stdout != "tasks: []\ntotal: 0\n" {
+		t.Fatalf("default task list = (%d, %q), want no actionable tasks", defaultList.code, defaultList.stdout)
+	}
+	all := runCommand(t, []string{"task", "list", "--all"})
+	if all.code != 0 || !strings.Contains(all.stdout, taskID) || !strings.Contains(all.stdout, "total: 1") {
+		t.Fatalf("all task list = (%d, %q), want archived resource task", all.code, all.stdout)
 	}
 }
 
