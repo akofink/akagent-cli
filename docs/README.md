@@ -5,6 +5,7 @@ An agent invokes the CLI directly during ordinary coding work to create task sta
 Git worktrees remain the implementation boundary, while tmux provides visibility and recovery rather than durable state.
 
 Use the [quick start](quick-start.md) for installation and the self-service task lifecycle.
+Use the [agent integration guide](agent-integration.md) for progressive disclosure, a generic `AGENTS.md` template, and a reusable lifecycle skill.
 This page is the project charter and indexes the design documentation and current decisions.
 
 The installed binary is `akagent`.
@@ -13,6 +14,9 @@ The installed binary is `akagent`.
 ## Public starting point
 
 - [`quick-start.md`](quick-start.md) provides the agent-safe installation, repository, task, resource, execution, status, delivery, reconciliation, archive, cleanup, and recovery path.
+- [`agent-integration.md`](agent-integration.md) progressively introduces the generic `AGENTS.md` template and lifecycle skill.
+- [`AGENTS.md`](AGENTS.md) provides concise repository guidance for adopting or self-bootstrapping an `akagent` task.
+- [`skills/akagent-lifecycle/SKILL.md`](skills/akagent-lifecycle/SKILL.md) provides reusable lifecycle instructions for coding agents.
 
 ## Normal agent workflow
 
