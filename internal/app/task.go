@@ -214,15 +214,15 @@ func taskCommand(args []string, stdout io.Writer) int {
 		return write(stdout, executionDetail(execution, manager))
 	case "launch":
 		if len(args) < 3 {
-			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
+			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
 		}
 		request, ok := parseLaunch(args[2:])
 		if !ok || (request.Target != "shell" && request.Target != "pi") {
-			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--prompt <path>] [--context <value>]", false, "Use --target shell or --target pi with a descriptive label or branch")
+			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]", false, "Use --target shell or --target pi with a descriptive label or branch")
 		}
 		var execution store.Execution
 		if request.Target == "pi" {
-			execution, err = integration.Launch(manager, args[1], integration.LaunchRequest{Label: request.Label, ResourceID: request.ResourceID, PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
+			execution, err = integration.Launch(manager, args[1], integration.LaunchRequest{Label: request.Label, ResourceID: request.ResourceID, Provider: request.Provider, Model: request.Model, Thinking: request.Thinking, PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
 		} else {
 			execution, err = integration.LaunchShell(manager, args[1], request.Label, request.ResourceID)
 		}
@@ -864,6 +864,21 @@ func parseLaunch(args []string) (lifecycle.LaunchRequest, bool) {
 			request.ResourceID = value
 		case "--agent":
 			request.Target = value
+		case "--provider":
+			if value == "" {
+				return request, false
+			}
+			request.Provider = value
+		case "--model":
+			if value == "" {
+				return request, false
+			}
+			request.Model = value
+		case "--thinking":
+			if value == "" {
+				return request, false
+			}
+			request.Thinking = value
 		case "--prompt", "--prompt-ref", "--prompt-reference":
 			request.PromptReference = value
 		case "--context", "--working-context":

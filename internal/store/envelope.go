@@ -37,6 +37,9 @@ type Envelope struct {
 type LaunchConfig struct {
 	Target           string `json:"target"`
 	Command          string `json:"command"`
+	Provider         string `json:"provider,omitempty"`
+	Model            string `json:"model,omitempty"`
+	Thinking         string `json:"thinking,omitempty"`
 	PromptReference  string `json:"prompt_reference,omitempty"`
 	WorkingDirectory string `json:"working_directory"`
 	WorkingContext   string `json:"working_context,omitempty"`

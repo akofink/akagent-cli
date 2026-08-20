@@ -51,6 +51,8 @@ Compatibility launches derive their execution and tmux display labels from the s
 Tmux stores task and execution IDs in window metadata for lifecycle verification.
 Managed execution lifecycle state uses those metadata IDs to clear active state, publish waiting or blocked state, and mark completed execution `done` through `@agent_state`.
 The Pi integration passes a validated prompt-file reference without changing standard input, so Pi remains interactive and a failed launch remains retryable.
+Managed Pi launches use the explicit non-secret policy `--provider openai-codex --model gpt-5.6-luna --thinking high` unless the caller supplies validated `--provider`, `--model`, or `--thinking` overrides.
+Provider credentials are resolved separately at launch time and are never persisted in the launch policy.
 The historical `task start` create-and-launch shortcut is rejected with structured migration guidance.
 Managed execution commands inherit the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` context and can call the local CLI directly to create, inspect, and update resources owned by that task.
 Resource metadata is intentionally generic, with `--metadata key=value` and `--external-url https://...` available through `task resource create` and `task resource update`.

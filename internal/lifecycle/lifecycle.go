@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/akofink/akagent-cli/internal/credential"
+	"github.com/akofink/akagent-cli/internal/pi"
 	"github.com/akofink/akagent-cli/internal/store"
 )
 
@@ -131,6 +132,9 @@ type StartRequest struct {
 	Requirements    []string
 	Optional        []string
 	Agent           string
+	Provider        string
+	Model           string
+	Thinking        string
 	PromptReference string
 	WorkingContext  string
 }
@@ -175,6 +179,9 @@ type LaunchRequest struct {
 	Label           string
 	Target          string
 	ResourceID      string
+	Provider        string
+	Model           string
+	Thinking        string
 	PromptReference string
 	WorkingContext  string
 }
@@ -631,7 +638,7 @@ func (m *Manager) Start(request StartRequest) (StartResult, error) {
 }
 
 func (m *Manager) prepareLaunch(request StartRequest) (*store.LaunchConfig, error) {
-	if request.Agent == "" && request.PromptReference == "" && request.WorkingContext == "" {
+	if request.Agent == "" && request.Provider == "" && request.Model == "" && request.Thinking == "" && request.PromptReference == "" && request.WorkingContext == "" {
 		return nil, nil
 	}
 	if request.Agent == "" {
@@ -662,7 +669,11 @@ func (m *Manager) prepareLaunch(request StartRequest) (*store.LaunchConfig, erro
 	if strings.ContainsAny(request.WorkingContext, "\r\n") {
 		return nil, fmt.Errorf("working context must be a single non-secret line")
 	}
-	return &store.LaunchConfig{Target: request.Agent, Command: command, PromptReference: prompt, WorkingContext: request.WorkingContext}, nil
+	policy, err := pi.ResolveLaunchPolicy(request.Provider, request.Model, request.Thinking)
+	if err != nil {
+		return nil, err
+	}
+	return &store.LaunchConfig{Target: request.Agent, Command: command, Provider: policy.Provider, Model: policy.Model, Thinking: policy.Thinking, PromptReference: prompt, WorkingContext: request.WorkingContext}, nil
 }
 
 func configuredWorktreeRoot(values []string) (string, error) {
@@ -1155,7 +1166,11 @@ func (m *Manager) Launch(id string) error {
 	if execAgent == nil {
 		execAgent = syscall.Exec
 	}
-	if err := execAgent(manifest.Launch.Command, managedAgentArgs(manifest.Launch.Command, manifest.Launch.PromptReference), environment); err != nil {
+	policy, policyErr := pi.ResolveLaunchPolicy(manifest.Launch.Provider, manifest.Launch.Model, manifest.Launch.Thinking)
+	if policyErr != nil {
+		return m.markLaunchFailure(id, "invalid Pi launch policy")
+	}
+	if err := execAgent(manifest.Launch.Command, managedAgentArgs(manifest.Launch.Command, manifest.Launch.PromptReference, policy), environment); err != nil {
 		return m.markLaunchFailure(id, "agent process could not be started")
 	}
 	return nil
@@ -1180,8 +1195,8 @@ func (m *Manager) markLaunchFailure(id, detail string) error {
 	return errors.New("managed agent launch failed; retry the task start")
 }
 
-func managedAgentArgs(command, promptReference string) []string {
-	args := []string{command}
+func managedAgentArgs(command, promptReference string, policy pi.LaunchPolicy) []string {
+	args := append([]string{command}, policy.Args()...)
 	if promptReference != "" {
 		args = append(args, "@"+promptReference)
 	}
@@ -1324,7 +1339,18 @@ func sameRequestedLaunch(existing, requested *store.LaunchConfig) bool {
 	if existing == nil || requested == nil {
 		return existing == nil && requested == nil
 	}
-	return existing.Target == requested.Target && existing.Command == requested.Command && existing.PromptReference == requested.PromptReference && existing.WorkingContext == requested.WorkingContext
+	if existing.Target != requested.Target || existing.Command != requested.Command || existing.PromptReference != requested.PromptReference || existing.WorkingContext != requested.WorkingContext {
+		return false
+	}
+	if existing.Target != "pi" {
+		return true
+	}
+	existingPolicy, err := pi.ResolveLaunchPolicy(existing.Provider, existing.Model, existing.Thinking)
+	if err != nil {
+		return false
+	}
+	requestedPolicy, err := pi.ResolveLaunchPolicy(requested.Provider, requested.Model, requested.Thinking)
+	return err == nil && existingPolicy == requestedPolicy
 }
 
 func validBranch(branch string) bool {

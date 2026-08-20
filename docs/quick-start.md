@@ -166,11 +166,14 @@ A minimal managed-launch example uses only placeholder task data and a local pro
 ```bash
 akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
-akagent task launch <task-id> --target pi --prompt /path/to/prompt.txt --context "example"
+akagent task launch <task-id> --target pi --provider openai-codex --model gpt-5.6-luna --thinking high \
+  --prompt /path/to/prompt.txt --context "example"
 ```
 
 The prompt file must be a regular local file.
-Only the validated prompt-file reference is passed to Pi, and standard input remains attached to the tmux terminal.
+Managed Pi launches default to `--provider openai-codex --model gpt-5.6-luna --thinking high`.
+Pass `--provider`, `--model`, or `--thinking` to request a validated non-secret override.
+Only the validated launch policy and prompt-file reference are passed to Pi, and standard input remains attached to the tmux terminal.
 This keeps Pi interactive while prompt contents stay out of process arguments, tmux commands, task events, and TOON output.
 The optional integration creates a generic execution with the selected resource worktree and non-secret context before tmux starts.
 The owned pane shows a non-secret startup line before Pi initializes.

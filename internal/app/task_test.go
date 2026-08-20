@@ -12,6 +12,16 @@ import (
 	"github.com/akofink/akagent-cli/internal/store"
 )
 
+func TestParseLaunchRejectsEmptyPolicyOverrides(t *testing.T) {
+	for _, flag := range []string{"--provider", "--model", "--thinking"} {
+		t.Run(flag, func(t *testing.T) {
+			if _, ok := parseLaunch([]string{"--target", "pi", flag, ""}); ok {
+				t.Fatalf("parseLaunch accepted an empty %s override", flag)
+			}
+		})
+	}
+}
+
 func TestTaskLifecycleCommandContract(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")

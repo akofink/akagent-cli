@@ -197,6 +197,8 @@ Launch clears any stale `@agent_state` value for an active execution.
 A launch failure leaves the execution in recoverable `starting` state and records recovery debt.
 The `task launch --target shell` command creates and launches a generic execution record.
 The `task launch --target pi` target delegates to the Pi integration, which creates and launches a generic execution record.
+Managed Pi launches default to the validated non-secret policy `--provider openai-codex --model gpt-5.6-luna --thinking high`.
+Callers may override each policy field with `--provider`, `--model`, or `--thinking`; credentials are resolved separately and never persisted in launch policy.
 Both compatibility targets use a descriptive branch-derived execution and tmux label, or an explicit `--label` value.
 
 ## Lifecycle operations
