@@ -247,7 +247,10 @@ Metadata and external URLs are emitted when present and are preserved in resourc
 The default list includes actionable records: non-archived tasks and archived tasks with incomplete task or resource cleanup, cleanup debt, or recovery debt.
 Only fully archived, fully cleaned, debt-free records are hidden by default.
 `task list --all` includes all durable task records, including historical records that are complete.
-`--repository <name>` and `--worktree <path>` apply deterministic exact-match filters that compose with `--all`.
+`task list [keyword]` filters by case-sensitive substring matches against task titles and task or resource branches only.
+It does not match task IDs, repository names, or worktree paths.
+`--repository <name>` and `--worktree <path>` apply deterministic exact-match filters that compose with `--all` and keyword matching.
+`task inspect <task-id|keyword>` accepts an exact task ID or a keyword that must match exactly one task by title or branch.
 Detail views include task identity, computed status, branch and worktree facts, conditions, results, recovery fields, all task resources, and all task executions when present.
 Execution detail includes full session references, while execution list output includes a compact `tool:session-id` summary.
 

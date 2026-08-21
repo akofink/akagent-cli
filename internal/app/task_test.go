@@ -228,6 +228,72 @@ func TestTaskListEmptyCommandContract(t *testing.T) {
 	}
 }
 
+func TestTaskLookupSupportsUUIDAndTitleOrBranchKeywords(t *testing.T) {
+	setupTaskCommandTest(t)
+	const uuidTaskID = "019fe8f2-ac67-7406-a6e6-2717b2cd31c6"
+	for _, task := range []struct {
+		id, title string
+	}{
+		{id: uuidTaskID, title: "Deploy API"},
+		{id: "branch-task", title: "Unrelated task"},
+		{id: "id-only-task", title: "No keyword match"},
+	} {
+		if result := runCommand(t, []string{"task", "create", "--task-id", task.id, "--title", task.title}); result.code != 0 {
+			t.Fatalf("task create %s = (%d, %q)", task.id, result.code, result.stdout)
+		}
+	}
+
+	state, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.UpdateManifest("branch-task", func(manifest *store.Manifest) error {
+		manifest.Branch = "akofink/keyword-branch"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.WriteResource(uuidTaskID, store.Resource{ID: "resource-branch", Repository: "demo", Branch: "akofink/resource-keyword"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, keyword := range []string{uuidTaskID, "Deploy", "keyword-branch", "resource-keyword"} {
+		result := runCommand(t, []string{"task", "inspect", keyword})
+		if result.code != 0 || !strings.Contains(result.stdout, "task:") {
+			t.Fatalf("task inspect %q = (%d, %q), want one match", keyword, result.code, result.stdout)
+		}
+	}
+
+	byTitle := runCommand(t, []string{"task", "list", "Deploy"})
+	if byTitle.code != 0 || !strings.Contains(byTitle.stdout, "total: 1") || !strings.Contains(byTitle.stdout, uuidTaskID) {
+		t.Fatalf("task list by title = (%d, %q), want title-task only", byTitle.code, byTitle.stdout)
+	}
+	byBranch := runCommand(t, []string{"task", "list", "keyword-branch"})
+	if byBranch.code != 0 || !strings.Contains(byBranch.stdout, "total: 1") || !strings.Contains(byBranch.stdout, "branch-task") {
+		t.Fatalf("task list by branch = (%d, %q), want branch-task only", byBranch.code, byBranch.stdout)
+	}
+	byResourceBranch := runCommand(t, []string{"task", "list", "resource-keyword"})
+	if byResourceBranch.code != 0 || !strings.Contains(byResourceBranch.stdout, "total: 1") || !strings.Contains(byResourceBranch.stdout, uuidTaskID) {
+		t.Fatalf("task list by resource branch = (%d, %q), want resource task only", byResourceBranch.code, byResourceBranch.stdout)
+	}
+	idOnly := runCommand(t, []string{"task", "list", "id-only-task"})
+	if idOnly.code != 0 || idOnly.stdout != "tasks: []\ntotal: 0\n" {
+		t.Fatalf("task list by ID = (%d, %q), want no keyword match", idOnly.code, idOnly.stdout)
+	}
+
+	if result := runCommand(t, []string{"task", "create", "--task-id", "second-title-task", "--title", "Deploy worker"}); result.code != 0 {
+		t.Fatalf("second task create = (%d, %q)", result.code, result.stdout)
+	}
+	ambiguous := runCommand(t, []string{"task", "inspect", "Deploy"})
+	if ambiguous.code != 1 || !strings.Contains(ambiguous.stdout, "category: conflict") || !strings.Contains(ambiguous.stdout, "matched multiple tasks") || !strings.Contains(ambiguous.stdout, uuidTaskID) || !strings.Contains(ambiguous.stdout, "second-title-task") {
+		t.Fatalf("ambiguous task inspect = (%d, %q), want structured conflict", ambiguous.code, ambiguous.stdout)
+	}
+	missing := runCommand(t, []string{"task", "inspect", "not-present"})
+	if missing.code != 1 || !strings.Contains(missing.stdout, "category: not_found") || !strings.Contains(missing.stdout, "No tasks matched keyword") {
+		t.Fatalf("missing task keyword inspect = (%d, %q), want structured not found", missing.code, missing.stdout)
+	}
+}
+
 func TestTaskListHeterogeneousRowsCommandContract(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
@@ -655,7 +721,7 @@ func TestSerializationFailureHasStructuredCategory(t *testing.T) {
 func TestTaskMissingResourceHasStructuredCategory(t *testing.T) {
 	setupTaskCommandTest(t)
 	result := runCommand(t, []string{"task", "inspect", "missing-14"})
-	want := "error:\n  category: not_found\n  message: No tasks found for task ID missing-14\n  retryable: false\n  recovery: Inspect the task state and retry\n"
+	want := "error:\n  category: not_found\n  message: No tasks matched keyword missing-14\n  retryable: false\n  recovery: Inspect the task state and retry\n"
 	if result.code != 1 || result.stdout != want {
 		t.Fatalf("missing task inspect = (%d, %q), want (1, %q)", result.code, result.stdout, want)
 	}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
@@ -256,21 +257,43 @@ func taskCommand(args []string, stdout io.Writer) int {
 			if err != nil {
 				return lifecycleError(stdout, err)
 			}
+			var resources []store.Resource
+			resourcesLoaded := false
+			loadResources := func() ([]store.Resource, error) {
+				if resourcesLoaded {
+					return resources, nil
+				}
+				resources, err = manager.ListResources(id)
+				if err != nil {
+					return nil, err
+				}
+				resourcesLoaded = true
+				return resources, nil
+			}
 			if !options.All && !actionable(manifest) {
-				resources, resourceErr := manager.ListResources(id)
-				if resourceErr != nil {
-					return lifecycleError(stdout, resourceErr)
+				resources, err = loadResources()
+				if err != nil {
+					return lifecycleError(stdout, err)
 				}
 				if !actionableResources(resources) {
+					continue
+				}
+			}
+			if options.Keyword != "" {
+				resources, err = loadResources()
+				if err != nil {
+					return lifecycleError(stdout, err)
+				}
+				if !taskMatchesKeyword(manifest, resources, options.Keyword) {
 					continue
 				}
 			}
 			if options.Repository != "" || options.Worktree != "" {
 				matches := (options.Repository == "" || manifest.Repository == options.Repository) && (options.Worktree == "" || manifest.WorktreePath == options.Worktree)
 				if !matches {
-					resources, resourceErr := manager.ListResources(id)
-					if resourceErr != nil {
-						return lifecycleError(stdout, resourceErr)
+					resources, err = loadResources()
+					if err != nil {
+						return lifecycleError(stdout, err)
 					}
 					for _, resource := range resources {
 						if (options.Repository == "" || resource.Repository == options.Repository) && (options.Worktree == "" || resource.WorktreePath == options.Worktree) {
@@ -288,13 +311,17 @@ func taskCommand(args []string, stdout io.Writer) int {
 		return write(stdout, taskListView{Tasks: items, Total: len(items)})
 	case "inspect":
 		if len(args) != 2 {
-			return writeError(stdout, "usage", "Usage: akagent task inspect <task-id>", false, "Run `akagent task list`")
+			return writeError(stdout, "usage", "Usage: akagent task inspect <task-id|keyword>", false, "Run `akagent task list [keyword]`")
 		}
-		manifest, err := manager.Inspect(args[1])
+		taskID, err := resolveTaskID(state, manager, args[1])
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
-		detail, err := taskDetail(manager, args[1], manifest)
+		manifest, err := manager.Inspect(taskID)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		detail, err := taskDetail(manager, taskID, manifest)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -413,6 +440,7 @@ type taskListOptions struct {
 	All        bool
 	Repository string
 	Worktree   string
+	Keyword    string
 }
 
 func parseTaskList(args []string) (taskListOptions, bool) {
@@ -432,10 +460,75 @@ func parseTaskList(args []string) (taskListOptions, bool) {
 			}
 			index++
 		default:
-			return options, false
+			if strings.HasPrefix(args[index], "-") || options.Keyword != "" {
+				return options, false
+			}
+			options.Keyword = args[index]
 		}
 	}
 	return options, true
+}
+
+func resolveTaskID(state *store.Store, manager *lifecycle.Manager, arg string) (string, error) {
+	ids, err := state.TaskIDs()
+	if err != nil {
+		return "", err
+	}
+	for _, id := range ids {
+		if id == arg {
+			return id, nil
+		}
+	}
+	if _, err := uuid.Parse(arg); err == nil {
+		if _, err := manager.Inspect(arg); err != nil {
+			return "", err
+		}
+		return arg, nil
+	}
+
+	matches := make([]string, 0)
+	for _, id := range ids {
+		manifest, err := manager.Inspect(id)
+		if err != nil {
+			return "", err
+		}
+		resources, err := manager.ListResources(id)
+		if err != nil {
+			return "", err
+		}
+		if taskMatchesKeyword(manifest, resources, arg) {
+			matches = append(matches, id)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return "", &store.Error{
+			Kind:     store.KindNotFound,
+			Message:  fmt.Sprintf("No tasks matched keyword %s", arg),
+			Recovery: "Run `akagent task list [keyword]` to find matching tasks",
+		}
+	case 1:
+		return matches[0], nil
+	default:
+		return "", &store.Error{
+			Kind:     store.KindConflict,
+			Message:  fmt.Sprintf("Task keyword %s matched multiple tasks: %s", arg, strings.Join(matches, ", ")),
+			Recovery: "Use a more specific keyword or inspect the matching tasks with `akagent task list [keyword]`",
+		}
+	}
+}
+
+func taskMatchesKeyword(manifest store.Manifest, resources []store.Resource, keyword string) bool {
+	if strings.Contains(manifest.Title, keyword) || strings.Contains(manifest.Branch, keyword) {
+		return true
+	}
+	for _, resource := range resources {
+		if strings.Contains(resource.Branch, keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 func taskExecutionCommand(args []string, stdout io.Writer) int {
@@ -949,7 +1042,7 @@ func taskUsage(stdout io.Writer) int {
 }
 
 func taskListUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task list [--all] [--repository <name>] [--worktree <path>]", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]", false, "Filter by a case-sensitive title or branch keyword")
 }
 
 func actionable(manifest store.Manifest) bool {
