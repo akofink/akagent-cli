@@ -880,7 +880,17 @@ func (s *Store) openOwnedWithFlags(path string, finalFlags int, perm os.FileMode
 			flags = finalFlags
 		}
 		flags |= unix.O_CLOEXEC | unix.O_NOFOLLOW
-		fd, openErr := unix.Openat(currentFD, part, flags, uint32(perm.Perm()))
+		openFlags := flags
+		if i == len(parts)-1 && flags&unix.O_CREAT != 0 && flags&unix.O_EXCL == 0 {
+			// APFS can report ENOENT when several openat(O_CREAT) calls race
+			// to create the same file. Exclusive creation makes the winner
+			// explicit; losers reopen the file after observing EEXIST.
+			openFlags |= unix.O_EXCL
+		}
+		fd, openErr := unix.Openat(currentFD, part, openFlags, uint32(perm.Perm()))
+		if errors.Is(openErr, unix.EEXIST) && openFlags != flags {
+			fd, openErr = unix.Openat(currentFD, part, flags, uint32(perm.Perm()))
+		}
 		if openErr != nil {
 			_ = unix.Close(currentFD)
 			return nil, pathOpenError(path, openErr)

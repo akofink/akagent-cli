@@ -128,6 +128,7 @@ Events are never rewritten in place.
 - Reads (`ReadManifest`, `ReadEvents`) do not take the lock; atomic replacement and append-only files make them safe without it.
 
 Lock files use descriptor-relative `openat` with `O_NOFOLLOW` and direct kernel `flock` operations.
+Lock-file creation uses exclusive create followed by a reopen on `EEXIST`, avoiding an APFS race where concurrent non-exclusive `O_CREAT` calls can return `ENOENT` even though another creator has made the file.
 Kernel file locks are released when the owning process exits, so a crashed writer never leaves a held lock; leftover lock files are harmless marker files.
 The bounded wait is long enough for durable fsync-backed mutations, while callers still receive a retryable contention error if the bound expires.
 

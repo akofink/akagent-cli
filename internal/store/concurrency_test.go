@@ -24,6 +24,40 @@ func retryOnContention(t *testing.T, fn func() (int, error)) (int, error) {
 	return 0, fmt.Errorf("operation still contended after %d attempts", attempts)
 }
 
+// TestConcurrentLockCreation verifies concurrent first use of a task lock
+// does not lose the lock file creation race.
+func TestConcurrentLockCreation(t *testing.T) {
+	store := openTest(t)
+	taskID := validTaskID(t)
+	withConcurrencyLockWait(t, func() {
+		const contenders = 8
+		var wg sync.WaitGroup
+		errs := make(chan error, contenders)
+		start := make(chan struct{})
+		for i := 0; i < contenders; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				<-start
+				release, err := store.Lock(taskID)
+				if err != nil {
+					errs <- err
+					return
+				}
+				if err := release(); err != nil {
+					errs <- err
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Errorf("Lock() error = %v", err)
+		}
+	})
+}
+
 // TestConcurrentWritesSerialize runs many writer goroutines that each fully
 // replace the manifest under the per-task lock. The final manifest must be
 // exactly one writer's complete value, never a mixture.
