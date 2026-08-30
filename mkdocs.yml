@@ -16,6 +16,7 @@ nav:
       - Lifecycle skill: skills/akagent-lifecycle/SKILL.md
   - Concepts:
       - Architecture: architecture.md
+      - Charter proposal: charter.md
       - Protocol: protocol.md
       - Credentials: credentials.md
       - Storage: storage.md

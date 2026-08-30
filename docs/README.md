@@ -36,6 +36,7 @@ Tmux windows and process inspection make active work visible and attachable.
 ## Documents
 
 - [`architecture.md`](architecture.md) defines current components, ownership, persistence, integrations, discovery, and explicit non-goals.
+- [`charter.md`](charter.md) proposes a narrower durable protocol boundary and an incremental migration away from core orchestration.
 - [`protocol.md`](protocol.md) defines worker and task resources, state, lifecycle, TOON output, errors, compatibility, and reconciliation.
 - [`task-cli.md`](task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
 - [`credentials.md`](credentials.md) defines local credential sources, requirements, validation, and current limitations.
