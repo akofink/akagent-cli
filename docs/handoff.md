@@ -12,10 +12,10 @@ No launch adapter or daemon is required.
 - Compact `akagent` home view.
 - `akagent id generate` using UUIDv7.
 - `akagent worker inspect` with local capabilities.
-- TOON 4.1 output through a narrow, conformance-tested output package.
+- TOON 4.1 default protocol output through a narrow, conformance-tested output package, plus explicit deterministic `--format human` views for `task list` and `task inspect`.
 - Structured usage errors and shell exit codes.
 - Source-managed `akagent update` with clean-main validation, fast-forward-only Git updates, and atomic binary replacement.
-- A secure worker-local state store for versioned manifests, append-only events, atomic replacement, locking, archives, and recovery.
+- A secure worker-local state store for versioned manifests, append-only events, atomic replacement, locking, archives, and recovery, including APFS-safe concurrent lock-file creation.
 - A local credential manifest with `file:` and `env:` readiness checks plus `credential list`, `inspect`, and `doctor`.
 - Repository registration with `worktree` and `direct` policies, optional absolute worktree roots, and the derived-root default.
 - Durable local task creation, explicit execution launch, list, inspect, publish, finish, stop, archive, clean, and reconcile commands.
@@ -48,6 +48,8 @@ A coding agent can call the stable CLI directly from its task context without a 
 `task execution launch` starts the selected execution when an interactive local process is useful, and a multi-resource task may attach one resource with `--resource` during execution creation.
 The execution ID, resource ID, branch, worktree, and process facts remain durable even when no tmux window is available.
 `task execution session add` records provider-neutral session provenance without parsing Pi or another provider's session files.
+`task execution evidence list` and `inspect` derive read-only metadata availability from those references without reading provider content.
+`task list --format human` and `task inspect <task-id> --format human` provide deterministic terminal-oriented presentation, while TOON remains the default protocol and all errors remain TOON.
 Execution stop, archive, attach, and reconcile operate independently from resource state.
 The `task launch --target shell` path creates and launches a generic shell execution.
 The optional `task launch --target pi` path delegates to the Pi integration, which creates and launches a generic execution.
@@ -78,7 +80,8 @@ Credential cleanup refusal and hook failures never mutate the credential manifes
 `task resource archive`, `task resource clean`, and `task resource update` operate on one resource without changing sibling resource state.
 `task execution archive` and `task execution stop` operate on one execution without changing resource state.
 `task reconcile` repairs safe derived observations and Git facts for tasks and resources, while `task execution reconcile` repairs execution observations without changing resource state.
-Reconciliation may close a matching tagged window for a non-running execution and verifies it is gone before updating the observation.
+Automatic stale-window cleanup is limited to terminal executions with verified durable process identity.
+Created, starting, ambiguous, contradictory, or unverified observations are preserved as recovery facts rather than triggering destructive cleanup.
 It never deletes task state, branches, worktrees, terminal history, or unverified windows.
 Legacy single-resource manifests migrate lazily to a `legacy` resource when resource operations inspect or extend them.
 
@@ -89,14 +92,15 @@ No daemon, remote scheduler, or launch adapter is part of the required lifecycle
 
 ## Durable work-state model and migration boundary
 
-`akagent task inspect <task-id>` is the durable source of active work state.
+`akagent task inspect <task-id>` is the durable source of active work state, and `--format human` provides a direct terminal-oriented view without changing the default TOON protocol.
 Its task detail includes task lifecycle, branch and worktree facts, conditions, activity, result, recovery state, all resources, resource Git facts, generic delivery metadata, all executions, execution tool and process provenance, and provider-neutral session references.
 Task and execution archives preserve the same records for recovery after cleanup or provider state changes.
 List commands remain concise and include compact session summaries where appropriate.
 
 Session references are declarations from an integration, not provider adapters in the core lifecycle.
 An integration discovers its own resumable session state and calls the generic session-reference update surface or `task execution session add`.
-`akagent` validates only the non-secret shape and local path reference, then persists the reference without opening or parsing the provider file.
+`akagent` validates only the non-secret shape and local path reference when persisting a session reference, without opening or parsing the provider file.
+The separate evidence views perform only safe local path metadata checks and never read provider content.
 Missing provider files do not invalidate historical records.
 
 This is the migration boundary from the shared `WORKING_STATE.md` board.
@@ -142,6 +146,8 @@ akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
+akagent task inspect <task-id|keyword> [--format <toon|human>]
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
