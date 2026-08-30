@@ -4,7 +4,8 @@ The task command is the stable command boundary for self-service local task life
 Coding agents normally use task, resource, and execution commands directly to maintain their own durable work state.
 Optional automated local workflow integrations can use the separate `integration launch` command and still persist generic executions through this boundary.
 
-All protocol data and errors are written to stdout as TOON.
+Protocol data and errors are written to stdout as TOON by default.
+`task list` and `task inspect` also accept `--format human` for direct terminal reading, while errors remain TOON.
 Diagnostics are not mixed into protocol output.
 
 Exit code `0` means success or an idempotent no-op.
@@ -69,8 +70,8 @@ akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]
 akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]
-akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]
-akagent task inspect <task-id|keyword>
+akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
+akagent task inspect <task-id|keyword> [--format <toon|human>]
 akagent task attach <task-id>
 akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
 akagent task finish <task-id> <succeeded|failed> <result>
@@ -93,6 +94,16 @@ Use `--all` to include all durable task records, including historical records th
 Filters compose as an intersection and results remain sorted by task ID.
 `task inspect` accepts an exact task ID or a keyword that must match exactly one task by title or branch.
 A keyword with no matches returns a structured not-found error, while a keyword matching multiple tasks returns a structured conflict error.
+
+### Human-readable task views
+
+`task list` and `task inspect` emit TOON unless `--format human` is selected.
+`--format toon` explicitly selects the default protocol and is useful when a wrapper constructs the format value.
+The human list is a deterministic pipe-delimited table with fixed columns for ID, title, status, worker, branch, worktree, and condition, followed by a total.
+The human inspect view uses labeled task fields and numbered resource and execution sections.
+It includes the same safe typed views as the TOON response and never reads or adds credential values or provider session content.
+Empty optional values are shown as `-`, and control characters or pipe delimiters in values are escaped for unambiguous display.
+Human output is intended for people and is not a stable parsing interface.
 
 Task creation persists task intent and can create zero resources.
 The compatibility `--repository` form creates one initial resource without creating a tmux window or starting a process.
@@ -221,6 +232,7 @@ Attachment never creates, kills, renames, or retargets tmux resources.
 ## Output schemas
 
 The default detail schema is a single `task` object.
+Human detail output is an explicitly selected labeled presentation of that same task view, with resource and execution sections included for direct inspection.
 
 ```toon
 task:
@@ -242,6 +254,7 @@ Prompt contents and credential values are never emitted.
 Credential cleanup hook errors are reduced to structured, redaction-safe messages before they reach protocol output.
 
 The list schema uses a compact tabular array and includes the definitive total.
+The human list format uses fixed pipe-delimited columns and includes the same definitive total without alignment or terminal-width detection.
 
 ```toon
 tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:

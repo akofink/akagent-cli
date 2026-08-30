@@ -354,12 +354,17 @@ func taskCommand(args []string, stdout io.Writer) int {
 			}
 			items = append(items, view(id, manifest))
 		}
-		return write(stdout, taskListView{Tasks: items, Total: len(items)})
-	case "inspect":
-		if len(args) != 2 {
-			return writeError(stdout, "usage", "Usage: akagent task inspect <task-id|keyword>", false, "Run `akagent task list [keyword]`")
+		result := taskListView{Tasks: items, Total: len(items)}
+		if options.Format == outputFormatHuman {
+			return writeHumanTaskList(stdout, result)
 		}
-		taskID, err := resolveTaskID(state, manager, args[1])
+		return write(stdout, result)
+	case "inspect":
+		argument, format, ok := parseTaskInspect(args[1:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task inspect <task-id|keyword> [--format <toon|human>]", false, "Run `akagent task list [keyword]` or add `--format human` for terminal output")
+		}
+		taskID, err := resolveTaskID(state, manager, argument)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -370,6 +375,9 @@ func taskCommand(args []string, stdout io.Writer) int {
 		detail, err := taskDetail(manager, taskID, manifest)
 		if err != nil {
 			return lifecycleError(stdout, err)
+		}
+		if format == outputFormatHuman {
+			return writeHumanTaskDetail(stdout, detail)
 		}
 		return write(stdout, detail)
 	case "attach":
@@ -482,27 +490,42 @@ func repositoryCommand(args []string, stdout io.Writer) int {
 	}
 }
 
+type outputFormat string
+
+const (
+	outputFormatTOON  outputFormat = "toon"
+	outputFormatHuman outputFormat = "human"
+)
+
 type taskListOptions struct {
 	All        bool
 	Repository string
 	Worktree   string
 	Keyword    string
+	Format     outputFormat
 }
 
 func parseTaskList(args []string) (taskListOptions, bool) {
-	var options taskListOptions
+	options := taskListOptions{Format: outputFormatTOON}
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "--all":
 			options.All = true
-		case "--repository", "--worktree":
+		case "--repository", "--worktree", "--format":
 			if index+1 >= len(args) || args[index+1] == "" {
 				return options, false
 			}
-			if args[index] == "--repository" {
+			switch args[index] {
+			case "--repository":
 				options.Repository = args[index+1]
-			} else {
+			case "--worktree":
 				options.Worktree = args[index+1]
+			case "--format":
+				format, ok := parseOutputFormat(args[index+1])
+				if !ok {
+					return options, false
+				}
+				options.Format = format
 			}
 			index++
 		default:
@@ -513,6 +536,40 @@ func parseTaskList(args []string) (taskListOptions, bool) {
 		}
 	}
 	return options, true
+}
+
+func parseTaskInspect(args []string) (string, outputFormat, bool) {
+	format := outputFormatTOON
+	argument := ""
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--format":
+			if index+1 >= len(args) {
+				return "", format, false
+			}
+			parsed, ok := parseOutputFormat(args[index+1])
+			if !ok {
+				return "", format, false
+			}
+			format = parsed
+			index++
+		default:
+			if strings.HasPrefix(args[index], "-") || argument != "" {
+				return "", format, false
+			}
+			argument = args[index]
+		}
+	}
+	return argument, format, argument != ""
+}
+
+func parseOutputFormat(value string) (outputFormat, bool) {
+	switch outputFormat(value) {
+	case outputFormatTOON, outputFormatHuman:
+		return outputFormat(value), true
+	default:
+		return "", false
+	}
 }
 
 func resolveTaskID(state *store.Store, manager *lifecycle.Manager, arg string) (string, error) {
@@ -1114,7 +1171,7 @@ func taskUsage(stdout io.Writer) int {
 }
 
 func taskListUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]", false, "Filter by a case-sensitive title or branch keyword")
+	return writeError(stdout, "usage", "Usage: akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]", false, "Filter by a case-sensitive title or branch keyword; use `--format human` for terminal output")
 }
 
 func actionable(manifest store.Manifest) bool {

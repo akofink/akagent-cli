@@ -228,6 +228,77 @@ func TestTaskListEmptyCommandContract(t *testing.T) {
 	}
 }
 
+func TestTaskListHumanFormatUsesDeterministicTable(t *testing.T) {
+	setupTaskCommandTest(t)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "human-list", "--title", "Build | feature"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+
+	result := runCommand(t, []string{"task", "list", "--format", "human"})
+	want := "Tasks (1)\nID | TITLE | STATUS | WORKER | BRANCH | WORKTREE | CONDITION\nhuman-list | Build \\| feature | created | local | - | - | none\nTotal: 1\n"
+	if result.code != 0 || result.stdout != want {
+		t.Fatalf("human task list = (%d, %q), want (0, %q)", result.code, result.stdout, want)
+	}
+
+	toon := runCommand(t, []string{"task", "list"})
+	if toon.code != 0 || !strings.HasPrefix(toon.stdout, "tasks[1]{id,title,status,worker,condition,committed,dirty,untracked}:\n") {
+		t.Fatalf("default task list format = (%d, %q), want TOON", toon.code, toon.stdout)
+	}
+}
+
+func TestTaskInspectHumanFormatUsesLabeledDetail(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
+	}
+	const taskID = "human-inspect"
+	if result := runCommand(t, []string{"task", "create", "--task-id", taskID, "--title", "Inspect details", "--repository", "demo"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "execution", "create", taskID, "--execution-id", "human-execution", "--target", "shell", "--command", "/bin/sh", "--resource", "legacy"}); result.code != 0 {
+		t.Fatalf("execution create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "publish", taskID, "--condition", "active", "--reason", "coding", "--activity", "tests"}); result.code != 0 {
+		t.Fatalf("task publish = (%d, %q)", result.code, result.stdout)
+	}
+
+	result := runCommand(t, []string{"task", "inspect", "--format", "human", taskID})
+	if result.code != 0 {
+		t.Fatalf("human task inspect = (%d, %q)", result.code, result.stdout)
+	}
+	for _, expected := range []string{
+		"Task\n",
+		"  id: " + taskID + "\n",
+		"  title: Inspect details\n",
+		"  condition: active\n",
+		"  reason: coding\n",
+		"  activity: tests\n",
+		"  committed: true\n",
+		"Resources (1)\n",
+		"    id: legacy\n",
+		"    repository: demo\n",
+		"Executions (1)\n",
+		"    id: human-execution\n",
+		"    command: /bin/sh\n",
+	} {
+		if !strings.Contains(result.stdout, expected) {
+			t.Fatalf("human task inspect = %q, want %q", result.stdout, expected)
+		}
+	}
+	if strings.Contains(result.stdout, "task:\n") || strings.Contains(result.stdout, "tasks[") {
+		t.Fatalf("human task inspect used TOON envelope: %q", result.stdout)
+	}
+
+	toon := runCommand(t, []string{"task", "inspect", taskID})
+	if toon.code != 0 || !strings.HasPrefix(toon.stdout, "task:\n") {
+		t.Fatalf("default task inspect format = (%d, %q), want TOON", toon.code, toon.stdout)
+	}
+}
+
 func TestTaskLookupSupportsUUIDAndTitleOrBranchKeywords(t *testing.T) {
 	setupTaskCommandTest(t)
 	const uuidTaskID = "019fe8f2-ac67-7406-a6e6-2717b2cd31c6"

@@ -77,8 +77,8 @@ Create a task with a title and registered repository:
 akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
 akagent task launch <task-id> --target shell
-akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]
-akagent task inspect <task-id|keyword>
+akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
+akagent task inspect <task-id|keyword> [--format <toon|human>]
 ```
 
 The command generates a UUIDv7 task ID when `--task-id` is omitted.
@@ -88,6 +88,7 @@ When `--worktree` is omitted, its directory name is the branch label after the o
 Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
 The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.
 The default task list shows actionable records only, while `--all` includes archived history.
+Use `--format human` on either task view for deterministic labeled terminal output; TOON remains the default for agents and scripts.
 Actionable records include non-archived tasks and archived tasks with incomplete task or resource cleanup, cleanup debt, or recovery debt.
 Use `--all` to include fully archived history, and use `--repository` and `--worktree` to compose deterministic exact-match filters.
 Pass a case-sensitive keyword to `task list` to match task titles and task or resource branches only.
@@ -165,7 +166,8 @@ Task status is computed from lifecycle records and observations.
 Lifecycle values are `created`, `starting`, `running`, `stopped`, and `finished`.
 Computed statuses include `active`, `waiting`, `blocked`, `failed`, `stopped`, `finished`, and `unknown`.
 
-Use TOON output as the protocol boundary rather than parsing human-oriented text:
+Use TOON output as the protocol boundary rather than parsing human-oriented text.
+The default task views remain TOON even though `--format human` is available for direct terminal reading:
 
 ```bash
 akagent task inspect <task-id|keyword>
