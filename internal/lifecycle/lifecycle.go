@@ -1831,7 +1831,7 @@ func startExecutionTmuxWindow(executionID, taskID, label, directory, command str
 	// Configure identity from inside the pane before starting the managed
 	// command. A fast command can otherwise exit between new-window and the
 	// metadata writes below, leaving no verifiable execution window.
-	args = append(args, fmt.Sprintf("window=$(tmux display-message -p '#{window_id}') && tmux set-option -w -t \"$window\" @akagent_task_id %s && tmux set-option -w -t \"$window\" @akagent_execution_id %s && exec %s", shellQuote(taskID), shellQuote(executionID), command))
+	args = append(args, fmt.Sprintf("pane=${TMUX_PANE:?tmux pane unavailable} && window=$(tmux display-message -p -t \"$pane\" '#{window_id}') && tmux set-option -w -t \"$window\" @akagent_task_id %s && tmux set-option -w -t \"$window\" @akagent_execution_id %s && exec %s", shellQuote(taskID), shellQuote(executionID), command))
 	output, err := exec.Command("tmux", args...).Output()
 	if err != nil {
 		return TmuxProcess{}, errors.New("tmux execution window could not be created")

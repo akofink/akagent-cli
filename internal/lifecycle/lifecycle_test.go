@@ -529,6 +529,67 @@ esac
 	}
 }
 
+func TestCommandTmuxStartExecutionTargetsInvokingPaneWindow(t *testing.T) {
+	bin := t.TempDir()
+	statePath := filepath.Join(t.TempDir(), "metadata")
+	tmuxPath := filepath.Join(bin, "tmux")
+	const script = `#!/bin/sh
+set -eu
+case "$1" in
+  new-window)
+    command=
+    for arg do command=$arg; done
+    TMUX_PANE="%execution-pane" /bin/sh -c "$command"
+    printf '@execution-window\n'
+    ;;
+  display-message)
+    target=
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "-t" ]; then shift; target=$1; fi
+      shift
+    done
+    if [ "$target" = "%execution-pane" ]; then printf '@execution-window\n'; else printf '@operator-window\n'; fi
+    ;;
+  set-option)
+    target=
+    option=
+    value=
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        -t) shift; target=$1 ;;
+        @akagent_task_id|@akagent_execution_id) option=$1; shift; value=$1 ;;
+      esac
+      shift
+    done
+    printf '%s\t%s\t%s\n' "$target" "$option" "$value" >> "$AKAGENT_TEST_TMUX_STATE"
+    ;;
+  list-windows) printf '%s\t%s\t%s\n' '@execution-window' 'exec-task' 'exec-one' ;;
+  list-panes) printf '%s\t%s\t%s\n' '@execution-window' '%execution-pane' '0' ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("AKAGENT_TEST_TMUX_STATE", statePath)
+	if _, err := (commandTmux{}).StartExecution("exec-one", "exec-task", "review", "", "/bin/sh", []string{"-c", "true"}); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSpace(string(content)), "\n")
+	want := []string{
+		"@execution-window\t@akagent_task_id\texec-task",
+		"@execution-window\t@akagent_execution_id\texec-one",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("execution metadata writes = %q, want %q", got, want)
+	}
+}
+
 func TestCommandTmuxStopExecutionRequiresWindowGone(t *testing.T) {
 	bin := t.TempDir()
 	statePath := filepath.Join(t.TempDir(), "window")
