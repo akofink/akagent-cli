@@ -66,7 +66,7 @@ repository:
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
 akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]
 akagent task resource <create|list|inspect|update|archive|clean> ...
-akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile> ...
+akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]
 akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]
 akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]
@@ -114,7 +114,8 @@ The worker injects only ready environment credentials in memory and records a ge
 An interrupted deployment remains recoverable as a stopped execution and can be retried as a new deployment attempt without changing resource state.
 Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
 Use `task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]` to record provider-neutral session provenance.
-The optional path is an absolute local reference only; `akagent` never reads provider session files.
+Use `task execution evidence list <task-id> <execution-id>` and `task execution evidence inspect <task-id> <execution-id> <capture-id>` for read-only Phase 0 evidence views derived from those references.
+The optional path is an absolute local reference only; evidence inspection checks only safe local path metadata and never reads provider session files.
 The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
 Managed execution windows publish the shared tmux `@agent_state` option by matching those metadata IDs rather than the display label.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
@@ -131,7 +132,7 @@ Automated local workflow integrations use `akagent integration launch <task-id> 
 The integration requires a stable execution ID for idempotent retries, checks `AKAGENT_ENABLED` before opening the state store, and returns a skipped success without lifecycle side effects when the signal is `0`.
 When enabled, it creates and launches a generic execution with target `workflow` through the same durable lifecycle as explicit execution commands.
 The command and arguments are treated as opaque local process inputs and are never interpreted as a provider or forge API.
-Use `task execution inspect`, `task execution reconcile`, and `task execution session add` for recovery and provider-neutral session provenance.
+Use `task execution inspect`, `task execution evidence list`, `task execution reconcile`, and `task execution session add` for recovery and provider-neutral session provenance.
 Compatibility shell and Pi launches derive the execution and tmux display label from the selected resource or task branch, without the owner prefix.
 Use `--label <descriptive-label>` when no descriptive branch is available.
 Labels must not be `pi`, `shell`, `akagent`, `execution`, or an internal UUID.
@@ -253,6 +254,8 @@ Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `b
 Resource inspect and mutation output uses one `resource` object.
 Task inspection additionally emits `resources[<n>]` and `executions[<n>]` snapshots so it is sufficient for durable work-state recovery.
 Execution inspection emits full `session_references[<n>]` entries; execution list output uses a compact session summary.
+Evidence list output emits one `captures[<n>]` row per existing session reference and an `evidence` summary.
+Evidence inspect output emits one `evidence` object and never includes transcript content, prompt text, terminal output, credentials, environment values, shell history, or raw derived artifacts.
 
 ## Self-service and optional integration signal
 

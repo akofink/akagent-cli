@@ -55,6 +55,7 @@ The record stores a descriptive label, target, command metadata, optional resour
 The core execution record has no Pi-specific fields.
 A session reference contains only a provider-neutral tool identifier, session ID, and optional absolute local reference path.
 The path is a reference to provider-owned state, not session content, and may be absent or no longer present when the execution is inspected.
+Phase 0 evidence views derive metadata-only captures from these references without parsing provider artifacts.
 
 ```toon
 execution:
@@ -178,7 +179,7 @@ akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
-akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
+akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -228,6 +229,7 @@ Repeated equivalent creates and launches are successful no-ops.
 A failed launch remains retryable without recreating the task or selected resource.
 A task can own zero or more executions, and each execution can be inspected, attached, stopped, archived, and reconciled independently.
 `task execution session add` appends an idempotent provider-neutral session reference without provider-specific parsing.
+`task execution evidence list` and `task execution evidence inspect` provide read-only metadata evidence derived from those references.
 
 ### Publish state
 
@@ -253,6 +255,9 @@ It does not match task IDs, repository names, or worktree paths.
 `task inspect <task-id|keyword>` accepts an exact task ID or a keyword that must match exactly one task by title or branch.
 Detail views include task identity, computed status, branch and worktree facts, conditions, results, recovery fields, all task resources, and all task executions when present.
 Execution detail includes full session references, while execution list output includes a compact `tool:session-id` summary.
+Execution evidence list output includes an `evidence` summary and `captures[<n>]` rows derived from existing session references.
+A capture with an existing regular local artifact is `available` with evidence class `observed`; a capture without a path is `unknown` with evidence class `recorded`; and a capture whose path is missing, unreadable, a symlink, a directory, or another non-regular file is `unavailable`.
+An execution with no session references is reported distinctly as `unavailable` with reason `no_session_references` and zero captures.
 
 ```toon
 tasks[1]{id,title,status,worker,condition}:

@@ -100,6 +100,52 @@ type executionDetailView struct {
 	SessionReferences []sessionReferenceView `json:"session_references,omitempty"`
 }
 
+type executionEvidenceSummaryView struct {
+	TaskID        string `json:"task_id"`
+	ExecutionID   string `json:"execution_id"`
+	State         string `json:"state"`
+	EvidenceClass string `json:"evidence_class"`
+	Reason        string `json:"reason"`
+}
+
+type executionEvidenceListItem struct {
+	CaptureID         string `json:"capture_id"`
+	SourceKind        string `json:"source_kind"`
+	Provider          string `json:"provider"`
+	ProviderSessionID string `json:"provider_session_id"`
+	State             string `json:"state"`
+	EvidenceClass     string `json:"evidence_class"`
+	Coverage          string `json:"coverage"`
+	RetentionClass    string `json:"retention_class"`
+}
+
+type executionEvidenceListView struct {
+	Evidence executionEvidenceSummaryView `json:"evidence"`
+	Captures []executionEvidenceListItem  `json:"captures"`
+	Total    int                          `json:"total"`
+}
+
+type executionEvidenceDetailItem struct {
+	CaptureID         string `json:"capture_id"`
+	ExecutionID       string `json:"execution_id"`
+	SourceKind        string `json:"source_kind"`
+	Provider          string `json:"provider"`
+	ProviderSessionID string `json:"provider_session_id"`
+	State             string `json:"state"`
+	EvidenceClass     string `json:"evidence_class"`
+	Coverage          string `json:"coverage"`
+	ArtifactReference string `json:"artifact_reference,omitempty"`
+	ArtifactState     string `json:"artifact_state"`
+	RedactionPolicy   string `json:"redaction_policy"`
+	RetentionClass    string `json:"retention_class"`
+	ErrorCategory     string `json:"error_category,omitempty"`
+	Recovery          string `json:"recovery,omitempty"`
+}
+
+type executionEvidenceDetailView struct {
+	Evidence executionEvidenceDetailItem `json:"evidence"`
+}
+
 type taskView struct {
 	ID                     string `json:"id"`
 	Title                  string `json:"title"`
@@ -533,7 +579,7 @@ func taskMatchesKeyword(manifest store.Manifest, resources []store.Resource, key
 
 func taskExecutionCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
 	}
 	state, err := store.Open()
 	if err != nil {
@@ -602,6 +648,32 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, executionDetail(execution, manager))
+	case "evidence":
+		if len(args) < 4 || len(args) > 5 {
+			return writeError(stdout, "usage", "Usage: akagent task execution evidence <list|inspect> <task-id> <execution-id> [<capture-id>]", false, "Inspect read-only metadata for execution session references")
+		}
+		switch args[1] {
+		case "list":
+			if len(args) != 4 {
+				return writeError(stdout, "usage", "Usage: akagent task execution evidence list <task-id> <execution-id>", false, "List read-only execution evidence")
+			}
+			summary, captures, err := manager.ListExecutionEvidence(args[2], args[3])
+			if err != nil {
+				return lifecycleError(stdout, err)
+			}
+			return write(stdout, executionEvidenceList(summary, captures))
+		case "inspect":
+			if len(args) != 5 {
+				return writeError(stdout, "usage", "Usage: akagent task execution evidence inspect <task-id> <execution-id> <capture-id>", false, "Inspect one read-only execution evidence record")
+			}
+			capture, err := manager.InspectExecutionEvidence(args[2], args[3], args[4])
+			if err != nil {
+				return lifecycleError(stdout, err)
+			}
+			return write(stdout, executionEvidenceDetail(capture))
+		default:
+			return writeError(stdout, "usage", "Usage: akagent task execution evidence <list|inspect> <task-id> <execution-id> [<capture-id>]", false, "Inspect read-only metadata for execution session references")
+		}
 	case "publish":
 		if len(args) < 4 {
 			return writeError(stdout, "usage", "Usage: akagent task execution publish <task-id> <execution-id> --condition <condition> [--reason <reason>] [--activity <activity>]", false, "Publish execution condition and heartbeat")
@@ -649,7 +721,7 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, executionListView{Executions: items, Total: len(items)})
 	default:
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
 	}
 }
 
@@ -1098,6 +1170,22 @@ func executionDetail(execution store.Execution, manager *lifecycle.Manager) exec
 		references = append(references, sessionReferenceView{Tool: reference.Tool, SessionID: reference.SessionID, ReferencePath: reference.ReferencePath})
 	}
 	return executionDetailView{Execution: viewExecution(execution, manager), SessionReferences: references}
+}
+
+func executionEvidenceList(summary lifecycle.EvidenceSummary, captures []lifecycle.EvidenceCapture) executionEvidenceListView {
+	items := make([]executionEvidenceListItem, 0, len(captures))
+	for _, capture := range captures {
+		items = append(items, executionEvidenceListItem{CaptureID: capture.CaptureID, SourceKind: capture.SourceKind, Provider: capture.Provider, ProviderSessionID: capture.ProviderSessionID, State: capture.State, EvidenceClass: capture.EvidenceClass, Coverage: strings.Join(capture.Coverage, ","), RetentionClass: capture.RetentionClass})
+	}
+	return executionEvidenceListView{
+		Evidence: executionEvidenceSummaryView{TaskID: summary.TaskID, ExecutionID: summary.ExecutionID, State: summary.State, EvidenceClass: summary.EvidenceClass, Reason: summary.Reason},
+		Captures: items,
+		Total:    len(items),
+	}
+}
+
+func executionEvidenceDetail(capture lifecycle.EvidenceCapture) executionEvidenceDetailView {
+	return executionEvidenceDetailView{Evidence: executionEvidenceDetailItem{CaptureID: capture.CaptureID, ExecutionID: capture.ExecutionID, SourceKind: capture.SourceKind, Provider: capture.Provider, ProviderSessionID: capture.ProviderSessionID, State: capture.State, EvidenceClass: capture.EvidenceClass, Coverage: strings.Join(capture.Coverage, ","), ArtifactReference: capture.ArtifactReference, ArtifactState: capture.ArtifactState, RedactionPolicy: capture.RedactionPolicy, RetentionClass: capture.RetentionClass, ErrorCategory: capture.ErrorCategory, Recovery: capture.Recovery}}
 }
 
 func taskDetail(manager *lifecycle.Manager, id string, manifest store.Manifest) (taskDetailView, error) {

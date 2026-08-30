@@ -850,6 +850,73 @@ func TestTaskRetryableStoreErrorIsStructured(t *testing.T) {
 	}
 }
 
+func TestExecutionEvidenceCommandReportsReferenceAvailabilityWithoutContent(t *testing.T) {
+	setupTaskCommandTest(t)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "evidence-task", "--title", "Evidence task"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "execution", "create", "evidence-task", "--execution-id", "evidence-exec", "--target", "pi", "--command", "pi"}); result.code != 0 {
+		t.Fatalf("execution create = (%d, %q)", result.code, result.stdout)
+	}
+	referencePath := filepath.Join(t.TempDir(), "session.jsonl")
+	secretContent := "SECRET_PROMPT_CONTENT_SHOULD_NOT_APPEAR"
+	if err := os.WriteFile(referencePath, []byte(secretContent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"task", "execution", "session", "add", "evidence-task", "evidence-exec", "--tool", "pi", "--session-id", "pi-session", "--reference-path", referencePath}); result.code != 0 {
+		t.Fatalf("session add = (%d, %q)", result.code, result.stdout)
+	}
+	if err := os.Remove(referencePath); err != nil {
+		t.Fatal(err)
+	}
+
+	listed := runCommand(t, []string{"task", "execution", "evidence", "list", "evidence-task", "evidence-exec"})
+	for _, expected := range []string{"evidence:", "state: recorded", "reason: session_references_recorded", "captures[1]", "provider_session_id,state,evidence_class", "pi-session", "unavailable", "total: 1"} {
+		if listed.code != 0 || !strings.Contains(listed.stdout, expected) {
+			t.Fatalf("evidence list = (%d, %q), want %q", listed.code, listed.stdout, expected)
+		}
+	}
+	if strings.Contains(listed.stdout, secretContent) {
+		t.Fatalf("evidence list exposed provider content: %q", listed.stdout)
+	}
+	captureID := ""
+	for _, line := range strings.Split(listed.stdout, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ref-") {
+			captureID = strings.Split(line, ",")[0]
+			break
+		}
+	}
+	if captureID == "" {
+		t.Fatalf("evidence list did not expose capture ID: %q", listed.stdout)
+	}
+	inspected := runCommand(t, []string{"task", "execution", "evidence", "inspect", "evidence-task", "evidence-exec", captureID})
+	for _, expected := range []string{"evidence:", "capture_id: " + captureID, "artifact_reference: " + referencePath, "artifact_state: unavailable", "redaction_policy: metadata_only", "retention_class: metadata", "error_category: artifact_missing"} {
+		if inspected.code != 0 || !strings.Contains(inspected.stdout, expected) {
+			t.Fatalf("evidence inspect = (%d, %q), want %q", inspected.code, inspected.stdout, expected)
+		}
+	}
+	if strings.Contains(inspected.stdout, secretContent) {
+		t.Fatalf("evidence inspect exposed provider content: %q", inspected.stdout)
+	}
+}
+
+func TestExecutionEvidenceCommandReportsNoSessionReferences(t *testing.T) {
+	setupTaskCommandTest(t)
+	if result := runCommand(t, []string{"task", "create", "--task-id", "no-evidence-task", "--title", "No evidence task"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "execution", "create", "no-evidence-task", "--execution-id", "no-evidence-exec", "--target", "shell", "--command", "/bin/sh"}); result.code != 0 {
+		t.Fatalf("execution create = (%d, %q)", result.code, result.stdout)
+	}
+
+	listed := runCommand(t, []string{"task", "execution", "evidence", "list", "no-evidence-task", "no-evidence-exec"})
+	want := "evidence:\n  task_id: no-evidence-task\n  execution_id: no-evidence-exec\n  state: unavailable\n  evidence_class: unavailable\n  reason: no_session_references\ncaptures: []\ntotal: 0\n"
+	if listed.code != 0 || listed.stdout != want {
+		t.Fatalf("empty evidence list = (%d, %q), want (0, %q)", listed.code, listed.stdout, want)
+	}
+}
+
 func TestMalformedCredentialManifestRedactsCommandError(t *testing.T) {
 	setupTaskCommandTest(t)
 	secret := "malformed-runtime-secret-14"
