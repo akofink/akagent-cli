@@ -44,6 +44,7 @@ Tmux windows and process inspection make active work visible and attachable.
 - [`roadmap.md`](roadmap.md) separates shipped local work from tracked follow-ups.
 - [`implementation-plan.md`](implementation-plan.md) records the public issue and delivery map.
 - [`storage.md`](storage.md) defines the worker-local state store layout, schema, permissions, locking, archive, and recovery.
+- [`session-retrospection.md`](session-retrospection.md) proposes durable, provider-neutral session evidence and recovery boundaries.
 - [`handoff.md`](handoff.md) records current implementation status and the next public work.
 
 ## Preview the documentation site

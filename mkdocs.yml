@@ -20,6 +20,7 @@ nav:
       - Credentials: credentials.md
       - Storage: storage.md
       - Technology evaluation: technology.md
+      - Session retrospection: session-retrospection.md
   - Reference:
       - Task CLI contract: task-cli.md
       - TOON output contract: toon.md
