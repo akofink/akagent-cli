@@ -434,7 +434,9 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 			return nil, observeErr
 		}
 		hadTaggedWindow := observation.Available && len(observation.Processes) > 0
-		if hadTaggedWindow && execution.Lifecycle != "running" {
+		terminal := terminalExecutionLifecycle(execution.Lifecycle)
+		ownershipContradictory := hadTaggedWindow && terminal && !m.executionWindowOwnershipVerified(execution, observation)
+		if hadTaggedWindow && terminal && !ownershipContradictory {
 			if err := m.stopExecutionWindow(taskID, id); err != nil {
 				return nil, err
 			}
@@ -445,8 +447,12 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 		}
 		before := execution
 		now := m.now()
-		applyExecutionObservation(&execution, observation, now, m.heartbeatTimeout())
-		if observation.Available && len(observation.Processes) == 0 && (executionNeedsRecovery(execution) || hadTaggedWindow) {
+		if ownershipContradictory {
+			markExecutionObservationContradictory(&execution, now)
+		} else {
+			applyExecutionObservation(&execution, observation, now, m.heartbeatTimeout())
+		}
+		if observation.Available && len(observation.Processes) == 0 && !terminal && (executionNeedsRecovery(execution) || hadTaggedWindow) {
 			execution.Lifecycle, execution.Condition = "stopped", "none"
 		}
 		if reflect.DeepEqual(execution, before) {
@@ -461,6 +467,26 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 		result = append(result, execution)
 	}
 	return result, nil
+}
+
+func terminalExecutionLifecycle(lifecycle string) bool {
+	return lifecycle == "stopped" || lifecycle == "finished"
+}
+
+func (m *Manager) executionWindowOwnershipVerified(execution store.Execution, observation TmuxObservation) bool {
+	if _, ok := m.Tmux.(ExecutionTmux); !ok || !observation.Available || len(observation.Processes) != 1 {
+		return false
+	}
+	process := observation.Processes[0]
+	return execution.TmuxWindow != "" && execution.ProcessPane != "" && execution.ProcessPID > 0 && execution.ProcessStartTime > 0 &&
+		process.WindowID == execution.TmuxWindow && process.PaneID == execution.ProcessPane &&
+		process.PID == execution.ProcessPID && process.StartTime == execution.ProcessStartTime
+}
+
+func markExecutionObservationContradictory(execution *store.Execution, now time.Time) {
+	execution.ObservationAt = now
+	execution.Observation = ObservationContradictory
+	execution.ObservedPID, execution.ObservedStartTime = 0, 0
 }
 
 func executionNeedsRecovery(execution store.Execution) bool {
