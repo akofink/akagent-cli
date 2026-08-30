@@ -44,7 +44,7 @@ akagent repository register demo /path/to/checkout --worktree-root /path/to/work
 akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
 akagent task launch <task-id> --target shell
-akagent task inspect <task-id>
+akagent task inspect <task-id|keyword>
 akagent task publish <task-id> --condition active --activity "running tests"
 akagent task reconcile <task-id>
 ```
@@ -74,6 +74,8 @@ Use `task attach` for verified human attachment and use `task publish` for durab
 
 `task reconcile` compares durable records with tmux and Git observations and repairs safe derived facts.
 `task inspect` is the durable work-state view for resources, executions, activity, results, delivery metadata, and session references.
+It accepts an exact task ID or a case-sensitive title or branch keyword when exactly one task matches.
+`task list [keyword]` applies the same title and branch matching without requiring uniqueness.
 Agents should call these commands directly when work starts, changes, disconnects, or needs recovery.
 They never delete task state, branches, worktrees, windows, or terminal history.
 

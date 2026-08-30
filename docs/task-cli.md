@@ -69,8 +69,8 @@ akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]
 akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]
-akagent task list [--all] [--repository <name>] [--worktree <path>]
-akagent task inspect <task-id>
+akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]
+akagent task inspect <task-id|keyword>
 akagent task attach <task-id>
 akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
 akagent task finish <task-id> <succeeded|failed> <result>
@@ -84,10 +84,15 @@ A task ID is generated when `--task-id` is omitted.
 
 The default task list shows actionable records only.
 It includes every non-archived task and every archived task with incomplete task or resource cleanup, cleanup debt, or recovery debt.
+An optional keyword filters tasks by case-sensitive substring matches in the title and task or resource branch only.
+It does not match task IDs, repository names, or worktree paths.
+Use `--all` with a keyword to search archived history as well.
 A fully archived, fully cleaned, debt-free task is hidden from the default list.
 Use `--all` to include all durable task records, including historical records that are complete.
 `--repository <name>` filters by registered repository name, and `--worktree <path>` filters by exact task worktree path.
 Filters compose as an intersection and results remain sorted by task ID.
+`task inspect` accepts an exact task ID or a keyword that must match exactly one task by title or branch.
+A keyword with no matches returns a structured not-found error, while a keyword matching multiple tasks returns a structured conflict error.
 
 Task creation persists task intent and can create zero resources.
 The compatibility `--repository` form creates one initial resource without creating a tmux window or starting a process.

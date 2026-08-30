@@ -77,8 +77,8 @@ Create a task with a title and registered repository:
 akagent task create --title "Review the build" --repository demo \
   --branch akofink/review-build
 akagent task launch <task-id> --target shell
-akagent task list [--all] [--repository <name>] [--worktree <path>]
-akagent task inspect <task-id>
+akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]
+akagent task inspect <task-id|keyword>
 ```
 
 The command generates a UUIDv7 task ID when `--task-id` is omitted.
@@ -90,6 +90,8 @@ The `--branch`, `--base`, and `--worktree` options provide explicit immutable Gi
 The default task list shows actionable records only, while `--all` includes archived history.
 Actionable records include non-archived tasks and archived tasks with incomplete task or resource cleanup, cleanup debt, or recovery debt.
 Use `--all` to include fully archived history, and use `--repository` and `--worktree` to compose deterministic exact-match filters.
+Pass a case-sensitive keyword to `task list` to match task titles and task or resource branches only.
+Pass an exact task ID or a keyword to `task inspect`; keyword lookup requires exactly one matching title or branch.
 Task creation does not create a tmux resource or start a process.
 The explicit shell launch command creates a generic execution in a task-tagged tmux window when the agent or operator wants an interactive surface.
 Its display name is derived from the selected resource or task branch without the owner prefix, or supplied with `--label <descriptive-label>` when no branch is available.
@@ -166,8 +168,8 @@ Computed statuses include `active`, `waiting`, `blocked`, `failed`, `stopped`, `
 Use TOON output as the protocol boundary rather than parsing human-oriented text:
 
 ```bash
-akagent task inspect <task-id>
-akagent task list [--all] [--repository <name>] [--worktree <path>]
+akagent task inspect <task-id|keyword>
+akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]
 ```
 
 ## Publish, attach, and reconcile
