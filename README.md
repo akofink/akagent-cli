@@ -29,9 +29,10 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
-Stdout carries TOON protocol data and structured errors.
+Stdout carries TOON protocol data and structured errors by default.
+Use `akagent task list --format human` or `akagent task inspect <task-id> --format human` for deterministic terminal-oriented views.
 The TOON output contract is pinned to specification version 4.1 with a validated encoder and official conformance fixtures.
-See [`docs/toon.md`](docs/toon.md).
+See [`docs/task-cli.md`](docs/task-cli.md) for the human output contract and [`docs/toon.md`](docs/toon.md) for the TOON contract.
 
 ## Quick start
 
@@ -77,6 +78,7 @@ Use `task attach` for verified human attachment and use `task publish` for durab
 `task inspect` is the durable work-state view for resources, executions, activity, results, delivery metadata, and session references.
 It accepts an exact task ID or a case-sensitive title or branch keyword when exactly one task matches.
 `task list [keyword]` applies the same title and branch matching without requiring uniqueness.
+Use `--format human` on `task list` or `task inspect` when reading task state directly in a terminal.
 Agents should call these commands directly when work starts, changes, disconnects, or needs recovery.
 They never delete task state, branches, worktrees, windows, or terminal history.
 

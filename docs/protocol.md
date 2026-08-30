@@ -178,6 +178,8 @@ akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
+akagent task inspect <task-id|keyword> [--format <toon|human>]
 akagent task resource <create|list|inspect|update|archive|clean>
 akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
@@ -242,7 +244,8 @@ It does not make a declaration authoritative over contradictory process or Git o
 ### Inspect and list
 
 List views default to compact decision-relevant fields and include a definitive total.
-Task resource and execution operations use the same compact TOON boundary.
+Task resource and execution operations use the same compact TOON boundary by default.
+`task list` and `task inspect` accept `--format human` for a deterministic terminal-oriented presentation; errors remain TOON.
 `task resource list` returns `resources[]` and `total`, while inspect returns one `resource` object.
 Metadata and external URLs are emitted when present and are preserved in resource archives, task archive resource snapshots, and reconciliation.
 `task execution list` returns `executions[]` and `total`, while inspect returns one `execution` object.
@@ -254,6 +257,8 @@ It does not match task IDs, repository names, or worktree paths.
 `--repository <name>` and `--worktree <path>` apply deterministic exact-match filters that compose with `--all` and keyword matching.
 `task inspect <task-id|keyword>` accepts an exact task ID or a keyword that must match exactly one task by title or branch.
 Detail views include task identity, computed status, branch and worktree facts, conditions, results, recovery fields, all task resources, and all task executions when present.
+The human task list is a fixed-column pipe-delimited table, and the human task inspect view uses labeled fields with numbered resource and execution sections.
+Human output does not depend on terminal width or color and escapes control characters and pipe delimiters in values.
 Execution detail includes full session references, while execution list output includes a compact `tool:session-id` summary.
 Execution evidence list output includes an `evidence` summary and `captures[<n>]` rows derived from existing session references.
 A capture with an existing regular local artifact is `available` with evidence class `observed`; a capture without a path is `unknown` with evidence class `recorded`; and a capture whose path is missing, unreadable, a symlink, a directory, or another non-regular file is `unavailable`.
@@ -331,7 +336,8 @@ It preserves session references as declared integration metadata and does not in
 ## Output
 
 Agent-consumed stdout uses conforming TOON by default.
-Internal logic uses typed records and encodes TOON at the boundary.
+`task list` and `task inspect` are the only commands with the current explicit human-readable override, selected with `--format human`.
+Internal logic uses typed records and encodes TOON at the boundary, while human output is rendered from the same typed task views.
 
 The implementation pins an exact supported TOON specification version and a constrained output subset.
 See [`toon.md`](toon.md) for the pinned version, supported forms, known deviations, encoder decision, and token measurements.
@@ -397,3 +403,4 @@ The migration creates a `legacy` execution and preserves the existing task execu
 The migration is idempotent and does not start, stop, rename, or archive a process.
 Resource migration and execution migration are independent, so either can be recovered without changing the other record.
 Human-readable text is not a stable parsing interface.
+The human format is a presentation contract for direct terminal use, not a replacement for the default TOON protocol.
