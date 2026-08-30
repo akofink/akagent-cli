@@ -22,6 +22,7 @@ No launch adapter or daemon is required.
 - Zero or more independently recoverable task resources with separate Git facts, archives, cleanup state, and recovery debt.
 - Zero or more optional tool-neutral executions with independent identity, tmux metadata, lifecycle observation, archive, stop, recovery state, and multiple non-secret session references.
 - Session references contain a provider-neutral tool identifier, session ID, and optional validated absolute local reference path.
+- Read-only execution evidence views derive metadata-only availability from existing session references without parsing provider-owned files.
 - Managed executions receive the owning task ID and execution ID as non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment context.
 - Resources preserve mutable provider-neutral metadata and HTTPS external reference URLs for delivery records.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
@@ -142,7 +143,7 @@ akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
-akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
+akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```

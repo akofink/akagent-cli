@@ -66,6 +66,7 @@ func Run(args []string, stdout io.Writer) int {
 				"repository <list|inspect|unregister>",
 				"task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
 				"task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]",
+				"task execution evidence <list|inspect> <task-id> <execution-id> [<capture-id>]",
 				"update [--source <path>]",
 				"worker inspect",
 			},

@@ -220,23 +220,27 @@ A capture adapter can be restarted without a daemon because checkpoints, cursors
 
 ## Inspection UX
 
-The existing `task inspect` view should show a compact evidence summary for each execution without exposing content.
+Dedicated evidence views show metadata-only evidence state without exposing content.
 
-A proposed focused surface is:
+The Phase 0 focused surface is read-only:
 
 ```text
 akagent task execution evidence list <task-id> <execution-id>
 akagent task execution evidence inspect <task-id> <execution-id> <capture-id>
-akagent task execution evidence reconcile <task-id> <execution-id>
 ```
 
-The list view shows source, provider session ID, state, coverage, last seen time, retention class, and evidence class.
+The list view derives one metadata-only capture from each existing provider-neutral session reference.
+It shows the capture ID, source kind, provider, provider session ID, state, coverage, retention class, and evidence class.
+It reports an execution with no session references as `unavailable` with reason `no_session_references`, which is distinct from a session reference whose local artifact path later becomes unavailable.
 
-The inspect view shows the artifact reference, provider and adapter versions, cursors, redaction outcome, errors, and safe counts.
+The inspect view shows the artifact reference, artifact state, redaction policy, retention class, redaction-safe error category, and recovery guidance.
+Phase 0 does not read provider-owned files beyond safe local path metadata and does not parse provider transcript formats.
+A reference with an existing regular local artifact is `available` with evidence class `observed`.
+A reference with no local path is `unknown` with evidence class `recorded`.
+A reference with a missing, unreadable, symlink, directory, or non-regular path is `unavailable`.
 
-It also prints a provider-specific resume or export suggestion only when the provider and local reference are known.
-
-It never prints raw content by default and has no implicit `upload` or `sync` action.
+Future phases may add adapter-owned reconciliation, provider versions, cursors, safe counts, provider-specific resume suggestions, and derived summaries behind explicit opt-in.
+The default evidence views never print raw content and have no implicit `upload`, `sync`, or export action.
 
 A future explicit `--export <local-path>` operation must confirm scope, apply redaction, refuse overwrites by default, and report exactly which evidence was unavailable.
 
@@ -250,7 +254,7 @@ Document the capture schema, evidence classes, redaction policy, retention class
 
 Add synthetic fixtures and conformance tests for multiple sessions, gaps, stale references, forks, and missing artifacts without committing real transcripts.
 
-Add read-only inspection of existing session references and explicit unavailable states.
+Add read-only inspection of existing session references and explicit unavailable or unknown states.
 
 ### Phase 1: native reference adapters
 

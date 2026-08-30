@@ -24,7 +24,7 @@ akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
 akagent task resource <create|list|inspect|update|archive|clean>
-akagent task execution <create|launch|list|inspect|session|publish|attach|stop|archive|reconcile>
+akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -61,6 +61,7 @@ When `--worktree` is omitted, the worktree directory uses the branch label after
 `task create` is state-only task creation: it creates a durable record and, when the compatibility `--repository` form is used, validates the repository inputs and creates the required branch and worktree without starting tmux or a process.
 `task execution create` records an optional tool-neutral execution without starting tmux, and `task execution launch` starts it with a descriptive display label.
 `task execution session add` records non-secret provider-neutral tool and session provenance without parsing provider files.
+`task execution evidence list` and `task execution evidence inspect` provide read-only metadata views of those references without reading provider content.
 Managed execution windows publish the shared tmux `@agent_state` option by matching task and execution metadata, not display names.
 Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
 `task launch --target shell` is the explicit direct human shell workflow built on those generic execution commands.
@@ -112,12 +113,13 @@ Credential cleanup can be retried independently with `akagent credential clean <
 The coding agent owns the task, resource, and execution lifecycle through the stable CLI boundary.
 The normal workflow is to create durable intent, select or create a resource, start an execution when interactive work is useful, and publish state as work progresses.
 
-Agents can record non-secret session provenance and delivery metadata without requiring a provider-specific parent process:
+Agents can record and inspect non-secret session provenance and delivery metadata without requiring a provider-specific parent process:
 
 ```bash
 akagent task execution session add <task-id> <execution-id> \
   --tool example-tool --session-id <session-id> \
   --reference-path /path/to/session-record
+akagent task execution evidence list <task-id> <execution-id>
 akagent task resource update <task-id> <resource-id> \
   --metadata pull-request=opened \
   --external-url https://forge.example/pull/78
