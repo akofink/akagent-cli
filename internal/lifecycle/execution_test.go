@@ -245,6 +245,116 @@ func TestReconcileStopsStaleTerminalExecutionWindow(t *testing.T) {
 	}
 }
 
+func TestReconcilePreservesLiveCreatedAndStartingExecutions(t *testing.T) {
+	for _, lifecycle := range []string{"created", "starting"} {
+		t.Run(lifecycle, func(t *testing.T) {
+			manager, _ := newTestManager(t)
+			tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true, Processes: []TmuxProcess{{WindowID: "@live", PaneID: "%live", PID: 77, StartTime: 700}}}}
+			manager.Tmux = tmux
+			taskID := "live-" + lifecycle + "-task"
+			if _, err := manager.Create(CreateRequest{ID: taskID, Title: "Live execution"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := manager.CreateExecution(taskID, ExecutionRequest{ID: "live-execution", Target: "shell", Command: "/bin/sh"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := manager.Store.UpdateExecution(taskID, "live-execution", func(execution *store.Execution) error {
+				execution.Lifecycle = lifecycle
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := manager.ReconcileExecutions(taskID); err != nil {
+				t.Fatal(err)
+			}
+			execution, err := manager.InspectExecution(taskID, "live-execution")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if execution.Lifecycle != lifecycle || execution.Observation != ObservationFresh || tmux.stopped != 0 {
+				t.Fatalf("reconciled live %s execution = %#v, stops=%d; want preserved lifecycle and no stop", lifecycle, execution, tmux.stopped)
+			}
+			if execution.TmuxWindow != "@live" || execution.ProcessPane != "%live" || execution.ProcessPID != 77 || execution.ProcessStartTime != 700 {
+				t.Fatalf("reconciled live %s identity = %#v, want observed recovery facts", lifecycle, execution)
+			}
+		})
+	}
+}
+
+func TestReconcilePreservesAmbiguousTerminalWindow(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	if _, err := manager.Create(CreateRequest{ID: "ambiguous-window-task", Title: "Ambiguous window"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("ambiguous-window-task", ExecutionRequest{ID: "ambiguous-window", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.LaunchExecutionRecord("ambiguous-window-task", "ambiguous-window"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateExecution("ambiguous-window-task", "ambiguous-window", func(execution *store.Execution) error {
+		execution.Lifecycle, execution.Condition = "stopped", "none"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tmux.observation = TmuxObservation{Available: true, Processes: []TmuxProcess{{WindowID: "@operator", PaneID: "%operator", PID: 88, StartTime: 800}}}
+
+	if _, err := manager.ReconcileExecutions("ambiguous-window-task"); err != nil {
+		t.Fatal(err)
+	}
+	execution, err := manager.InspectExecution("ambiguous-window-task", "ambiguous-window")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmux.stopped != 0 {
+		t.Fatalf("ambiguous terminal window stops=%d, want no destructive action", tmux.stopped)
+	}
+	if execution.Lifecycle != "stopped" || execution.Observation != ObservationContradictory {
+		t.Fatalf("ambiguous terminal execution = %#v, want stopped and contradictory", execution)
+	}
+	if execution.TmuxWindow != "@execution" || execution.ProcessPane != "%execution" || execution.ProcessPID != 77 || execution.ProcessStartTime != 700 {
+		t.Fatalf("ambiguous terminal recovery facts = %#v, want original execution identity preserved", execution)
+	}
+	if execution.ObservedPID != 0 || execution.ObservedStartTime != 0 {
+		t.Fatalf("ambiguous terminal observed identity = %#v, want cleared", execution)
+	}
+}
+
+func TestReconcileStopsStaleFinishedExecutionWindow(t *testing.T) {
+	manager, _ := newTestManager(t)
+	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
+	manager.Tmux = tmux
+	if _, err := manager.Create(CreateRequest{ID: "finished-stop-task", Title: "Finished stop"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateExecution("finished-stop-task", ExecutionRequest{ID: "finished-stop", Target: "shell", Command: "/bin/sh"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.LaunchExecutionRecord("finished-stop-task", "finished-stop"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Store.UpdateExecution("finished-stop-task", "finished-stop", func(execution *store.Execution) error {
+		execution.Lifecycle, execution.Condition = "finished", "none"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ReconcileExecutions("finished-stop-task"); err != nil {
+		t.Fatal(err)
+	}
+	execution, err := manager.InspectExecution("finished-stop-task", "finished-stop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execution.Lifecycle != "finished" || execution.Observation != ObservationMissing || tmux.stopped != 1 {
+		t.Fatalf("reconciled finished execution = %#v, stops=%d; want finished and missing after cleanup", execution, tmux.stopped)
+	}
+}
+
 func TestReconcileRecoversExitedExecutionAndPreservesSessionReference(t *testing.T) {
 	manager, _ := newTestManager(t)
 	tmux := &independentExecutionTmux{observation: TmuxObservation{Available: true}}
