@@ -63,6 +63,8 @@ func Run(args []string, stdout io.Writer) int {
 				"task checkpoint <write|inspect> <task-id> ...",
 				"task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]",
 				"task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--format <toon|human>]",
+				"task execution observe <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --source <source> --observed-at <RFC3339> --host-id <id> --boot-id <id> [--process-state <state>] [--result <result>] [--detail <text>]",
+				"task execution finish <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>",
 				"task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]",
 				"task execution evidence <list|inspect> <task-id> <execution-id> [<capture-id>]",
 				"update [--source <path>]",
