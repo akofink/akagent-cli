@@ -1,45 +1,105 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestRecordOnlyTaskFlowHasNoHostSideEffects(t *testing.T) {
+func TestNormalTaskFlowIsRecordOnly(t *testing.T) {
 	setupTaskCommandTest(t)
 	if result := runCommand(t, []string{"task", "create", "--task-id", "record-task", "--title", "External task"}); result.code != 0 {
 		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "record", "task", "record-task", "--caller-id", "caller", "--operation-id", "adopt"}); result.code != 0 || !strings.Contains(result.stdout, "provenance: external") {
-		t.Fatalf("task record = (%d, %q)", result.code, result.stdout)
+	if result := runCommand(t, []string{"repository", "register", "demo", "/missing/repository", "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("repository register = (%d, %q)", result.code, result.stdout)
 	}
-	if result := runCommand(t, []string{"task", "record", "complete", "record-task", "--caller-id", "caller", "--operation-id", "complete", "--expected-revision", "1", "--contract", "contract-v1", "--result", "done"}); result.code != 0 || !strings.Contains(result.stdout, "status: finished") {
-		t.Fatalf("task complete = (%d, %q)", result.code, result.stdout)
+	resource := runCommand(t, []string{"task", "resource", "create", "record-task", "--resource-id", "resource", "--repository", "demo", "--branch", "main", "--base", "base", "--head", "head", "--worktree", "/missing/worktree"})
+	if resource.code != 0 || !strings.Contains(resource.stdout, "id: resource") {
+		t.Fatalf("resource create = (%d, %q)", resource.code, resource.stdout)
 	}
-	if result := runCommand(t, []string{"task", "record", "archive", "record-task", "--caller-id", "caller", "--operation-id", "archive", "--expected-revision", "2"}); result.code != 0 || !strings.Contains(result.stdout, "record: task") {
-		t.Fatalf("task archive = (%d, %q)", result.code, result.stdout)
+	execution := runCommand(t, []string{"task", "execution", "create", "record-task", "--execution-id", "attempt", "--target", "external", "--command", "/not-started"})
+	if execution.code != 0 || !strings.Contains(execution.stdout, "id: attempt") {
+		t.Fatalf("execution create = (%d, %q)", execution.code, execution.stdout)
 	}
-	if result := runCommand(t, []string{"task", "archive", "record-task"}); result.code != 1 || !strings.Contains(result.stdout, "category: conflict") {
-		t.Fatalf("legacy archive = (%d, %q), want provenance guard", result.code, result.stdout)
+	published := runCommand(t, []string{"task", "execution", "publish", "record-task", "attempt", "--condition", "waiting", "--reason", "external", "--activity", "awaiting observation"})
+	if published.code != 0 || !strings.Contains(published.stdout, "condition: waiting") {
+		t.Fatalf("execution publish = (%d, %q)", published.code, published.stdout)
+	}
+	finished := runCommand(t, []string{"task", "finish", "record-task", "succeeded", "recorded"})
+	if finished.code != 0 || !strings.Contains(finished.stdout, "status: finished") {
+		t.Fatalf("task finish = (%d, %q)", finished.code, finished.stdout)
 	}
 }
 
-func TestRecordOnlyExternalAttemptUsesRevisionAndProvenance(t *testing.T) {
+func TestRemovedCommandsRefuseBeforeStoreAccess(t *testing.T) {
 	setupTaskCommandTest(t)
-	if result := runCommand(t, []string{"task", "create", "--task-id", "attempt-task", "--title", "External attempt"}); result.code != 0 {
-		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	t.Setenv("XDG_STATE_HOME", "/dev/null/akagent-invalid-state")
+	for _, args := range [][]string{
+		{"credential", "list"},
+		{"integration", "launch", "task"},
+		{"worker", "launch", "task"},
+		{"worker", "launch-pi", "task", "execution"},
+		{"worker", "deploy", "task", "command"},
+		{"task", "record", "task", "task"},
+		{"task", "launch", "task", "--target", "shell"},
+		{"task", "execution", "launch", "task", "execution"},
+		{"task", "resource", "clean", "task", "resource"},
+	} {
+		result := runCommand(t, args)
+		if result.code != 2 || !strings.Contains(result.stdout, "category: usage") || strings.Contains(result.stdout, "state store") {
+			t.Errorf("Run(%q) = (%d, %q), want pre-store structured migration error", args, result.code, result.stdout)
+		}
 	}
-	args := []string{"task", "record", "adopt", "attempt-task", "--resource-id", "resource", "--caller-id", "caller", "--operation-id", "adopt-resource", "--repository", "offline", "--branch", "external/branch", "--base", "base", "--head", "head", "--worktree", "/missing/external"}
-	if result := runCommand(t, args); result.code != 0 {
-		t.Fatalf("resource adoption = (%d, %q)", result.code, result.stdout)
+}
+
+func TestRetainedCommandsDoNotInvokeHostTools(t *testing.T) {
+	setupTaskCommandTest(t)
+	root := t.TempDir()
+	logPath := filepath.Join(root, "invocations.log")
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if result := runCommand(t, []string{"task", "record", "execution", "attempt-task", "--execution-id", "attempt", "--resource-id", "resource", "--caller-id", "caller", "--operation-id", "create-attempt", "--tool", "offline", "--session-id", "session"}); result.code != 0 {
-		t.Fatalf("execution record = (%d, %q)", result.code, result.stdout)
+	for _, name := range []string{"git", "tmux", "pi", "provider", "deploy"} {
+		path := filepath.Join(bin, name)
+		script := "#!/bin/sh\nprintf '%s\\n' '" + name + "' >> '" + logPath + "'\nexit 99\n"
+		if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if result := runCommand(t, []string{"task", "record", "observe", "attempt-task", "attempt", "--caller-id", "caller", "--operation-id", "observe", "--expected-revision", "1", "--source", "offline", "--observed-at", "2026-09-12T13:00:00Z", "--host-id", "host", "--boot-id", "old-boot", "--process-state", "running"}); result.code != 0 || !strings.Contains(result.stdout, "host,old-boot,running") {
-		t.Fatalf("external observation = (%d, %q)", result.code, result.stdout)
+	t.Setenv("PATH", bin)
+	commands := [][]string{
+		{"worker", "inspect"},
+		{"repository", "register", "demo", "/offline/repository", "--policy", "direct"},
+		{"repository", "list"},
+		{"task", "create", "--task-id", "canary-task", "--title", "No host tools"},
+		{"task", "resource", "create", "canary-task", "--resource-id", "resource", "--repository", "demo", "--branch", "main", "--base", "base", "--head", "head", "--worktree", "/offline/worktree"},
+		{"task", "execution", "create", "canary-task", "--execution-id", "execution", "--target", "external", "--command", "/offline/command", "--resource", "resource"},
+		{"task", "publish", "canary-task", "--condition", "active", "--activity", "recorded"},
+		{"task", "execution", "publish", "canary-task", "execution", "--condition", "waiting", "--activity", "recorded"},
+		{"task", "inspect", "canary-task"},
+		{"task", "reconcile", "canary-task"},
+		{"task", "finish", "canary-task", "succeeded", "recorded"},
+		{"task", "archive", "canary-task"},
 	}
-	if result := runCommand(t, []string{"task", "record", "complete", "attempt-task", "--execution-id", "attempt", "--caller-id", "caller", "--operation-id", "complete-attempt", "--expected-revision", "2", "--contract", "contract-v1", "--result", "done"}); result.code != 0 || !strings.Contains(result.stdout, "status: finished") {
-		t.Fatalf("external completion = (%d, %q)", result.code, result.stdout)
+	for _, command := range commands {
+		if result := runCommand(t, command); result.code != 0 {
+			t.Fatalf("Run(%q) = (%d, %q)", command, result.code, result.stdout)
+		}
+	}
+	if data, err := os.ReadFile(logPath); err == nil {
+		t.Fatalf("retained commands invoked host tools: %q", data)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("read host-tool canary log: %v", err)
+	}
+}
+
+func TestRecordAliasIsRemoved(t *testing.T) {
+	setupTaskCommandTest(t)
+	result := runCommand(t, []string{"task", "record", "task", "record-task", "--caller-id", "caller", "--operation-id", "operation"})
+	if result.code != 2 || !strings.Contains(result.stdout, "task record") || !strings.Contains(result.stdout, "normal task") {
+		t.Fatalf("task record = (%d, %q), want migration guidance", result.code, result.stdout)
 	}
 }

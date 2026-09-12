@@ -8,10 +8,12 @@
 - Emit concise TOON on stdout for data and structured errors.
 - Send opt-in diagnostics to stderr and never mix progress with protocol output.
 - Never emit credential values in output, errors, logs, fixtures, process arguments, or committed files.
-- Preserve local tmux and Git worktree recovery paths.
+- Treat tmux, Git, worktrees, providers, credentials, and forge clients as external tools; record their redaction-safe observations without requiring them for durable inspection or recovery.
 - Do not add remote execution, containers, a daemon, or a central store without a demonstrated requirement.
 - Run `go test ./...`, `go test -race ./...`, and `go vet ./...` before committing.
-- Before automated lifecycle use, load the `akagent` skill and run `akagent integration inspect`. For repository implementation work, when it reports `enabled: true`, use the managed `akagent` lifecycle by default; retain direct human CLI use.
-- If the integration is disabled, do not invoke automated lifecycle commands. If a lifecycle command may have mutated state and fails, inspect the affected task and run reconciliation before any manual fallback, then use the established tmux and Git worktree recovery path.
+- Use the record-only `akagent` lifecycle directly for durable task, resource, execution, checkpoint, disposition, publication, completion, archive, and recovery facts.
+- Before optional automation, run `akagent integration inspect`; `AKAGENT_ENABLED=0` disables only that automation signal and never blocks direct record commands.
+- If a command may have mutated durable state and fails, inspect the affected task and reconcile before retrying; never launch a replacement or infer completion from a missing process.
 - For explicitly requested issue delivery, this repository authorizes issue creation, branch pushes, pull-request creation, and merge after required CI passes without another approval step. Higher-level safety rules still apply.
-- Use one signed Conventional Commit and include `Fixes #N` for the assigned implementation issue.
+- Use one signed Conventional Commit and include `Fixes #140` for this assigned implementation issue.
+- Do not install the binary until integrated CLI, lifecycle skill, and active-agent compatibility are verified on `main`.

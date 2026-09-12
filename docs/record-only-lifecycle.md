@@ -1,128 +1,73 @@
-# State-Only Records
+# Record-only lifecycle
 
-`akagent task record` is the state-only boundary for work managed by a caller outside `akagent`.
-
-These commands write durable task, resource, execution, observation, completion, and archive records without invoking Git, tmux, providers, credentials, transcript readers, or process inspection.
+The normal task, repository, resource, and execution commands are the record-only boundary.
+The transitional `akagent task record` command family is removed.
 
 ## Contract
 
-Adopt an empty task identity when no resource or execution exists:
+Create durable task intent:
 
 ```text
-akagent task record task <task-id> \
-  --caller-id <stable-caller-id> \
-  --operation-id <idempotency-key>
+akagent task create --task-id <task-id> --title <title> [--repository <name>] [--branch <branch>] [--base <revision>] [--worktree <path>]
 ```
 
-Adopt an external repository binding with caller-declared identity:
+Record a caller-declared resource:
 
 ```text
-akagent task record adopt <task-id> \
-  --resource-id <resource-id> \
-  --caller-id <stable-caller-id> \
-  --operation-id <idempotency-key> \
-  --repository <identity> \
-  --branch <branch> \
-  --base <revision> \
-  --head <revision> \
-  --worktree <absolute-reference> \
-  [--expected-revision <revision>] \
-  [--metadata <key=value>]
+akagent task resource create <task-id> \
+  --resource-id <resource-id> --repository <identity> \
+  --branch <branch> --base <revision> --head <revision> \
+  --worktree <absolute-reference> [--metadata <key=value>]
 ```
-
-The worktree reference is recorded even when it is missing or offline.
-
-The command never resolves repository names, checks revisions, reads the path, or changes the filesystem outside the worker-local state store.
 
 Record an external execution attempt:
 
 ```text
-akagent task record execution <task-id> \
-  --execution-id <execution-id> \
-  --resource-id <resource-id> \
-  --caller-id <stable-caller-id> \
-  --operation-id <idempotency-key> \
-  [--predecessor <execution-id>] \
-  [--tool <tool> --session-id <session-id>]
+akagent task execution create <task-id> \
+  --execution-id <execution-id> --target external \
+  --command <opaque-command> --resource <resource-id>
 ```
 
-Session references are provider-neutral declarations.
+These commands persist caller-declared facts without resolving repository names, checking revisions, reading paths, starting processes, invoking Git, inspecting tmux, or reading provider files.
 
-The core does not open, parse, or validate provider-owned session files.
+## Observations and references
 
-Record an observation with explicit provenance:
+Publish record conditions and activity:
 
 ```text
-akagent task record observe <task-id> <execution-id> \
-  --caller-id <stable-caller-id> \
-  --operation-id <idempotency-key> \
-  --expected-revision <revision> \
-  --source <source> \
-  --observed-at <RFC3339> \
-  --host-id <host-id> \
-  --boot-id <boot-id> \
-  [--process-state <state>] \
-  [--result <result>] \
-  [--detail <redacted-detail>]
+akagent task publish <task-id> --condition <active|waiting|blocked|failed|none> [--reason <reason>] [--activity <activity>]
+akagent task execution publish <task-id> <execution-id> --condition <active|waiting|blocked|failed|none> [--reason <reason>] [--activity <activity>]
 ```
 
-Observations are historical evidence only.
+Record provider-neutral session provenance:
 
-A previous-boot, stale, missing, or caller-declared observation never proves present liveness, success, or local ownership.
+```text
+akagent task execution session add <task-id> <execution-id> \
+  --tool <tool> --session-id <session-id> --reference-path <absolute-reference>
+```
+
+References are metadata only.
+The core never opens, parses, or interprets provider-owned content.
+Observations remain historical evidence and never prove present liveness, success, or ownership.
 
 ## Completion and archive
 
-Completion is an explicit caller declaration against a named contract.
-
-It is never inferred from a missing process, a missing checkout, a stale observation, or a provider session state.
-
-Complete a task with no resources or executions:
+Completion is explicit and is checked against the caller's contract outside the core:
 
 ```text
-akagent task record complete <task-id> \
-  --caller-id <stable-caller-id> \
-  --operation-id <idempotency-key> \
-  --expected-revision <revision> \
-  --contract <contract> \
-  --result <result>
+akagent task finish <task-id> <succeeded|failed> <result>
+akagent task archive <task-id>
 ```
 
-Complete one external execution by adding `--execution-id <execution-id>`.
+A missing process, checkout, stale observation, provider session, or credential never proves completion.
+Archives contain durable manifests, references, checkpoints, and append-only events without terminal capture or host inspection.
 
-Archive the completed task, resource, or execution with `task record archive`.
+## Concurrency and migration
 
-State-only archives contain durable manifests, caller observations, and append-only events.
+Task, resource, execution, checkpoint, disposition, and event updates use durable revisions, locks, and idempotency keys where defined by their command contract.
+Revision-scoped audit identity prevents an earlier event from satisfying a later repair after an A to B to A transition.
+Manifest replacement and audit append remain separate writes, so durability is bounded rather than crash-atomic across both files.
 
-They do not capture terminal output, inspect processes, run Git, or clean worktrees and credentials.
-
-## Concurrency and provenance
-
-The stable caller ID identifies the external owner declaration.
-
-The operation ID is a separate per-operation idempotency key.
-
-Every mutable state-only record carries a revision and durable operation receipt audit.
-
-Receipt history is retained for delayed retries, while normal detail and archive command output remain bounded summaries.
-
-Updates require the current expected revision, while a repeated operation ID with the same inputs returns its durable receipt.
-
-An operation ID reused with different inputs is rejected.
-
-Predecessor execution IDs must belong to the same task, caller, and resource, and lineage cycles are rejected before persistence.
-
-Caller identity is checked before historical receipt replay across task, resource, execution, completion, observation, and archive operations.
-
-Successful external completion and archive states are terminal and immutable until a future explicit reopen contract exists.
-
-A rebinding replaces the complete current binding and retains the complete prior binding as historical evidence.
-
-If a projection or audit event write is interrupted, the durable receipt is treated as pending until the same operation repairs its missing event or archive.
-
-New operations are blocked while an earlier receipt lacks its durable audit event.
-
-Legacy managed resources and executions remain distinct from external records.
-
-Legacy archive, stop, reconcile, and cleanup paths reject external provenance rather than trusting caller-declared ownership.
-
-This guard preserves legacy cleanup safety while allowing later removal of host-side orchestration code.
+Legacy records remain readable and preserve IDs, historical process and Git facts, session references, credential metadata, and recovery debt.
+Legacy unfinished and stopped work requires explicit store-only adoption or migration.
+The core never creates duplicate tasks, executions, branches, or worktrees and never implicitly reactivates work.

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/akofink/akagent-cli/internal/integration"
 	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/store"
 	"github.com/google/uuid"
@@ -233,30 +232,29 @@ type repositoryView struct {
 }
 
 func taskCommand(args []string, stdout io.Writer) int {
+	if len(args) == 0 {
+		return writeError(stdout, "usage", "Usage: akagent task <create|checkpoint|resource|execution|disposition|list|inspect|publish|finish|archive|reconcile>", false, "Run `akagent task list`")
+	}
+	switch args[0] {
+	case "record":
+		return removedCommandError(stdout, "task record", "Use the normal task, resource, execution, and repository record commands")
+	case "credential", "deploy", "launch", "start", "attach", "stop", "clean":
+		return removedCommandError(stdout, "task "+args[0], "Use the normal record commands; external tools own process, Git, credential, and cleanup side effects")
+	case "execution":
+		if len(args) > 1 && (args[1] == "launch" || args[1] == "attach" || args[1] == "stop") {
+			return removedCommandError(stdout, "task execution "+args[1], "Use the normal execution record commands; external tools own process and terminal side effects")
+		}
+	case "resource":
+		if len(args) > 1 && args[1] == "clean" {
+			return removedCommandError(stdout, "task resource clean", "External tools own worktree and credential cleanup; retain cleanup debt in the record")
+		}
+	}
 	state, err := store.Open()
 	if err != nil {
 		return lifecycleError(stdout, err)
 	}
 	manager := lifecycle.New(state)
-	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <create|checkpoint|record|deploy|resource|execution|credential|launch|disposition|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
-	}
 	switch args[0] {
-	case "record":
-		return taskRecordCommand(args[1:], stdout)
-	case "credential":
-		if len(args) < 3 || args[1] != "clean" {
-			return writeError(stdout, "usage", "Usage: akagent task credential clean <task-id> [--allow-credentials]", false, "Inspect the task before authorizing credential cleanup")
-		}
-		options, ok := parseCredentialCleanup(args[3:])
-		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task credential clean <task-id> [--allow-credentials]", false, "Inspect the task before authorizing credential cleanup")
-		}
-		manifest, err := manager.CleanCredentials(args[2], options)
-		if err != nil {
-			return lifecycleError(stdout, err)
-		}
-		return write(stdout, taskDetailView{Task: view(args[2], manifest)})
 	case "checkpoint":
 		return taskCheckpointCommand(args[1:], stdout, manager)
 	case "resource":
@@ -275,67 +273,11 @@ func taskCommand(args []string, stdout io.Writer) int {
 			}
 			request.ID = id.String()
 		}
-		result, err := manager.Create(request)
+		result, err := manager.CreateRecord(request)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, taskDetailView{Task: view(request.ID, result.Manifest)})
-	case "deploy":
-		if len(args) < 2 {
-			return writeError(stdout, "usage", "Usage: akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]", false, "Create a local deployment execution with non-secret credential IDs")
-		}
-		request, ok := parseDeployment(args[2:])
-		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]", false, "Provide an executable and non-secret arguments")
-		}
-		if request.ResourceID == "" {
-			resources, resourceErr := manager.ListResources(args[1])
-			if resourceErr != nil {
-				return lifecycleError(stdout, resourceErr)
-			}
-			if len(resources) == 1 {
-				request.ResourceID = resources[0].ID
-			} else if len(resources) > 1 {
-				return writeError(stdout, "conflict", "deployment requires a selected resource when a task has multiple resources", false, "Retry with `--resource <resource-id>`")
-			}
-		}
-		execution, _, err := manager.CreateDeployment(args[1], request)
-		if err == nil {
-			execution, err = manager.LaunchExecutionRecord(args[1], execution.ID)
-		}
-		if err != nil {
-			return lifecycleError(stdout, err)
-		}
-		return write(stdout, executionDetail(execution, manager))
-	case "launch":
-		if len(args) < 3 {
-			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]", false, "Create a task, then launch an explicit execution")
-		}
-		request, ok := parseLaunch(args[2:])
-		if !ok || (request.Target != "shell" && request.Target != "pi") {
-			return writeError(stdout, "usage", "Usage: akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]", false, "Use --target shell or --target pi with a descriptive label or branch")
-		}
-		var execution store.Execution
-		if request.Target == "pi" {
-			execution, err = integration.Launch(manager, args[1], integration.LaunchRequest{Label: request.Label, ResourceID: request.ResourceID, Provider: request.Provider, Model: request.Model, Thinking: request.Thinking, PromptReference: request.PromptReference, WorkingContext: request.WorkingContext})
-		} else {
-			execution, err = integration.LaunchShell(manager, args[1], request.Label, request.ResourceID)
-		}
-		if err != nil {
-			return lifecycleError(stdout, err)
-		}
-		manifest, err := manager.Inspect(args[1])
-		if err != nil {
-			return lifecycleError(stdout, err)
-		}
-		task := view(args[1], manifest)
-		task.Execution = execution.Target
-		if execution.Target == "pi" {
-			task.Agent = execution.Target
-		}
-		return write(stdout, taskDetailView{Task: task})
-	case "start":
-		return writeError(stdout, "usage", "The `akagent task start` shortcut was removed", false, "Run `akagent task create --title <title>` and then `akagent task launch <task-id> --target <shell|pi>`")
 	case "disposition":
 		if len(args) < 4 {
 			return writeError(stdout, "usage", "Usage: akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]", false, "Set record-only work disposition without changing process or Git state")
@@ -441,14 +383,6 @@ func taskCommand(args []string, stdout io.Writer) int {
 			return writeHumanTaskDetail(stdout, detail)
 		}
 		return write(stdout, detail)
-	case "attach":
-		if len(args) != 2 {
-			return writeError(stdout, "usage", "Usage: akagent task attach <task-id>", false, "Run `akagent task list`")
-		}
-		if err := manager.Attach(args[1]); err != nil {
-			return lifecycleError(stdout, err)
-		}
-		return 0
 	case "publish":
 		if len(args) < 4 {
 			return writeError(stdout, "usage", "Usage: akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]", false, "Publish active, waiting, blocked, failed, or none")
@@ -457,7 +391,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 		if !ok {
 			return taskUsage(stdout)
 		}
-		manifest, err := manager.Publish(args[1], condition, reason, activity)
+		manifest, err := manager.PublishRecord(args[1], condition, reason, activity)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -466,16 +400,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 		if len(args) != 4 || (args[2] != "succeeded" && args[2] != "failed") {
 			return writeError(stdout, "usage", "Usage: akagent task finish <task-id> <succeeded|failed> <result>", false, "Record a concise task outcome")
 		}
-		manifest, err := manager.Finish(args[1], args[2], args[3])
-		if err != nil {
-			return lifecycleError(stdout, err)
-		}
-		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
-	case "stop":
-		if len(args) != 2 {
-			return writeError(stdout, "usage", "Usage: akagent task stop <task-id>", false, "Run `akagent task list`")
-		}
-		manifest, err := manager.Stop(args[1])
+		manifest, err := manager.FinishRecord(args[1], args[2], args[3])
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -484,22 +409,13 @@ func taskCommand(args []string, stdout io.Writer) int {
 		if len(args) != 2 {
 			return writeError(stdout, "usage", "Usage: akagent task archive <task-id>", false, "Run `akagent task list`")
 		}
-		manifest, err := manager.Archive(args[1])
+		archived, err := manager.ArchiveRecord(args[1], "", "")
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
-		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
-	case "clean":
-		if len(args) < 2 {
-			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the task before authorizing cleanup")
-		}
-		options, ok := parseCleanup(args[2:])
+		manifest, ok := archived.(store.Manifest)
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the task before authorizing cleanup")
-		}
-		manifest, err := manager.Clean(args[1], options)
-		if err != nil {
-			return lifecycleError(stdout, err)
+			return writeError(stdout, "internal", "Task archive returned an invalid record", false, "Retry the archive")
 		}
 		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "reconcile":
@@ -509,14 +425,14 @@ func taskCommand(args []string, stdout io.Writer) int {
 		var manifests []store.Manifest
 		var ids []string
 		if len(args) == 2 {
-			manifest, err := manager.ReconcileTask(args[1])
+			manifest, err := manager.ReconcileRecord(args[1])
 			if err != nil {
 				return lifecycleError(stdout, err)
 			}
 			manifests, ids = []store.Manifest{manifest}, []string{args[1]}
 		} else {
 			var err error
-			manifests, err = manager.Reconcile()
+			manifests, err = manager.List()
 			if err != nil {
 				return lifecycleError(stdout, err)
 			}
@@ -703,7 +619,10 @@ func taskMatchesKeyword(manifest store.Manifest, resources []store.Resource, key
 
 func taskExecutionCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+	}
+	if args[0] == "launch" || args[0] == "attach" || args[0] == "stop" {
+		return removedCommandError(stdout, "task execution "+args[0], "Use the normal execution record commands; external tools own process and terminal side effects")
 	}
 	state, err := store.Open()
 	if err != nil {
@@ -720,15 +639,6 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 			return writeError(stdout, "usage", "Usage: akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--require <credential>] [--resource <resource-id>] [--worktree <path>]", false, "Provide a target and immutable execution inputs")
 		}
 		execution, _, err := manager.CreateExecution(args[1], request)
-		if err != nil {
-			return lifecycleError(stdout, err)
-		}
-		return write(stdout, executionDetail(execution, manager))
-	case "launch":
-		if len(args) < 3 {
-			return writeError(stdout, "usage", "Usage: akagent task execution launch <task-id> <execution-id>", false, "Create an execution, then launch it")
-		}
-		execution, err := manager.LaunchExecutionRecord(args[1], args[2])
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -806,36 +716,29 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 		if !ok {
 			return taskUsage(stdout)
 		}
-		execution, err := manager.PublishExecution(args[1], args[2], condition, reason, activity)
+		execution, err := manager.PublishExecutionRecord(args[1], args[2], condition, reason, activity)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, executionDetail(execution, manager))
-	case "attach", "stop", "archive":
+	case "archive":
 		if len(args) != 3 {
-			return writeError(stdout, "usage", "Usage: akagent task execution <attach|stop|archive> <task-id> <execution-id>", false, "Provide the task and execution IDs")
+			return writeError(stdout, "usage", "Usage: akagent task execution archive <task-id> <execution-id>", false, "Provide the task and execution IDs")
 		}
-		if args[0] == "attach" {
-			if err := manager.AttachExecution(args[1], args[2]); err != nil {
-				return lifecycleError(stdout, err)
-			}
-			return 0
+		archived, err := manager.ArchiveRecord(args[1], "", args[2])
+		if err != nil {
+			return lifecycleError(stdout, err)
 		}
-		var execution lifecycleExecutionResult
-		if args[0] == "stop" {
-			execution.Execution, execution.Err = manager.StopExecution(args[1], args[2])
-		} else {
-			execution.Execution, execution.Err = manager.ArchiveExecution(args[1], args[2])
+		execution, ok := archived.(store.Execution)
+		if !ok {
+			return writeError(stdout, "internal", "Execution archive returned an invalid record", false, "Retry the archive")
 		}
-		if execution.Err != nil {
-			return lifecycleError(stdout, execution.Err)
-		}
-		return write(stdout, executionDetail(execution.Execution, manager))
+		return write(stdout, executionDetail(execution, manager))
 	case "reconcile":
 		if len(args) != 2 {
 			return writeError(stdout, "usage", "Usage: akagent task execution reconcile <task-id>", false, "Reconcile executions without changing resources")
 		}
-		executions, err := manager.ReconcileExecutions(args[1])
+		executions, err := manager.ReconcileRecordExecutions(args[1])
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -845,7 +748,7 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, executionListView{Executions: items, Total: len(items)})
 	default:
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
 	}
 }
 
@@ -880,32 +783,6 @@ func parseSessionReference(args []string) (store.SessionReference, bool) {
 	return reference, reference.Tool != "" && reference.SessionID != ""
 }
 
-func parseDeployment(args []string) (lifecycle.ExecutionRequest, bool) {
-	request := lifecycle.ExecutionRequest{Target: lifecycle.DeploymentTarget}
-	for len(args) > 0 {
-		if len(args) < 2 {
-			return request, false
-		}
-		flag, value := args[0], args[1]
-		args = args[2:]
-		switch flag {
-		case "--command":
-			request.Command = value
-		case "--arg":
-			request.Arguments = append(request.Arguments, value)
-		case "--resource":
-			request.ResourceID = value
-		case "--require":
-			request.Requirements = append(request.Requirements, value)
-		case "--label":
-			request.Label = value
-		default:
-			return request, false
-		}
-	}
-	return request, request.Command != ""
-}
-
 func parseExecutionCreate(args []string) (lifecycle.ExecutionRequest, bool) {
 	var request lifecycle.ExecutionRequest
 	for len(args) > 0 {
@@ -938,7 +815,10 @@ func parseExecutionCreate(args []string) (lifecycle.ExecutionRequest, bool) {
 
 func taskResourceCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|update|archive|clean>", false, "Run `akagent task resource list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|update|archive>", false, "Run `akagent task resource list <task-id>`")
+	}
+	if args[0] == "clean" {
+		return removedCommandError(stdout, "task resource clean", "External tools own worktree and credential cleanup; retain cleanup debt in the record")
 	}
 	state, err := store.Open()
 	if err != nil {
@@ -961,7 +841,7 @@ func taskResourceCommand(args []string, stdout io.Writer) int {
 			}
 			request.ID = id.String()
 		}
-		resource, _, err := manager.CreateResource(args[1], request)
+		resource, _, err := manager.CreateResourceRecord(args[1], request)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -1009,44 +889,38 @@ func taskResourceCommand(args []string, stdout io.Writer) int {
 		if len(args) != 3 {
 			return writeError(stdout, "usage", "Usage: akagent task resource archive <task-id> <resource-id>", false, "Inspect the resource before archiving it")
 		}
-		resource, err := manager.ArchiveResource(args[1], args[2])
+		archived, err := manager.ArchiveRecord(args[1], args[2], "")
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
-		return write(stdout, resourceDetailView{Resource: viewResource(resource)})
-	case "clean":
-		if len(args) < 3 {
-			return writeError(stdout, "usage", "Usage: akagent task resource clean <task-id> <resource-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the resource before authorizing cleanup")
-		}
-		options, ok := parseCleanup(args[3:])
+		resource, ok := archived.(store.Resource)
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task resource clean <task-id> <resource-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree] [--allow-credentials]", false, "Inspect the resource before authorizing cleanup")
+			return writeError(stdout, "internal", "Resource archive returned an invalid record", false, "Retry the archive")
 		}
-		resource, err := manager.CleanResource(args[1], args[2], options)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
 		return write(stdout, resourceDetailView{Resource: viewResource(resource)})
 	default:
-		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|update|archive|clean>", false, "Run `akagent task resource list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task resource <create|list|inspect|update|archive>", false, "Run `akagent task resource list <task-id>`")
 	}
 }
 
 func parseResourceCreate(args []string) (lifecycle.ResourceRequest, bool) {
 	var request lifecycle.ResourceRequest
-	metadata, urls, ok := parseResourceMetadata(args, &request.ID, &request.Repository, &request.Branch, &request.BaseRevision, &request.WorktreePath)
+	metadata, urls, ok := parseResourceMetadata(args, &request.ID, &request.Repository, &request.Branch, &request.BaseRevision, &request.WorktreePath, &request.Head)
 	request.Metadata, request.ExternalURLs = metadata, urls
 	return request, ok && request.Repository != ""
 }
 
 func parseResourceUpdate(args []string) (lifecycle.ResourceUpdateRequest, bool) {
 	var request lifecycle.ResourceUpdateRequest
-	metadata, urls, ok := parseResourceMetadata(args, nil, nil, nil, nil, nil)
+	metadata, urls, ok := parseResourceMetadata(args, nil, nil, nil, nil, nil, nil)
 	request.Metadata, request.ExternalURLs = metadata, urls
 	return request, ok && (len(metadata) > 0 || len(urls) > 0)
 }
 
-func parseResourceMetadata(args []string, id, repository, branch, base, worktree *string) (map[string]string, []string, bool) {
+func parseResourceMetadata(args []string, id, repository, branch, base, worktree, head *string) (map[string]string, []string, bool) {
 	var metadata map[string]string
 	var urls []string
 	for len(args) > 0 {
@@ -1081,6 +955,11 @@ func parseResourceMetadata(args []string, id, repository, branch, base, worktree
 				return nil, nil, false
 			}
 			*worktree = value
+		case "--head":
+			if head == nil {
+				return nil, nil, false
+			}
+			*head = value
 		case "--metadata":
 			key, metadataValue, found := strings.Cut(value, "=")
 			if !found || key == "" || metadataValue == "" {
@@ -1132,85 +1011,6 @@ func parseCreate(args []string) (lifecycle.CreateRequest, bool) {
 		}
 	}
 	return request, request.Title != ""
-}
-
-func parseLaunch(args []string) (lifecycle.LaunchRequest, bool) {
-	var request lifecycle.LaunchRequest
-	for len(args) > 0 {
-		if len(args) < 2 {
-			return request, false
-		}
-		flag, value := args[0], args[1]
-		args = args[2:]
-		switch flag {
-		case "--target", "--execution":
-			request.Target = value
-		case "--execution-id":
-			request.ExecutionID = value
-		case "--label":
-			request.Label = value
-		case "--resource":
-			request.ResourceID = value
-		case "--agent":
-			request.Target = value
-		case "--provider":
-			if value == "" {
-				return request, false
-			}
-			request.Provider = value
-		case "--model":
-			if value == "" {
-				return request, false
-			}
-			request.Model = value
-		case "--thinking":
-			if value == "" {
-				return request, false
-			}
-			request.Thinking = value
-		case "--prompt", "--prompt-ref", "--prompt-reference":
-			request.PromptReference = value
-		case "--context", "--working-context":
-			request.WorkingContext = value
-		default:
-			return request, false
-		}
-	}
-	return request, request.Target != ""
-}
-
-func parseCleanup(args []string) (lifecycle.CleanupOptions, bool) {
-	var options lifecycle.CleanupOptions
-	for _, arg := range args {
-		switch arg {
-		case "--allow-committed":
-			options.AllowCommitted = true
-		case "--allow-dirty":
-			options.AllowDirty = true
-		case "--allow-untracked":
-			options.AllowUntracked = true
-		case "--allow-worktree":
-			options.AllowWorktree = true
-		case "--allow-credentials", "--allow-credential-cleanup":
-			options.AllowCredentials = true
-		default:
-			return options, false
-		}
-	}
-	return options, true
-}
-
-func parseCredentialCleanup(args []string) (lifecycle.CleanupOptions, bool) {
-	var options lifecycle.CleanupOptions
-	for _, arg := range args {
-		switch arg {
-		case "--allow-credentials", "--allow-credential-cleanup":
-			options.AllowCredentials = true
-		default:
-			return options, false
-		}
-	}
-	return options, true
 }
 
 func parseDisposition(args []string) (lifecycle.WorkDisposition, string, *uint64, bool) {
@@ -1413,7 +1213,7 @@ func viewCheckpoint(checkpoint *store.Checkpoint) *checkpointView {
 }
 
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <create|checkpoint|record|deploy|resource|execution|credential|launch|disposition|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <create|checkpoint|resource|execution|disposition|list|inspect|publish|finish|archive|reconcile>", false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {

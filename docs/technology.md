@@ -6,7 +6,7 @@ The implementation needs:
 
 - A fast single executable with straightforward installation.
 - Linux and macOS development, with Linux workers first.
-- Reliable subprocess, signal, terminal, filesystem, and permission control.
+- Reliable filesystem, permission, locking, and atomic-record behavior.
 - Concurrent status queries and future network transports.
 - Typed protocol records and versioned schemas.
 - Conforming TOON output.
@@ -52,15 +52,15 @@ Weak structured-data handling, locking, signal control, quoting, and partial-fai
 - Use typed internal values rather than TOON-shaped strings.
 - Treat TOON as output and interchange; decide persistence separately.
 - Begin with worker-local files, locks, and atomic replacement.
-- Use local function calls and command execution for the current worker.
-- Keep the implementation centered on the local CLI, worker-local files, and direct command execution.
+- Use local function calls and worker-local files for the current core.
+- Keep host-side command execution outside the durable CLI boundary.
 
 ## Validation status and remaining work
 
 - TOON 4.1 output is validated against official fixtures and representative token measurements.
-- Tmux launch, task identity, verified attachment, stop, and process observation have focused tests.
+- Record-only task identity, observations, archives, checkpoints, dispositions, and inventory have focused tests.
 - Concurrent state publication and inspection use per-task locks and race-enabled tests.
 - Atomic manifest replacement and recoverable event recording have focused tests.
-- Credential readiness checks avoid reading or printing source values.
-- The optional managed local Pi execution integration validates prompt-file references, safe environment construction, process replacement, retry, and process identity on top of generic executions.
+- Credential metadata remains readable without resolving or printing values.
+- Subprocess canaries verify retained commands do not invoke Git, tmux, Pi, providers, or deployment tools.
 - Terminal resize and cross-compilation remain outside the current CLI contract.

@@ -106,13 +106,13 @@ func TestSchemaOutputs(t *testing.T) {
 			}{
 				Worker: worker{
 					ID:              "local",
-					ProtocolVersion: 1,
+					ProtocolVersion: 2,
 					Architecture:    "arm64",
 					OperatingSystem: "linux",
 					Features:        []string{"tmux", "git-worktree"},
 				},
 			},
-			want: "worker:\n  id: local\n  protocol_version: 1\n  architecture: arm64\n  operating_system: linux\n  features[2]: tmux,git-worktree\n",
+			want: "worker:\n  id: local\n  protocol_version: 2\n  architecture: arm64\n  operating_system: linux\n  features[2]: tmux,git-worktree\n",
 		},
 		{
 			name: "structured error",

@@ -36,7 +36,7 @@ func repositoryRegisterCommand(args []string, stdout io.Writer) int {
 	if err != nil {
 		return lifecycleError(stdout, err)
 	}
-	repository, err := lifecycle.New(state).RegisterRepository(name, path, policy, worktreeRoot)
+	repository, err := lifecycle.New(state).RecordRepository(name, path, policy, worktreeRoot)
 	if err != nil {
 		return lifecycleError(stdout, err)
 	}
@@ -86,7 +86,7 @@ func repositoryUpdateCommand(args []string, stdout io.Writer) int {
 	if err != nil {
 		return lifecycleError(stdout, err)
 	}
-	repository, err := lifecycle.New(state).UpdateRepository(name, path, policy, worktreeRoot)
+	repository, err := lifecycle.New(state).UpdateRepositoryRecord(name, path, policy, worktreeRoot)
 	if err != nil {
 		return lifecycleError(stdout, err)
 	}

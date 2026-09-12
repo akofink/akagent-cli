@@ -99,9 +99,9 @@ func TestOneExecutionCoordinatesMultipleResources(t *testing.T) {
 	if created.code != 0 || !strings.Contains(created.stdout, "resource_id: alpha-resource") {
 		t.Fatalf("execution create = (%d, %q)", created.code, created.stdout)
 	}
-	launched := runCommand(t, []string{"task", "execution", "launch", "multi-resource", "coordinator"})
-	if launched.code != 0 || !strings.Contains(launched.stdout, "status: running") {
-		t.Fatalf("execution launch = (%d, %q)", launched.code, launched.stdout)
+	published := runCommand(t, []string{"task", "execution", "publish", "multi-resource", "coordinator", "--condition", "active", "--activity", "coordinating"})
+	if published.code != 0 || !strings.Contains(published.stdout, "condition: active") {
+		t.Fatalf("execution publish = (%d, %q)", published.code, published.stdout)
 	}
 	resources := runCommand(t, []string{"task", "resource", "list", "multi-resource"})
 	if resources.code != 0 || !strings.Contains(resources.stdout, "resources[2]") || !strings.Contains(resources.stdout, "alpha-resource") || !strings.Contains(resources.stdout, "beta-resource") {

@@ -1,18 +1,40 @@
 # Task CLI contract
 
-The task command is the stable command boundary for self-service local task lifecycle operations.
-Coding agents normally use task, resource, and execution commands directly to maintain their own durable work state.
-Optional automated local workflow integrations can use the separate `integration launch` command and still persist generic executions through this boundary.
+The task CLI is a local-first durable registry boundary.
+Task, resource, execution, repository, checkpoint, disposition, observation, archive, and delivery operations are record-only.
+The core never invokes Git, tmux, a provider, a credential resolver, a deployment executable, or a terminal reader.
 
-Protocol data and errors are written to stdout as TOON by default.
-`task list` and `task inspect` also accept `--format human` for direct terminal reading, while errors remain TOON.
-Diagnostics are not mixed into protocol output.
-
+Protocol data and structured errors are written to stdout as TOON by default.
+`task list` and `task inspect` also accept `--format human` for deterministic terminal reading.
 Exit code `0` means success or an idempotent no-op.
 Exit code `1` means the requested operation could not be completed.
 Exit code `2` means the command or its arguments are invalid.
 
-## Repository registration
+## Public commands
+
+```text
+akagent integration inspect
+akagent repository <register|list|inspect|update|unregister>
+akagent task create --title <title> [--task-id <id>] [--repository <name>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]
+akagent task checkpoint <write|inspect> <task-id> ...
+akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]
+akagent task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
+akagent task inspect <task-id|keyword> [--format <toon|human>]
+akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
+akagent task finish <task-id> <succeeded|failed> <result>
+akagent task archive <task-id>
+akagent task reconcile [<task-id>]
+akagent task resource <create|list|inspect|update|archive> ...
+akagent task execution <create|list|inspect|session|evidence|publish|archive|reconcile> ...
+akagent update [--source <path>]
+akagent worker inspect
+```
+
+The former launch, attach, stop, deploy, clean, credential, and `task record` command families are removed.
+Recognized removed commands return a structured usage error with exit code `2` before opening or mutating the state store.
+The error names only the removed command family and provides safe migration guidance.
+
+## Repository records
 
 ```text
 akagent repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]
@@ -22,284 +44,104 @@ akagent repository update <name> [--path <path>] [--policy <worktree|direct>] [-
 akagent repository unregister <name>
 ```
 
-The path must name the root of an existing Git worktree.
+Registration records the repository path, policy, and optional worktree root without checking or changing the checkout.
+The path is stored as an absolute reference.
+External tools own checkout validation, branch creation, worktree creation, and cleanup.
+Unregister removes only the registration record and refuses while durable tasks reference the repository.
 
-When policy is omitted during registration, `worktree` is selected for a Git checkout.
+## Task and resource records
 
-The `worktree` policy creates task worktrees under the configured `--worktree-root` when one is provided.
-The root must be absolute and task worktrees must remain contained beneath it.
-When the option is omitted, the existing default is `<checkout-parent>/.akagent/worktrees/<name>`.
-The `direct` policy uses the registered checkout and requires the task base to match its current revision.
-A worktree root is valid only with the `worktree` policy.
-
-Registering the same name with the same fields is an idempotent success.
-Registering the name with different fields returns a `conflict` error.
-
-The list command emits the name, path, policy, configured worktree root when present, and definitive total by default.
-Inspect and mutation commands emit the durable registration detail.
-
-Updating equivalent fields is a successful no-op.
-An update that changes the path of a repository referenced by tasks returns a structured `conflict` error and leaves the record unchanged.
-Updating the worktree root changes the containment boundary used by later task creation, cleanup ownership checks, and reconciliation.
-
-Unregister removes only the registration record.
-It never removes the checkout, Git metadata, worktrees, or task files.
-
-Unregister fails with a structured `conflict` error while any task references the repository and leaves the record intact.
-
-```toon
-repositories[1]{name,path,policy}:
-  demo,/path/to/checkout,worktree
-total: 1
-```
-
-```toon
-repository:
-  name: demo
-  path: /path/to/checkout
-  policy: worktree
-  worktree_root: /path/to/.akagent/worktrees/demo
-```
-
-## Task commands
+`task create` records task intent without credentials, Git, filesystem, process, or tmux access.
+The optional repository, branch, base, and worktree values are recorded as declared facts.
+A repository value also creates a durable `legacy` resource snapshot without inspecting the path.
 
 ```text
-akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
-akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]
-akagent task checkpoint <write|inspect> <task-id> ...
-akagent task resource <create|list|inspect|update|archive|clean> ...
-akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile> ...
-akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]
-akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]
-akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
-akagent task inspect <task-id|keyword> [--format <toon|human>]
-akagent task attach <task-id>
-akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
+akagent task create --title <title> [--task-id <id>] [--repository <name>] [--branch <branch>] [--base <revision>] [--worktree <path>]
+akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--head <revision>] [--worktree <path>] [--metadata <key=value>] [--external-url <https-url>]
+akagent task resource list <task-id>
+akagent task resource inspect <task-id> [<resource-id>]
+akagent task resource update <task-id> <resource-id> [--metadata <key=value>] [--external-url <https-url>]
+akagent task resource archive <task-id> <resource-id>
+```
+
+Resource creation records repository identity, branch, base, head, worktree references, delivery metadata, and recovery facts.
+It does not resolve a repository registration or change the filesystem.
+Resource Git facts are caller-declared or historical.
+A resource archive contains the durable resource and event history without terminal capture or Git inspection.
+
+## Execution records
+
+```text
+akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--resource <resource-id>] [--worktree <path>]
+akagent task execution list <task-id>
+akagent task execution inspect <task-id> [<execution-id>]
+akagent task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]
+akagent task execution evidence <list|inspect> <task-id> <execution-id> [<capture-id>]
+akagent task execution publish <task-id> <execution-id> --condition <condition> [--reason <reason>] [--activity <activity>]
+akagent task execution archive <task-id> <execution-id>
+akagent task execution reconcile <task-id>
+```
+
+Execution creation records an optional tool-neutral attempt without starting a process.
+The command and target are durable metadata, not instructions to execute a program.
+An execution can select one resource while coordinating other resources through the task ID.
+Execution archive contains the durable execution and event history without terminal capture or process inspection.
+
+A provider or external tool may record non-secret session provenance.
+The core validates only the reference shape and never opens or parses the provider file.
+Evidence commands inspect only local path metadata and never read provider content.
+Missing references remain historical evidence and do not prove completion.
+
+## State and completion
+
+```text
+akagent task publish <task-id> --condition <active|waiting|blocked|failed|none> [--reason <reason>] [--activity <activity>]
+akagent task execution publish <task-id> <execution-id> --condition <active|waiting|blocked|failed|none> [--reason <reason>] [--activity <activity>]
 akagent task finish <task-id> <succeeded|failed> <result>
-akagent task stop <task-id>
-akagent task archive <task-id>
-akagent task clean <task-id> [--allow-committed] [--allow-dirty] [--allow-untracked] [--allow-worktree]
+akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]
+```
+
+Publication updates durable conditions and heartbeats only.
+It does not synchronize process, tmux, Git, credential, or provider state.
+Finish records explicit task completion and marks the task terminal without inferring success from a missing process.
+The record preserves unknown, stale, missing, and contradictory observations.
+A missing process never triggers completion or implicit reactivation.
+
+## Checkpoints and recovery
+
+```text
+akagent task checkpoint write <task-id> --idempotency-key <key> --expected-revision <revision> --task-kind <kind> --completion-contract <contract> --next-action <action> ...
+akagent task checkpoint inspect <task-id>
 akagent task reconcile [<task-id>]
 ```
 
-A task ID is generated when `--task-id` is omitted.
+Checkpoints are bounded, provider-neutral handoffs with revision guards and idempotency keys.
+They preserve purpose-tagged context references, resource and session references, verification facts, and uncertain external operations.
+Recovery is store-only and offline-safe.
+External tools must verify uncertain process, Git, worktree, provider, or forge operations before replaying them.
+See [recovery-checkpoints.md](recovery-checkpoints.md) for the complete checkpoint contract.
 
-The default task list shows actionable records only.
-It includes every non-archived task and every archived task with incomplete task or resource cleanup, cleanup debt, or recovery debt.
-An optional keyword filters tasks by case-sensitive substring matches in the title and task or resource branch only.
-It does not match task IDs, repository names, or worktree paths.
-Use `--all` with a keyword to search archived history as well.
-A fully archived, fully cleaned, debt-free task is hidden from the default list.
-Use `--all` to include all durable task records, including historical records that are complete.
-`--repository <name>` filters by registered repository name, and `--worktree <path>` filters by exact task worktree path.
-Filters compose as an intersection and results remain sorted by task ID.
-`task inspect` accepts an exact task ID or a keyword that must match exactly one task by title or branch.
-A keyword with no matches returns a structured not-found error, while a keyword matching multiple tasks returns a structured conflict error.
+Legacy unfinished and stopped tasks use explicit store-only migration or adoption.
+Task and resource IDs and historical Git and session facts are preserved.
+The core does not create duplicate tasks or worktrees and does not reactivate work implicitly.
+Legacy manifests, archives, events, credential metadata, and storage schema version `1` remain readable.
 
-### Human-readable task views
+## Inventory and delivery
 
-`task list` and `task inspect` emit TOON unless `--format human` is selected.
-`--format toon` explicitly selects the default protocol and is useful when a wrapper constructs the format value.
-The human list is a deterministic pipe-delimited table with fixed columns for ID, title, status, worker, branch, worktree, and condition, followed by a total.
-The human inspect view uses labeled task fields and numbered resource and execution sections.
-It includes the same safe typed views as the TOON response and never reads or adds credential values or provider session content.
-Empty optional values are shown as `-`, and control characters or pipe delimiters in values are escaped for unambiguous display.
-Human output is intended for people and is not a stable parsing interface.
+The default `task list` view is `in-flight`.
+Use `--view attention`, `--view maintenance`, `--view deferred`, or `--view history` for deterministic inventory slices.
+Use `--all` to include every durable record.
+Keyword matching applies only to task titles and task or resource branches.
+Repository and worktree filters are exact matches and compose with keyword and view filters.
+Results are sorted by task ID and include a definitive total.
 
-Task creation persists task intent and can create zero resources.
-The compatibility `--repository` form creates one initial resource without creating a tmux window or starting a process.
-Use `task checkpoint write` to acknowledge a bounded, provider-neutral recovery handoff with an expected revision and idempotency key.
-See [recovery checkpoints](recovery-checkpoints.md) for the complete checkpoint flags, inspection behavior, and reboot-equivalent drill.
-Use `akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--metadata <key=value>] [--external-url <https-url>]` to add each resource.
-Use `akagent task resource update <task-id> <resource-id> [--metadata <key=value>] [--external-url <https-url>]` to record mutable delivery metadata without changing Git ownership inputs.
-The `worktree` policy requires an explicit descriptive `--branch` value, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`, and creates an isolated worktree under the registered repository's worktree root.
-When `--worktree` is omitted, its directory name is the branch label after the owner prefix, so `akofink/80-worktree-labels` uses `<worktree-root>/80-worktree-labels`.
-Explicit branch, base, and worktree values are immutable resource inputs.
-The `direct` policy deliberately permits an omitted branch and uses the registered checkout's current branch.
-The task initially has status `created` and can be inspected, archived after stopping, or launched later.
+Agents use external Git and forge tools for commits, pull requests, and merges.
+They may record provider-neutral delivery URLs with `task resource update`.
+The core does not call GitHub, Bitbucket, or another forge.
 
-A task can own zero or more optional tool-neutral execution records.
-Use `task execution create` to persist an execution without starting tmux, then `task execution launch` to start it.
-The create command accepts repeated `--require <credential>` IDs for target `deploy` executions.
-An execution with target `deploy` is a local deployment attempt and may carry work-scoped `--require` credential IDs.
-Deployment creation records intent without a process side effect.
-Launch rechecks credential readiness before creating the worker window.
-The worker injects only ready environment credentials in memory and records a generic succeeded or failed result before exiting.
-An interrupted deployment remains recoverable as a stopped execution and can be retried as a new deployment attempt without changing resource state.
-Execution attachment, stop, archive, and reconcile operate on one execution and do not change resource state.
-Use `task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]` to record provider-neutral session provenance.
-Use `task execution evidence list <task-id> <execution-id>` and `task execution evidence inspect <task-id> <execution-id> <capture-id>` for read-only Phase 0 evidence views derived from those references.
-The optional path is an absolute local reference only; evidence inspection checks only safe local path metadata and never reads provider session files.
-The task-tagged tmux window has a descriptive display label and stores task and execution IDs in window metadata.
-Managed execution windows publish the shared tmux `@agent_state` option by matching those metadata IDs rather than the display label.
-Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
-The managed process also receives those IDs as the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` environment variables.
-An execution can use them directly with the local CLI:
+## Worker and compatibility protocol
 
-```bash
-akagent task resource create "$AKAGENT_TASK_ID" --repository backend --resource-id backend-resource --branch akofink/61-backend
-akagent task resource list "$AKAGENT_TASK_ID"
-akagent task resource update "$AKAGENT_TASK_ID" backend-resource --metadata delivery=published --external-url https://forge.example/pull/61
-```
-The `task launch --target shell` command creates and launches a generic shell execution.
-Automated local workflow integrations use `akagent integration launch <task-id> --execution-id <id> --command <path> [--arg <value>] [--resource <resource-id>] [--label <descriptive-label>]`.
-The integration requires a stable execution ID for idempotent retries, checks `AKAGENT_ENABLED` before opening the state store, and returns a skipped success without lifecycle side effects when the signal is `0`.
-When enabled, it creates and launches a generic execution with target `workflow` through the same durable lifecycle as explicit execution commands.
-The command and arguments are treated as opaque local process inputs and are never interpreted as a provider or forge API.
-Use `task execution inspect`, `task execution evidence list`, `task execution reconcile`, and `task execution session add` for recovery and provider-neutral session provenance.
-Compatibility shell and Pi launches derive the execution and tmux display label from the selected resource or task branch, without the owner prefix.
-Use `--label <descriptive-label>` when no descriptive branch is available.
-Labels must not be `pi`, `shell`, `akagent`, `execution`, or an internal UUID.
-New integrations should use `task create`, optional resource creation, and explicit execution create and launch operations.
-One execution can coordinate multiple resources by selecting one resource as its working directory and using the owning task ID for further resource operations.
-Resource lifecycle remains independent from execution lifecycle.
-For example, one execution can coordinate two resources while selecting one as its working directory:
-
-```bash
-akagent task resource create <task-id> --repository frontend --resource-id frontend-resource --branch akofink/feature
-akagent task resource create <task-id> --repository backend --resource-id backend-resource --branch akofink/feature
-akagent task execution create <task-id> --execution-id coordinator --target shell --command /bin/sh --resource frontend-resource
-akagent task execution launch <task-id> coordinator
-```
-
-`--target pi` is an optional integration target.
-It checks for `pi` only when selected, then creates a generic execution whose worker integration starts Pi.
-Core task, resource, and generic execution commands do not require Pi to be installed.
-Managed Pi launches explicitly pass `--provider openai-codex --model gpt-5.6-luna --thinking high` by default.
-Use `--provider`, `--model`, and `--thinking` to request a validated non-secret override.
-The policy is persisted as launch arguments and never includes provider credentials.
-
-`--prompt` stores a reference to a regular local prompt file.
-The Pi integration passes only the validated file reference to Pi and leaves standard input attached to the tmux terminal.
-This preserves Pi's interactive mode while keeping prompt content out of durable events and protocol output.
-
-`--context` stores one non-secret, single-line working-context value and exposes it to the managed process as `AKAGENT_WORKING_CONTEXT`.
-Resource metadata and external URLs are provider-neutral and are preserved in resource archives, task archive resource snapshots, and reconciliation.
-Agents use provider tooling such as `gh` or Bitbucket tooling to create and manage pull requests, then optionally record the resulting URL with `akagent`.
-The core CLI does not provide GitHub, Bitbucket, or Pi delivery commands.
-Local deployment commands are direct executable paths with non-secret `--arg` values and run in the selected resource worktree.
-Deployment command output is not captured by `akagent`, so commands must not print credential values.
-
-The selected execution target, command, selected resource worktree, and non-secret arguments are persisted before tmux starts.
-Create and launch are separate durable operations, so a failed launch can be retried without recreating the task or Git resource.
-A failed optional integration leaves its generic execution recoverable and does not change resource state.
-
-Equivalent repeated creates, launches, publications, finishes, stops, archives, and completed cleans are successful no-ops.
-A create or launch with different immutable inputs returns a `conflict` error.
-
-The accepted published conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
-Publication updates the durable record and heartbeat.
-Managed execution publication maps active, failed, and none to a cleared `@agent_state` option.
-Stop clears the option, archive preserves `done`, and reconciliation republishes waiting or blocked only when observations remain fresh.
-
-A finish while the task or any tagged execution process is running fails without changing the task outcome.
-Stop preserves the durable record and worktree but ends the task's tagged tmux window.
-Execution stop re-observes the verified tagged window before recording `stopped`; a live or unavailable window produces a structured retryable error and leaves durable lifecycle state unchanged.
-
-Archive requires a stopped or finished task and captures the manifest, events, Git facts, resource snapshots, execution snapshots, session references, and available terminal history.
-Execution archive requires only the selected execution to be stopped or finished and does not require resource archive or cleanup.
-`task resource archive` captures one resource and its events independently.
-Clean archives first and refuses a live task.
-`task resource clean` applies preservation approvals to one resource and leaves sibling resource cleanup state unchanged.
-Its `--allow-credentials` approval enables only that resource's credential cleanup hook.
-It requires explicit authorization for each committed, dirty, or untracked category before destructive cleanup.
-For a registered `worktree` repository, `--allow-worktree` is a separate explicit approval that enables the destructive worktree cleanup hook.
-The hook validates durable ownership, removes only the task worktree, preserves the task branch, and records the pre-cleanup Git facts in the archive.
-Direct repository tasks never remove their registered checkout.
-Without worktree approval, cleanup records preservation debt and leaves the worktree available for direct human recovery.
-Credential cleanup is a separate destructive hook and requires `--allow-credentials`.
-`akagent credential clean <task-id> --allow-credentials` and `akagent task credential clean <task-id> --allow-credentials` retry only credential cleanup without touching Git resources.
-A refused or failed credential hook records `blocked` or `partial` credential cleanup state and preserves retryable cleanup debt.
-
-Reconciliation repairs derived observations and Git facts for the task and each resource.
-Use `task reconcile <task-id>` to recover one task without touching other tasks.
-It preserves integration-owned session references without parsing provider files.
-Missing tagged windows recover executions that were starting or active, while a plain created execution remains a launch intent.
-For non-running executions, it safely closes and verifies any matching tagged window left by a stale observation.
-A failed verification is retryable and does not claim the execution is stopped.
-It never deletes task state, branches, worktrees, terminal history, or unverified windows.
-Legacy single-resource manifests are migrated lazily to a `legacy` resource when a resource command inspects or extends them.
-Legacy task launch fields migrate lazily to a `legacy` execution when an execution command inspects or extends them.
-Both migrations preserve durable observations and are idempotent.
-
-## Attachment
-
-Execution attachment requires a running execution with a fresh heartbeat and process observation.
-It verifies exactly one process, the durable process identity, and matching task and execution tmux metadata immediately before attaching.
-The compatibility task attach command retains its task-level verification behavior.
-For the optional Pi integration, the integration worker replaces itself with Pi so the recorded PID and process start time identify Pi rather than a wrapper process.
-
-Missing, stale, contradictory, stopped, and finished observations are rejected with structured recovery guidance.
-Attachment never creates, kills, renames, or retargets tmux resources.
-
-## Output schemas
-
-The default detail schema is a single `task` object.
-Human detail output is an explicitly selected labeled presentation of that same task view, with resource and execution sections included for direct inspection.
-
-```toon
-task:
-  id: 019fe8f2-ac67-7406-a6e6-2717b2cd31c6
-  title: Inspect local reconciliation
-  status: active
-  worker: local
-  branch: akofink/51-task-labels
-  worktree_path: /path/to/.akagent/worktrees/demo/51-task-labels
-  condition: none
-  committed: false
-  dirty: false
-  untracked: false
-```
-
-Compatibility task views may include an `agent` target when an optional integration is selected.
-Generic execution detail is authoritative for the execution target, command, resource attachment, and recovery state.
-Prompt contents and credential values are never emitted.
-Credential cleanup hook errors are reduced to structured, redaction-safe messages before they reach protocol output.
-
-The list schema uses a compact tabular array and includes the definitive total.
-The human list format uses fixed pipe-delimited columns and includes the same definitive total without alignment or terminal-width detection.
-
-```toon
-tasks[1]{id,title,status,worker,branch,base_revision,worktree_path,condition,committed,dirty,untracked}:
-  019fe8f2-ac67-7406-a6e6-2717b2cd31c6,Inspect local reconciliation,active,local,akofink/51-task-labels,"0000000000000000000000000000000000000001",/path/to/.akagent/worktrees/demo/51-task-labels,none,false,false,false
-total: 1
-```
-
-Optional fields such as `reason`, `activity`, `result`, `recovery_debt`, `warnings`, archive state, cleanup state, and cleanup debt are emitted only when present.
-Resource list output uses `resources[<n>]` with `id`, `repository`, `branch`, `base_revision`, `worktree_path`, Git facts, recovery debt, archive state, cleanup state, credential cleanup state, and concise optional metadata and external URL fields.
-Resource inspect and mutation output uses one `resource` object.
-Task inspection additionally emits `resources[<n>]` and `executions[<n>]` snapshots so it is sufficient for durable work-state recovery.
-Execution inspection emits full `session_references[<n>]` entries; execution list output uses a compact session summary.
-Evidence list output emits one `captures[<n>]` row per existing session reference and an `evidence` summary.
-Evidence inspect output emits one `evidence` object and never includes transcript content, prompt text, terminal output, credentials, environment values, shell history, or raw derived artifacts.
-
-## Self-service and optional integration signal
-
-Agent self-service is the normal workflow over the stable task CLI boundary.
-Coding agents use direct task, resource, and execution commands to own durable lifecycle state, while optional integrations may use the same boundary.
-After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
-
-`AKAGENT_ENABLED` remains the immediate per-environment compatibility signal for optional automated integrations.
-Optional automation is enabled at the CLI boundary unless `AKAGENT_ENABLED` is set to the exact value `0`.
-`akagent integration inspect` reports the read-only compatibility state and is not a prerequisite for direct CLI use.
-Direct agent and human commands, including explicit shell execution and optional Pi selection, are unaffected.
-
-## Errors
-
-Errors use the same structured TOON envelope for every lifecycle command.
-
-```toon
-error:
-  category: preservation_required
-  message: Cleanup requires authorization to discard untracked worktree files
-  retryable: false
-  recovery: Inspect the archived Git facts and retry with explicit cleanup authorization
-```
-
-The main categories are `usage`, `not_found`, `conflict`, `capability`, `retryable`, `partial`, `preservation_required`, and `internal`.
-
-Unknown flags and malformed argument combinations are rejected with category `usage` and exit code `2` before lifecycle mutation.
-
-A retryable store lock reports category `retryable` and `retryable: true`.
-Credential failures identify only the named capability and its readiness state.
-Credential values are never read into protocol output, errors, fixtures, or diagnostics.
+`worker inspect` reports worker protocol version `2` and declarative capabilities for `registry`, `checkpoint`, and `observation`.
+It does not scan for Git, tmux, providers, credentials, or worktrees as prerequisites.
+Storage schema version `1` remains readable.
+Removing command families and changing lifecycle meanings is a protocol-breaking change documented by version `2`.
