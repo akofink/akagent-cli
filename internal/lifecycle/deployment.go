@@ -85,6 +85,9 @@ func (m *Manager) RunDeployment(taskID, executionID string) error {
 	if err != nil {
 		return err
 	}
+	if execution.Provenance == store.ProvenanceExternal {
+		return externalRecordOperationError("execution", executionID)
+	}
 	if execution.Target != DeploymentTarget {
 		return errors.New("execution target is not a local deployment")
 	}

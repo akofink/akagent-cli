@@ -101,13 +101,25 @@ The stable caller ID identifies the external owner declaration.
 
 The operation ID is a separate per-operation idempotency key.
 
-Every mutable state-only record carries a revision and a bounded receipt history.
+Every mutable state-only record carries a revision and durable operation receipt audit.
+
+Receipt history is retained for delayed retries, while normal detail and archive command output remain bounded summaries.
 
 Updates require the current expected revision, while a repeated operation ID with the same inputs returns its durable receipt.
 
 An operation ID reused with different inputs is rejected.
 
-Predecessor execution IDs must belong to the same task, and lineage cycles are rejected before persistence.
+Predecessor execution IDs must belong to the same task, caller, and resource, and lineage cycles are rejected before persistence.
+
+Caller identity is checked before historical receipt replay across task, resource, execution, completion, observation, and archive operations.
+
+Successful external completion and archive states are terminal and immutable until a future explicit reopen contract exists.
+
+A rebinding replaces the complete current binding and retains the complete prior binding as historical evidence.
+
+If a projection or audit event write is interrupted, the durable receipt is treated as pending until the same operation repairs its missing event or archive.
+
+New operations are blocked while an earlier receipt lacks its durable audit event.
 
 Legacy managed resources and executions remain distinct from external records.
 

@@ -90,6 +90,9 @@ func (m *Manager) CreateExecution(taskID string, request ExecutionRequest) (stor
 	if err != nil {
 		return store.Execution{}, false, err
 	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return store.Execution{}, false, externalRecordOperationError("task", taskID)
+	}
 	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
 		return store.Execution{}, false, fmt.Errorf("cannot add an execution to a %s task", manifest.Lifecycle)
 	}
@@ -332,6 +335,9 @@ func (m *Manager) AttachExecution(taskID, executionID string) error {
 	execution, err := m.InspectExecution(taskID, executionID)
 	if err != nil {
 		return err
+	}
+	if execution.Provenance == store.ProvenanceExternal {
+		return externalRecordOperationError("execution", executionID)
 	}
 	if execution.Lifecycle != "running" {
 		return executionAttachError(taskID, executionID, "the execution is not running")

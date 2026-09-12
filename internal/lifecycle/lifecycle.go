@@ -379,6 +379,13 @@ func (m *Manager) Create(request CreateRequest) (StartResult, error) {
 	if request.ID == "" || request.Title == "" {
 		return StartResult{}, fmt.Errorf("task ID and title are required")
 	}
+	if existing, err := m.manifest(request.ID); err == nil {
+		if existing.Provenance == store.ProvenanceExternal {
+			return StartResult{}, externalRecordOperationError("task", request.ID)
+		}
+	} else if !store.IsKind(err, store.KindNotFound) {
+		return StartResult{}, err
+	}
 	request.Requirements = unique(request.Requirements)
 	request.Optional = unique(request.Optional)
 	warnings, err := m.checkCredentials(request.Requirements, request.Optional)
@@ -487,6 +494,9 @@ func (m *Manager) LaunchExecution(id string, request LaunchRequest) (store.Manif
 	if err != nil {
 		return store.Manifest{}, err
 	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return store.Manifest{}, externalRecordOperationError("task", id)
+	}
 	if request.ExecutionID != "" && manifest.ExecutionIDs != "" && manifest.ExecutionIDs != request.ExecutionID {
 		return store.Manifest{}, &store.Error{Kind: store.KindConflict, Message: "execution ID conflicts with the existing task launch", Recovery: fmt.Sprintf("Inspect task %s and retry with its existing execution ID", id)}
 	}
@@ -559,6 +569,13 @@ func (m *Manager) checkLaunchCredentials(manifest store.Manifest) error {
 func (m *Manager) Start(request StartRequest) (StartResult, error) {
 	if request.ID == "" || request.Title == "" || request.Repository == "" {
 		return StartResult{}, fmt.Errorf("task ID, title, and repository are required")
+	}
+	if existing, err := m.manifest(request.ID); err == nil {
+		if existing.Provenance == store.ProvenanceExternal {
+			return StartResult{}, externalRecordOperationError("task", request.ID)
+		}
+	} else if !store.IsKind(err, store.KindNotFound) {
+		return StartResult{}, err
 	}
 	repository, err := m.Store.ReadRepository(request.Repository)
 	if err != nil {
@@ -1101,6 +1118,9 @@ func (m *Manager) Attach(id string) error {
 	if err != nil {
 		return err
 	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return externalRecordOperationError("task", id)
+	}
 	if manifest.Lifecycle == "stopped" {
 		return attachStateError(id, "the task is stopped", "Inspect the task or start a new task before attaching")
 	}
@@ -1161,6 +1181,9 @@ func (m *Manager) Launch(id string) error {
 	manifest, err := m.manifest(id)
 	if err != nil {
 		return err
+	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return externalRecordOperationError("task", id)
 	}
 	if manifest.Launch == nil {
 		return m.markLaunchFailure(id, "missing launch configuration")

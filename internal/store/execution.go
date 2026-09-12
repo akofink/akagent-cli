@@ -83,14 +83,14 @@ func validateExecutionID(id string) error {
 }
 
 func validateSessionReferenceShape(reference SessionReference) error {
-	if strings.TrimSpace(reference.Tool) == "" || strings.ContainsAny(reference.Tool, "\r\n") {
+	if strings.TrimSpace(reference.Tool) == "" || strings.ContainsAny(reference.Tool, "\r\n\x00") || len(reference.Tool) > 256 {
 		return newError(KindUsage, "Session reference tool must be a non-empty single line", "Retry with a provider-neutral tool identifier")
 	}
-	if strings.TrimSpace(reference.SessionID) == "" || strings.ContainsAny(reference.SessionID, "\r\n") {
-		return newError(KindUsage, "Session reference session ID must be a non-empty single line", "Retry with a non-secret session ID")
+	if strings.TrimSpace(reference.SessionID) == "" || strings.ContainsAny(reference.SessionID, "\r\n\x00") || len(reference.SessionID) > 512 {
+		return newError(KindUsage, "Session reference session ID must be a bounded non-empty single line", "Retry with a bounded non-secret session ID")
 	}
-	if reference.ReferencePath != "" && (!filepath.IsAbs(reference.ReferencePath) || strings.ContainsAny(reference.ReferencePath, "\r\n\x00")) {
-		return newError(KindUsage, "Session reference path must be an absolute local path", "Retry with an absolute local reference path")
+	if reference.ReferencePath != "" && (!filepath.IsAbs(reference.ReferencePath) || strings.ContainsAny(reference.ReferencePath, "\r\n\x00") || len(reference.ReferencePath) > 4096) {
+		return newError(KindUsage, "Session reference path must be a bounded absolute local path", "Retry with a bounded absolute local reference path")
 	}
 	return nil
 }
@@ -110,6 +110,9 @@ func validateSessionReference(reference SessionReference) error {
 }
 
 func validateExecutionReferences(execution Execution, validatePaths bool) error {
+	if len(execution.SessionReferences) > 32 {
+		return newError(KindUsage, "Execution has too many session references", "Repair the execution with at most 32 references")
+	}
 	seen := make(map[string]struct{}, len(execution.SessionReferences))
 	for _, reference := range execution.SessionReferences {
 		var err error
@@ -148,10 +151,16 @@ func validateStoredExecution(execution Execution) error {
 		if execution.Revision == 0 {
 			return newError(KindUsage, "external execution records require a revision", "Repair the execution with the state-only record command")
 		}
+		if err := validateReceipts(execution.Receipts); err != nil {
+			return err
+		}
 		if execution.PredecessorID != "" {
 			if err := validateExecutionID(execution.PredecessorID); err != nil {
 				return err
 			}
+		}
+		if len(execution.ExternalObservations) > externalHistoryLimit {
+			return newError(KindUsage, "external execution observation history is too large", "Repair the execution history within its bound")
 		}
 		for _, observation := range execution.ExternalObservations {
 			if err := validateExternalObservation(observation); err != nil {

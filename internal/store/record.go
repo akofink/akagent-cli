@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const externalHistoryLimit = 32
+const externalHistoryLimit = 1024
 
 type ExternalResourceRequest struct {
 	ID               string
@@ -56,28 +56,55 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		if err != nil {
 			return err
 		}
+		if manifest.Provenance == ProvenanceExternal && manifest.CallerID != request.CallerID {
+			return externalCallerConflict("task", taskID)
+		}
+		if manifest.Provenance != ProvenanceExternal && (manifest.ResourceIDs != "" || manifest.ExecutionIDs != "" || manifest.TmuxWindow != "" || manifest.ProcessPID != 0 || manifest.Launch != nil) {
+			return newError(KindConflict, fmt.Sprintf("task %s contains managed lifecycle state", taskID), "Adopt only an empty task or use the existing managed lifecycle surface")
+		}
 		current, readErr := s.ReadResource(taskID, request.ID)
 		if readErr != nil && !IsKind(readErr, KindNotFound) {
 			return readErr
 		}
 		if readErr == nil {
-			if _, found, receiptErr := findReceipt(current.Receipts, request.OperationID, fingerprint); receiptErr != nil {
-				return receiptErr
-			} else if found {
-				result = current
-				return nil
-			}
 			if current.Provenance != ProvenanceExternal {
 				return externalOwnershipConflict("resource", request.ID)
 			}
 			if current.CallerID != request.CallerID {
-				return newError(KindConflict, fmt.Sprintf("external resource %s belongs to another caller", request.ID), "Use the original caller ID or choose a new resource ID")
+				return externalCallerConflict("resource", request.ID)
+			}
+			if _, found, receiptErr := findReceipt(current.Receipts, request.OperationID, fingerprint); receiptErr != nil {
+				return receiptErr
+			} else if found {
+				if err := s.ensureExternalTaskChildProjectionLocked(taskID, request.CallerID, request.OperationID, fingerprint, request.ID, "", "record_adopt"); err != nil {
+					return err
+				}
+				if err := s.ensureResourceRecordEventLocked(taskID, request.ID, request.OperationID, fingerprint, current.Revision); err != nil {
+					return err
+				}
+				result = current
+				return nil
+			}
+			if err := s.ensureTaskReceiptHistoryLocked(taskID, manifest.Receipts); err != nil {
+				if _, found, receiptErr := findReceipt(manifest.Receipts, request.OperationID, fingerprint); receiptErr != nil || !found {
+					return err
+				}
+			}
+			if err := s.ensureResourceReceiptHistoryLocked(taskID, request.ID, current.Receipts); err != nil {
+				return err
+			}
+			if externalTaskTerminal(manifest) || current.ArchiveState == "complete" {
+				return terminalMutationConflict("resource", request.ID)
 			}
 			if !sameExternalResourceBinding(current, request) {
 				if request.ExpectedRevision == 0 || request.ExpectedRevision != current.Revision {
 					return revisionConflict("resource", request.ID, current.Revision)
 				}
-				current.ObservationHistory = appendExternalResourceObservation(current.ObservationHistory, current, time.Now().UTC())
+				current.ObservationHistory, err = appendExternalResourceObservation(current.ObservationHistory, current, time.Now().UTC())
+				if err != nil {
+					return err
+				}
+				current.Repository, current.Branch, current.BaseRevision, current.WorktreePath = request.Repository, request.Branch, request.BaseRevision, request.WorktreePath
 				current.Git.Path, current.Git.Head, current.Git.Branch = request.WorktreePath, request.Head, request.Branch
 				current.Metadata = mergeStringMap(current.Metadata, request.Metadata)
 				current.Revision++
@@ -85,7 +112,7 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 				if err := s.writeResourceLocked(taskID, current); err != nil {
 					return err
 				}
-				if err := s.appendResourceEventLocked(taskID, request.ID, Event{Operation: "adopt", Outcome: "updated"}); err != nil {
+				if err := s.appendResourceEventLocked(taskID, request.ID, Event{Operation: "adopt", Outcome: "updated", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: current.Revision}); err != nil {
 					return err
 				}
 			} else if request.ExpectedRevision != 0 && request.ExpectedRevision != current.Revision {
@@ -95,9 +122,18 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 				if err := s.writeResourceLocked(taskID, current); err != nil {
 					return err
 				}
+				if err := s.appendResourceEventLocked(taskID, request.ID, Event{Operation: "adopt", Outcome: "recorded", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: current.Revision}); err != nil {
+					return err
+				}
 			}
 			result = current
 			return nil
+		}
+		if err := s.ensureTaskReceiptHistoryLocked(taskID, manifest.Receipts); err != nil {
+			return err
+		}
+		if externalTaskTerminal(manifest) {
+			return terminalMutationConflict("task", taskID)
 		}
 		if request.ExpectedRevision != 0 {
 			return revisionConflict("resource", request.ID, 0)
@@ -111,7 +147,7 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		if err := s.writeResourceLocked(taskID, resource); err != nil {
 			return err
 		}
-		if err := s.appendResourceEventLocked(taskID, request.ID, Event{Operation: "adopt", Outcome: "recorded"}); err != nil {
+		if err := s.appendResourceEventLocked(taskID, request.ID, Event{Operation: "adopt", Outcome: "recorded", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: resource.Revision}); err != nil {
 			return err
 		}
 		manifest.ResourceIDs = appendCSV(manifest.ResourceIDs, request.ID)
@@ -131,7 +167,7 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = resource
@@ -157,11 +193,40 @@ func (s *Store) AdoptExternalTask(taskID string, request ExternalTaskRequest) (M
 		if err != nil {
 			return err
 		}
+		if manifest.Provenance == ProvenanceExternal && manifest.CallerID != request.CallerID {
+			return externalCallerConflict("task", taskID)
+		}
 		if _, found, receiptErr := findReceipt(manifest.Receipts, request.OperationID, fingerprint); receiptErr != nil {
 			return receiptErr
 		} else if found {
+			if err := s.ensureTaskRecordEventLocked(taskID, request.OperationID, fingerprint, manifest.Revision); err != nil {
+				return err
+			}
 			result = manifest
 			return nil
+		}
+		if manifest.Provenance == ProvenanceExternal {
+			if err := s.ensureTaskReceiptHistoryLocked(taskID, manifest.Receipts); err != nil {
+				return err
+			}
+			if externalTaskTerminal(manifest) {
+				return terminalMutationConflict("task", taskID)
+			}
+			manifest.Receipts, err = appendReceiptText(manifest.Receipts, request.OperationID, fingerprint, manifest.Revision)
+			if err != nil {
+				return err
+			}
+			if err := s.writeManifestLocked(taskID, manifest); err != nil {
+				return err
+			}
+			if err := s.ensureTaskRecordEventLocked(taskID, request.OperationID, fingerprint, manifest.Revision); err != nil {
+				return err
+			}
+			result = manifest
+			return nil
+		}
+		if externalTaskTerminal(manifest) {
+			return terminalMutationConflict("task", taskID)
 		}
 		if manifest.Provenance != "" && manifest.Provenance != ProvenanceExternal {
 			return externalOwnershipConflict("task", taskID)
@@ -171,7 +236,11 @@ func (s *Store) AdoptExternalTask(taskID string, request ExternalTaskRequest) (M
 		}
 		manifest.Provenance = ProvenanceExternal
 		manifest.CallerID = request.CallerID
-		manifest.Revision = 1
+		if manifest.Revision == 0 {
+			manifest.Revision = 1
+		} else {
+			manifest.Revision++
+		}
 		manifest.Receipts, err = appendReceiptText(manifest.Receipts, request.OperationID, fingerprint, manifest.Revision)
 		if err != nil {
 			return err
@@ -179,7 +248,7 @@ func (s *Store) AdoptExternalTask(taskID string, request ExternalTaskRequest) (M
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "task"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "task", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = manifest
@@ -202,6 +271,12 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		if err != nil {
 			return err
 		}
+		if manifest.Provenance != ProvenanceExternal {
+			return externalOwnershipConflict("task", taskID)
+		}
+		if manifest.CallerID != request.CallerID {
+			return externalCallerConflict("task", taskID)
+		}
 		resource, err := s.ReadResource(taskID, request.ResourceID)
 		if err != nil {
 			return err
@@ -209,21 +284,44 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		if resource.Provenance != ProvenanceExternal {
 			return externalOwnershipConflict("resource", request.ResourceID)
 		}
+		if resource.CallerID != request.CallerID {
+			return externalCallerConflict("resource", request.ResourceID)
+		}
 		if request.PredecessorID != "" {
-			if err := s.validatePredecessorLocked(taskID, request.ID, request.PredecessorID); err != nil {
+			if err := s.validatePredecessorLocked(taskID, request.ID, request.PredecessorID, request.CallerID, request.ResourceID); err != nil {
 				return err
 			}
 		}
 		current, readErr := s.ReadExecution(taskID, request.ID)
 		if readErr == nil {
+			if current.Provenance != ProvenanceExternal {
+				return externalOwnershipConflict("execution", request.ID)
+			}
+			if current.CallerID != request.CallerID {
+				return externalCallerConflict("execution", request.ID)
+			}
 			if _, found, receiptErr := findReceipt(current.Receipts, request.OperationID, fingerprint); receiptErr != nil {
 				return receiptErr
 			} else if found {
+				if err := s.ensureExternalTaskChildProjectionLocked(taskID, request.CallerID, request.OperationID, fingerprint, "", request.ID, "record_execution"); err != nil {
+					return err
+				}
+				if err := s.ensureExecutionRecordEventLocked(taskID, request.ID, request.OperationID, fingerprint, current.Revision); err != nil {
+					return err
+				}
 				result = current
 				return nil
 			}
-			if current.Provenance != ProvenanceExternal {
-				return externalOwnershipConflict("execution", request.ID)
+			if err := s.ensureExecutionReceiptHistoryLocked(taskID, request.ID, current.Receipts); err != nil {
+				return err
+			}
+			if err := s.ensureTaskReceiptHistoryLocked(taskID, manifest.Receipts); err != nil {
+				if _, found, receiptErr := findReceipt(manifest.Receipts, request.OperationID, fingerprint); receiptErr != nil || !found {
+					return err
+				}
+			}
+			if current.ArchiveState == "complete" || current.Lifecycle == "finished" {
+				return terminalMutationConflict("execution", request.ID)
 			}
 			if current.CallerID != request.CallerID || current.ResourceID != request.ResourceID || current.PredecessorID != request.PredecessorID || !sameSessionReferences(current.SessionReferences, request.SessionReferences) {
 				return newError(KindConflict, fmt.Sprintf("external execution %s inputs conflict with its existing record", request.ID), "Inspect the execution and retry with its original immutable inputs")
@@ -232,11 +330,23 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 			if err := s.writeExecutionLockedUnvalidatedPaths(taskID, current); err != nil {
 				return err
 			}
+			if err := s.appendExecutionEventLocked(taskID, request.ID, Event{Operation: "record", Outcome: "recorded", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: current.Revision}); err != nil {
+				return err
+			}
 			result = current
 			return nil
 		}
 		if !IsKind(readErr, KindNotFound) {
 			return readErr
+		}
+		if err := s.ensureTaskReceiptHistoryLocked(taskID, manifest.Receipts); err != nil {
+			return err
+		}
+		if externalTaskTerminal(manifest) {
+			return terminalMutationConflict("task", taskID)
+		}
+		if resource.ArchiveState == "complete" {
+			return terminalMutationConflict("resource", request.ResourceID)
 		}
 		execution := Execution{
 			ID: request.ID, TaskID: taskID, Provenance: ProvenanceExternal, CallerID: request.CallerID, Revision: 1,
@@ -247,7 +357,7 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
 			return err
 		}
-		if err := s.appendExecutionEventLocked(taskID, request.ID, Event{Operation: "record", Outcome: "created"}); err != nil {
+		if err := s.appendExecutionEventLocked(taskID, request.ID, Event{Operation: "record", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
 			return err
 		}
 		manifest.ExecutionIDs = appendCSV(manifest.ExecutionIDs, request.ID)
@@ -267,7 +377,7 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = execution
@@ -284,35 +394,57 @@ func (s *Store) ObserveExternalExecution(taskID, executionID, callerID, operatio
 		return Execution{}, err
 	}
 	var result Execution
-	fingerprint := operationFingerprint(observation)
+	fingerprint := operationFingerprint(struct {
+		CallerID    string
+		Observation ExternalObservation
+	}{callerID, observation})
 	err := s.WithLock(taskID, func() error {
 		execution, err := s.ReadExecution(taskID, executionID)
 		if err != nil {
 			return err
 		}
+		if err := validateExternalExecutionCaller(execution, callerID); err != nil {
+			return err
+		}
 		if _, found, receiptErr := findReceipt(execution.Receipts, operationID, fingerprint); receiptErr != nil {
 			return receiptErr
 		} else if found {
+			if err := s.ensureExecutionRecordEventLocked(taskID, executionID, operationID, fingerprint, execution.Revision); err != nil {
+				return err
+			}
 			result = execution
 			return nil
 		}
-		if err := validateExternalExecutionOwner(execution, callerID, expectedRevision); err != nil {
+		if err := s.ensureExecutionReceiptHistoryLocked(taskID, executionID, execution.Receipts); err != nil {
+			return err
+		}
+		if execution.ArchiveState == "complete" || execution.Lifecycle == "finished" {
+			return terminalMutationConflict("execution", executionID)
+		}
+		if err := expectedRevisionCheck(expectedRevision, execution.Revision, "execution", executionID); err != nil {
 			return err
 		}
 		if len(execution.ExternalObservations) > 0 && execution.ExternalObservations[len(execution.ExternalObservations)-1] == observation {
+			execution.Receipts = appendReceipt(execution.Receipts, operationID, fingerprint, execution.Revision)
+			if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
+				return err
+			}
+			if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "observe", Outcome: "duplicate", OperationID: operationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
+				return err
+			}
 			result = execution
 			return nil
 		}
-		execution.ExternalObservations = append(execution.ExternalObservations, observation)
-		if len(execution.ExternalObservations) > externalHistoryLimit {
-			execution.ExternalObservations = execution.ExternalObservations[len(execution.ExternalObservations)-externalHistoryLimit:]
+		if len(execution.ExternalObservations) >= externalHistoryLimit {
+			return newError(KindConflict, "external execution observation history limit reached", "Archive or reopen the record before recording another observation")
 		}
+		execution.ExternalObservations = append(execution.ExternalObservations, observation)
 		execution.Revision++
 		execution.Receipts = appendReceipt(execution.Receipts, operationID, fingerprint, execution.Revision)
 		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
 			return err
 		}
-		if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "observe", Outcome: "recorded"}); err != nil {
+		if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "observe", Outcome: "recorded", OperationID: operationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
 			return err
 		}
 		result = execution
@@ -338,17 +470,36 @@ func (s *Store) CompleteExternalExecution(taskID, executionID, callerID, operati
 		if execution.Provenance != ProvenanceExternal {
 			return externalOwnershipConflict("execution", executionID)
 		}
+		if err := validateExternalExecutionCaller(execution, callerID); err != nil {
+			return err
+		}
 		if _, found, receiptErr := findReceipt(execution.Receipts, operationID, fingerprint); receiptErr != nil {
 			return receiptErr
 		} else if found {
+			if err := s.ensureExecutionRecordEventLocked(taskID, executionID, operationID, fingerprint, execution.Revision); err != nil {
+				return err
+			}
 			result = execution
 			return nil
 		}
 		if execution.ExternalCompletion != nil && completionMatches(execution.ExternalCompletion, contract, resultValue, callerID) {
+			execution.Receipts = appendReceipt(execution.Receipts, operationID, fingerprint, execution.Revision)
+			if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
+				return err
+			}
+			if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "complete", Outcome: "duplicate", OperationID: operationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
+				return err
+			}
 			result = execution
 			return nil
 		}
-		if err := validateExternalExecutionOwner(execution, callerID, expectedRevision); err != nil {
+		if err := s.ensureExecutionReceiptHistoryLocked(taskID, executionID, execution.Receipts); err != nil {
+			return err
+		}
+		if execution.ExternalCompletion != nil || execution.ArchiveState == "complete" {
+			return terminalMutationConflict("execution", executionID)
+		}
+		if err := expectedRevisionCheck(expectedRevision, execution.Revision, "execution", executionID); err != nil {
 			return err
 		}
 		now := time.Now().UTC()
@@ -359,7 +510,7 @@ func (s *Store) CompleteExternalExecution(taskID, executionID, callerID, operati
 		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
 			return err
 		}
-		if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "complete", Outcome: "declared"}); err != nil {
+		if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "complete", Outcome: "declared", OperationID: operationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
 			return err
 		}
 		result = execution
@@ -385,22 +536,43 @@ func (s *Store) CompleteExternalTask(taskID, callerID, operationID, contract, re
 		if manifest.Provenance != ProvenanceExternal {
 			return externalOwnershipConflict("task", taskID)
 		}
+		if err := validateExternalTaskCaller(manifest, taskID, callerID); err != nil {
+			return err
+		}
 		if _, found, receiptErr := findReceipt(manifest.Receipts, operationID, fingerprint); receiptErr != nil {
 			return receiptErr
 		} else if found {
+			if err := s.ensureTaskRecordEventLocked(taskID, operationID, fingerprint, manifest.Revision); err != nil {
+				return err
+			}
 			result = manifest
 			return nil
 		}
 		if manifest.ExternalCompletion != nil && completionMatches(manifest.ExternalCompletion, contract, resultValue, callerID) {
+			manifest.Receipts, err = appendReceiptText(manifest.Receipts, operationID, fingerprint, manifest.Revision)
+			if err != nil {
+				return err
+			}
+			if err := s.writeManifestLocked(taskID, manifest); err != nil {
+				return err
+			}
+			if err := s.ensureTaskRecordEventLocked(taskID, operationID, fingerprint, manifest.Revision); err != nil {
+				return err
+			}
 			result = manifest
 			return nil
+		}
+		if err := s.ensureTaskReceiptHistoryLocked(taskID, manifest.Receipts); err != nil {
+			return err
+		}
+		if manifest.ExternalCompletion != nil || manifest.ArchiveState == "complete" {
+			return terminalMutationConflict("task", taskID)
 		}
 		if err := expectedRevisionCheck(expectedRevision, manifest.Revision, "task", taskID); err != nil {
 			return err
 		}
 		manifest.ExternalCompletion = &ExternalCompletion{Contract: contract, Result: resultValue, CallerID: callerID, DeclaredAt: time.Now().UTC()}
 		manifest.Lifecycle, manifest.Condition, manifest.Result = "finished", "none", resultValue
-		manifest.CallerID = callerID
 		manifest.Revision++
 		manifest.Receipts, err = appendReceiptText(manifest.Receipts, operationID, fingerprint, manifest.Revision)
 		if err != nil {
@@ -409,7 +581,7 @@ func (s *Store) CompleteExternalTask(taskID, callerID, operationID, contract, re
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "complete", Outcome: "declared"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "complete", Outcome: "declared", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = manifest
@@ -419,6 +591,9 @@ func (s *Store) CompleteExternalTask(taskID, callerID, operationID, contract, re
 }
 
 func (s *Store) ArchiveExternalResource(taskID, resourceID, callerID, operationID string, expectedRevision uint64) (ResourceArchive, error) {
+	if err := validateCallerID(callerID); err != nil {
+		return ResourceArchive{}, err
+	}
 	if err := validateOperationID(operationID); err != nil {
 		return ResourceArchive{}, err
 	}
@@ -429,17 +604,37 @@ func (s *Store) ArchiveExternalResource(taskID, resourceID, callerID, operationI
 		if err != nil {
 			return err
 		}
+		if err := validateExternalResourceCaller(resource, callerID); err != nil {
+			return err
+		}
 		if _, found, receiptErr := findReceipt(resource.Receipts, operationID, fingerprint); receiptErr != nil {
 			return receiptErr
 		} else if found {
+			if err := s.ensureResourceRecordEventLocked(taskID, resourceID, operationID, fingerprint, resource.Revision); err != nil {
+				return err
+			}
 			archive, archiveErr := s.ReadResourceArchive(taskID, resourceID)
 			if archiveErr != nil {
-				return archiveErr
+				events, eventsErr := s.ReadResourceEvents(taskID, resourceID)
+				if eventsErr != nil {
+					return eventsErr
+				}
+				archive = ResourceArchive{TaskID: taskID, ResourceID: resourceID, CapturedAt: time.Now().UTC(), Resource: resource, Events: events, Git: resource.Git}
+				if archiveErr = s.writeResourceArchiveLocked(taskID, resourceID, archive); archiveErr != nil {
+					return archiveErr
+				}
 			}
 			result = archive
 			return nil
 		}
-		if err := validateExternalResourceOwner(resource, callerID, expectedRevision); err != nil {
+		if resource.ArchiveState == "complete" {
+			if existing, readErr := s.ReadResourceArchive(taskID, resourceID); readErr == nil {
+				result = existing
+				return nil
+			}
+			return newError(KindPartial, fmt.Sprintf("external resource %s archive is incomplete", resourceID), "Repair the missing resource archive before retrying")
+		}
+		if err := expectedRevisionCheck(expectedRevision, resource.Revision, "resource", resourceID); err != nil {
 			return err
 		}
 		if existing, readErr := s.ReadResourceArchive(taskID, resourceID); readErr == nil && resource.ArchiveState == "complete" {
@@ -452,7 +647,7 @@ func (s *Store) ArchiveExternalResource(taskID, resourceID, callerID, operationI
 		if err := s.writeResourceLocked(taskID, resource); err != nil {
 			return err
 		}
-		if err := s.appendResourceEventLocked(taskID, resourceID, Event{Operation: "archive", Outcome: "recorded"}); err != nil {
+		if err := s.appendResourceEventLocked(taskID, resourceID, Event{Operation: "archive", Outcome: "recorded", OperationID: operationID, Fingerprint: fingerprint, Revision: resource.Revision}); err != nil {
 			return err
 		}
 		events, err := s.ReadResourceEvents(taskID, resourceID)
@@ -470,6 +665,9 @@ func (s *Store) ArchiveExternalResource(taskID, resourceID, callerID, operationI
 }
 
 func (s *Store) ArchiveExternalExecution(taskID, executionID, callerID, operationID string, expectedRevision uint64) (ExecutionArchive, error) {
+	if err := validateCallerID(callerID); err != nil {
+		return ExecutionArchive{}, err
+	}
 	if err := validateOperationID(operationID); err != nil {
 		return ExecutionArchive{}, err
 	}
@@ -480,17 +678,40 @@ func (s *Store) ArchiveExternalExecution(taskID, executionID, callerID, operatio
 		if err != nil {
 			return err
 		}
+		if err := validateExternalExecutionCaller(execution, callerID); err != nil {
+			return err
+		}
 		if _, found, receiptErr := findReceipt(execution.Receipts, operationID, fingerprint); receiptErr != nil {
 			return receiptErr
 		} else if found {
+			if err := s.ensureExecutionRecordEventLocked(taskID, executionID, operationID, fingerprint, execution.Revision); err != nil {
+				return err
+			}
 			archive, archiveErr := s.ReadExecutionArchive(taskID, executionID)
 			if archiveErr != nil {
-				return archiveErr
+				events, eventsErr := s.ReadExecutionEvents(taskID, executionID)
+				if eventsErr != nil {
+					return eventsErr
+				}
+				archive = ExecutionArchive{TaskID: taskID, ExecutionID: executionID, CapturedAt: time.Now().UTC(), Execution: execution, Events: events}
+				if archiveErr = s.writeExecutionArchiveLocked(taskID, executionID, archive); archiveErr != nil {
+					return archiveErr
+				}
 			}
 			result = archive
 			return nil
 		}
-		if err := validateExternalExecutionOwner(execution, callerID, expectedRevision); err != nil {
+		if err := validateExternalExecutionCaller(execution, callerID); err != nil {
+			return err
+		}
+		if execution.ArchiveState == "complete" {
+			if existing, readErr := s.ReadExecutionArchive(taskID, executionID); readErr == nil {
+				result = existing
+				return nil
+			}
+			return newError(KindPartial, fmt.Sprintf("external execution %s archive is incomplete", executionID), "Repair the missing execution archive before retrying")
+		}
+		if err := expectedRevisionCheck(expectedRevision, execution.Revision, "execution", executionID); err != nil {
 			return err
 		}
 		if existing, readErr := s.ReadExecutionArchive(taskID, executionID); readErr == nil && execution.ArchiveState == "complete" {
@@ -506,7 +727,7 @@ func (s *Store) ArchiveExternalExecution(taskID, executionID, callerID, operatio
 		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
 			return err
 		}
-		if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "archive", Outcome: "recorded"}); err != nil {
+		if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "archive", Outcome: "recorded", OperationID: operationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
 			return err
 		}
 		events, err := s.ReadExecutionEvents(taskID, executionID)
@@ -524,6 +745,9 @@ func (s *Store) ArchiveExternalExecution(taskID, executionID, callerID, operatio
 }
 
 func (s *Store) ArchiveExternalTask(taskID, callerID, operationID string, expectedRevision uint64) (TaskArchive, error) {
+	if err := validateCallerID(callerID); err != nil {
+		return TaskArchive{}, err
+	}
 	if err := validateOperationID(operationID); err != nil {
 		return TaskArchive{}, err
 	}
@@ -537,12 +761,33 @@ func (s *Store) ArchiveExternalTask(taskID, callerID, operationID string, expect
 		if manifest.Provenance != ProvenanceExternal {
 			return externalOwnershipConflict("task", taskID)
 		}
+		if err := validateExternalTaskCaller(manifest, taskID, callerID); err != nil {
+			return err
+		}
 		if _, found, receiptErr := findReceipt(manifest.Receipts, operationID, fingerprint); receiptErr != nil {
 			return receiptErr
 		} else if found {
+			if err := s.ensureTaskRecordEventLocked(taskID, operationID, fingerprint, manifest.Revision); err != nil {
+				return err
+			}
 			archive, archiveErr := s.ReadArchive(taskID)
 			if archiveErr != nil {
-				return archiveErr
+				events, eventsErr := s.ReadEvents(taskID)
+				if eventsErr != nil {
+					return eventsErr
+				}
+				resources, resourcesErr := s.listResourcesLocked(taskID)
+				if resourcesErr != nil {
+					return resourcesErr
+				}
+				executions, executionsErr := s.listExecutionsLocked(taskID)
+				if executionsErr != nil {
+					return executionsErr
+				}
+				archive = TaskArchive{TaskID: taskID, CapturedAt: time.Now().UTC(), Manifest: manifest, Events: events, Resources: resources, Executions: executions, Git: manifest.Git}
+				if archiveErr = s.writeArchiveLocked(taskID, archive); archiveErr != nil {
+					return archiveErr
+				}
 			}
 			result = archive
 			return nil
@@ -569,7 +814,7 @@ func (s *Store) ArchiveExternalTask(taskID, callerID, operationID string, expect
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "archive", Outcome: "recorded"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "archive", Outcome: "recorded", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		events, err := s.ReadEvents(taskID)
@@ -620,12 +865,15 @@ func validateExternalResourceRequest(request ExternalResourceRequest) error {
 			return newError(KindUsage, "external resource identity values must be bounded single lines", "Retry with redacted non-secret identity values")
 		}
 	}
-	if !filepath.IsAbs(request.WorktreePath) || strings.ContainsAny(request.WorktreePath, "\r\n\x00") {
-		return newError(KindUsage, "external resource worktree must be an absolute path", "Provide the absolute referenced worktree path; it need not exist")
+	if !filepath.IsAbs(request.WorktreePath) || strings.ContainsAny(request.WorktreePath, "\r\n\x00") || len(request.WorktreePath) > 4096 {
+		return newError(KindUsage, "external resource worktree must be a bounded absolute path", "Provide a bounded absolute referenced worktree path; it need not exist")
+	}
+	if len(request.Metadata) > 64 {
+		return newError(KindUsage, "external resource metadata has too many entries", "Provide at most 64 non-secret metadata entries")
 	}
 	for key, value := range request.Metadata {
-		if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n") || strings.ContainsAny(value, "\r\n") {
-			return newError(KindUsage, "external resource metadata must be non-empty single lines", "Retry with non-secret single-line metadata")
+		if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n\x00") || len(key) > 256 || strings.ContainsAny(value, "\r\n\x00") || len(value) > 4096 {
+			return newError(KindUsage, "external resource metadata keys and values must be bounded single lines", "Retry with bounded non-secret metadata")
 		}
 	}
 	return nil
@@ -651,6 +899,9 @@ func validateExternalExecutionRequest(request ExternalExecutionRequest) error {
 		if request.PredecessorID == request.ID {
 			return newError(KindConflict, "external execution cannot be its own predecessor", "Choose a prior execution ID")
 		}
+	}
+	if len(request.SessionReferences) > 32 {
+		return newError(KindUsage, "external execution has too many session references", "Provide at most 32 provider-neutral session references")
 	}
 	for _, reference := range request.SessionReferences {
 		if err := validateSessionReferenceShape(reference); err != nil {
@@ -708,24 +959,46 @@ func sameExternalResourceBinding(current Resource, request ExternalResourceReque
 	return current.Repository == request.Repository && current.Branch == request.Branch && current.BaseRevision == request.BaseRevision && current.WorktreePath == request.WorktreePath && current.Git.Head == request.Head && metadataSame
 }
 
-func validateExternalResourceOwner(resource Resource, callerID string, expected uint64) error {
+func validateExternalTaskCaller(manifest Manifest, taskID, callerID string) error {
+	if manifest.Provenance != ProvenanceExternal {
+		return externalOwnershipConflict("task", taskID)
+	}
+	if manifest.CallerID != callerID {
+		return externalCallerConflict("task", taskID)
+	}
+	return nil
+}
+
+func validateExternalResourceCaller(resource Resource, callerID string) error {
 	if resource.Provenance != ProvenanceExternal {
 		return externalOwnershipConflict("resource", resource.ID)
 	}
 	if resource.CallerID != callerID {
-		return newError(KindConflict, fmt.Sprintf("external resource %s belongs to another caller", resource.ID), "Use the original caller ID")
+		return externalCallerConflict("resource", resource.ID)
 	}
-	return expectedRevisionCheck(expected, resource.Revision, "resource", resource.ID)
+	return nil
 }
 
-func validateExternalExecutionOwner(execution Execution, callerID string, expected uint64) error {
+func validateExternalExecutionCaller(execution Execution, callerID string) error {
 	if execution.Provenance != ProvenanceExternal {
 		return externalOwnershipConflict("execution", execution.ID)
 	}
 	if execution.CallerID != callerID {
-		return newError(KindConflict, fmt.Sprintf("external execution %s belongs to another caller", execution.ID), "Use the original caller ID")
+		return externalCallerConflict("execution", execution.ID)
 	}
-	return expectedRevisionCheck(expected, execution.Revision, "execution", execution.ID)
+	return nil
+}
+
+func externalTaskTerminal(manifest Manifest) bool {
+	return manifest.Lifecycle == "finished" || manifest.ExternalCompletion != nil || manifest.ArchiveState == "complete"
+}
+
+func externalCallerConflict(kind, id string) error {
+	return newError(KindConflict, fmt.Sprintf("external %s %s belongs to another caller", kind, id), "Use the original stable caller ID or choose a new record ID")
+}
+
+func terminalMutationConflict(kind, id string) error {
+	return newError(KindConflict, fmt.Sprintf("external %s %s is terminal and immutable", kind, id), "Use an explicit future reopen operation before changing a terminal record")
 }
 
 func expectedRevisionCheck(expected, current uint64, kind, id string) error {
@@ -753,6 +1026,18 @@ func operationFingerprint(value any) string {
 	return hex.EncodeToString(digest[:])
 }
 
+func validateReceipts(receipts []RecordReceipt) error {
+	for _, receipt := range receipts {
+		if err := validateOperationID(receipt.OperationID); err != nil || len(receipt.Fingerprint) != 64 || receipt.Revision == 0 {
+			return newError(KindUsage, "record receipt is invalid", "Repair the record receipt history")
+		}
+		if _, err := hex.DecodeString(receipt.Fingerprint); err != nil {
+			return newError(KindUsage, "record receipt is invalid", "Repair the record receipt history")
+		}
+	}
+	return nil
+}
+
 func findReceipt(value any, operationID, fingerprint string) (RecordReceipt, bool, error) {
 	var receipts []RecordReceipt
 	switch value := value.(type) {
@@ -768,6 +1053,9 @@ func findReceipt(value any, operationID, fingerprint string) (RecordReceipt, boo
 	default:
 		return RecordReceipt{}, false, internalError("read record receipts", "Retry the operation")
 	}
+	if err := validateReceipts(receipts); err != nil {
+		return RecordReceipt{}, false, err
+	}
 	for _, receipt := range receipts {
 		if receipt.OperationID != operationID {
 			continue
@@ -781,11 +1069,7 @@ func findReceipt(value any, operationID, fingerprint string) (RecordReceipt, boo
 }
 
 func appendReceipt(receipts []RecordReceipt, operationID, fingerprint string, revision uint64) []RecordReceipt {
-	receipts = append(receipts, RecordReceipt{OperationID: operationID, Fingerprint: fingerprint, Revision: revision})
-	if len(receipts) > externalHistoryLimit {
-		receipts = receipts[len(receipts)-externalHistoryLimit:]
-	}
-	return receipts
+	return append(receipts, RecordReceipt{OperationID: operationID, Fingerprint: fingerprint, Revision: revision})
 }
 
 func appendReceiptText(encoded, operationID, fingerprint string, revision uint64) (string, error) {
@@ -843,13 +1127,12 @@ func cloneStringMap(primary, fallback map[string]string) map[string]string {
 	return result
 }
 
-func appendExternalResourceObservation(history []ExternalResourceObservation, resource Resource, now time.Time) []ExternalResourceObservation {
-	entry := ExternalResourceObservation{CallerID: resource.CallerID, ObservedAt: now, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head}
-	history = append(history, entry)
-	if len(history) > externalHistoryLimit {
-		history = history[len(history)-externalHistoryLimit:]
+func appendExternalResourceObservation(history []ExternalResourceObservation, resource Resource, now time.Time) ([]ExternalResourceObservation, error) {
+	if len(history) >= externalHistoryLimit {
+		return nil, newError(KindConflict, "external resource observation history limit reached", "Archive or reopen the record before recording another binding revision")
 	}
-	return history
+	entry := ExternalResourceObservation{CallerID: resource.CallerID, ObservedAt: now, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head}
+	return append(history, entry), nil
 }
 
 func appendCSV(values, value string) string {
@@ -864,7 +1147,7 @@ func appendCSV(values, value string) string {
 	return values + "," + value
 }
 
-func (s *Store) validatePredecessorLocked(taskID, executionID, predecessorID string) error {
+func (s *Store) validatePredecessorLocked(taskID, executionID, predecessorID, callerID, resourceID string) error {
 	seen := map[string]bool{executionID: true}
 	current := predecessorID
 	for current != "" {
@@ -875,6 +1158,9 @@ func (s *Store) validatePredecessorLocked(taskID, executionID, predecessorID str
 		execution, err := s.ReadExecution(taskID, current)
 		if err != nil {
 			return err
+		}
+		if execution.Provenance != ProvenanceExternal || execution.CallerID != callerID || execution.ResourceID != resourceID {
+			return newError(KindConflict, "external execution predecessor crosses caller or resource ownership", "Choose a predecessor from the same external caller and resource")
 		}
 		current = execution.PredecessorID
 	}
@@ -891,6 +1177,17 @@ func sameSessionReferences(a, b []SessionReference) bool {
 		}
 	}
 	return true
+}
+
+func (s *Store) ensureResourceRecordEventLocked(taskID, resourceID, operationID, fingerprint string, revision uint64) error {
+	events, err := s.ReadResourceEvents(taskID, resourceID)
+	if err != nil {
+		return err
+	}
+	if eventHasReceipt(events, operationID, fingerprint) {
+		return nil
+	}
+	return s.appendResourceEventLocked(taskID, resourceID, Event{Operation: "record_repair", Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: revision})
 }
 
 func (s *Store) appendResourceEventLocked(taskID, resourceID string, event Event) error {
@@ -912,6 +1209,17 @@ func (s *Store) appendResourceEventLocked(taskID, resourceID string, event Event
 	return s.atomicallyWrite(s.resourceEventPath(taskID, resourceID, len(events)+1), encoded)
 }
 
+func (s *Store) ensureExecutionRecordEventLocked(taskID, executionID, operationID, fingerprint string, revision uint64) error {
+	events, err := s.ReadExecutionEvents(taskID, executionID)
+	if err != nil {
+		return err
+	}
+	if eventHasReceipt(events, operationID, fingerprint) {
+		return nil
+	}
+	return s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "record_repair", Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: revision})
+}
+
 func (s *Store) appendExecutionEventLocked(taskID, executionID string, event Event) error {
 	if err := s.ensureExecutionDir(taskID, executionID); err != nil {
 		return err
@@ -929,6 +1237,121 @@ func (s *Store) appendExecutionEventLocked(taskID, executionID string, event Eve
 		return err
 	}
 	return s.atomicallyWrite(s.executionEventPath(taskID, executionID, len(events)+1), encoded)
+}
+
+func (s *Store) ensureExternalTaskChildProjectionLocked(taskID, callerID, operationID, fingerprint, resourceID, executionID, operation string) error {
+	manifest, err := s.readManifestLocked(taskID)
+	if err != nil {
+		return err
+	}
+	if manifest.Provenance == ProvenanceExternal && manifest.CallerID != callerID {
+		return externalCallerConflict("task", taskID)
+	}
+	childPresent := (resourceID != "" && containsCSV(manifest.ResourceIDs, resourceID)) || (executionID != "" && containsCSV(manifest.ExecutionIDs, executionID))
+	if childPresent {
+		if _, found, receiptErr := findReceipt(manifest.Receipts, operationID, fingerprint); receiptErr != nil {
+			return receiptErr
+		} else if found {
+			return s.ensureTaskRecordEventLocked(taskID, operationID, fingerprint, manifest.Revision)
+		}
+		return nil
+	}
+	if externalTaskTerminal(manifest) {
+		return terminalMutationConflict("task", taskID)
+	}
+	if resourceID != "" {
+		manifest.ResourceIDs = appendCSV(manifest.ResourceIDs, resourceID)
+	}
+	if executionID != "" {
+		manifest.ExecutionIDs = appendCSV(manifest.ExecutionIDs, executionID)
+	}
+	manifest.Provenance = ProvenanceExternal
+	if manifest.CallerID == "" {
+		manifest.CallerID = callerID
+	}
+	if manifest.Revision == 0 {
+		manifest.Revision = 1
+	} else {
+		manifest.Revision++
+	}
+	manifest.Receipts, err = appendReceiptText(manifest.Receipts, operationID, fingerprint, manifest.Revision)
+	if err != nil {
+		return err
+	}
+	if err := s.writeManifestLocked(taskID, manifest); err != nil {
+		return err
+	}
+	_, err = s.appendEventLocked(taskID, Event{Operation: operation, Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision})
+	return err
+}
+
+func containsCSV(values, value string) bool {
+	for _, current := range strings.Split(values, ",") {
+		if current == value {
+			return true
+		}
+	}
+	return false
+}
+
+func receiptHistoryComplete(receipts []RecordReceipt, events []EventRecord) error {
+	for _, receipt := range receipts {
+		if !eventHasReceipt(events, receipt.OperationID, receipt.Fingerprint) {
+			return newError(KindPartial, fmt.Sprintf("record operation %s has no durable audit event", receipt.OperationID), "Retry that operation to repair its audit projection before issuing a new write")
+		}
+	}
+	return nil
+}
+
+func (s *Store) ensureResourceReceiptHistoryLocked(taskID, resourceID string, receipts []RecordReceipt) error {
+	events, err := s.ReadResourceEvents(taskID, resourceID)
+	if err != nil {
+		return err
+	}
+	return receiptHistoryComplete(receipts, events)
+}
+
+func (s *Store) ensureExecutionReceiptHistoryLocked(taskID, executionID string, receipts []RecordReceipt) error {
+	events, err := s.ReadExecutionEvents(taskID, executionID)
+	if err != nil {
+		return err
+	}
+	return receiptHistoryComplete(receipts, events)
+}
+
+func (s *Store) ensureTaskReceiptHistoryLocked(taskID string, encoded string) error {
+	var receipts []RecordReceipt
+	if encoded != "" {
+		if err := json.Unmarshal([]byte(encoded), &receipts); err != nil {
+			return malformedError("Malformed record receipts", "Inspect and repair the record")
+		}
+	}
+	events, err := s.ReadEvents(taskID)
+	if err != nil {
+		return err
+	}
+	return receiptHistoryComplete(receipts, events)
+}
+
+func eventHasReceipt(events []EventRecord, operationID, fingerprint string) bool {
+	for _, event := range events {
+		if event.Event.OperationID == operationID && event.Event.Fingerprint == fingerprint {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Store) ensureTaskRecordEventLocked(taskID, operationID, fingerprint string, revision uint64) error {
+	events, err := s.ReadEvents(taskID)
+	if err != nil {
+		return err
+	}
+	if eventHasReceipt(events, operationID, fingerprint) {
+		return nil
+	}
+	_, err = s.appendEventLocked(taskID, Event{Operation: "record_repair", Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: revision})
+	return err
 }
 
 func (s *Store) writeResourceArchiveLocked(taskID, resourceID string, archive ResourceArchive) error {

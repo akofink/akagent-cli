@@ -18,11 +18,14 @@ func (m *Manager) CreateResource(taskID string, request ResourceRequest) (store.
 	if taskID == "" || request.ID == "" || request.Repository == "" {
 		return store.Resource{}, false, fmt.Errorf("task ID, resource ID, and repository are required")
 	}
-	if err := m.migrateLegacyResource(taskID); err != nil {
-		return store.Resource{}, false, err
-	}
 	manifest, err := m.manifest(taskID)
 	if err != nil {
+		return store.Resource{}, false, err
+	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return store.Resource{}, false, externalRecordOperationError("task", taskID)
+	}
+	if err := m.migrateLegacyResource(taskID); err != nil {
 		return store.Resource{}, false, err
 	}
 	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {

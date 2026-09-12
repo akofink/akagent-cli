@@ -25,6 +25,8 @@ import (
 // Store is a worker-local on-disk store.
 type Store struct {
 	root string
+	// writeHook, when set, injects an atomic-write failure for focused store tests.
+	writeHook func(path string) error
 	// unlockFn, when set, replaces the flock unlock during release so tests
 	// can exercise release failures. It is nil in normal operation.
 	unlockFn func() error
@@ -1106,6 +1108,11 @@ func decodeEnvelope(path string, data []byte, kind, taskID string) (Envelope, er
 // containing directory. Temp creation and rename therefore cannot follow a
 // swapped parent symlink or redirect the replacement outside the store.
 func (s *Store) atomicallyWrite(path string, data []byte) error {
+	if s.writeHook != nil {
+		if err := s.writeHook(path); err != nil {
+			return err
+		}
+	}
 	dir := filepath.Dir(path)
 	target := filepath.Base(path)
 	parent, err := s.openOwned(dir, true)

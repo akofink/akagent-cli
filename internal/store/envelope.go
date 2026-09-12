@@ -137,10 +137,12 @@ type ExternalCompletion struct {
 }
 
 type Event struct {
-	Operation string `json:"operation"`
-	Outcome   string `json:"outcome,omitempty"`
-	Detail    string `json:"detail,omitempty"`
-	Revision  uint64 `json:"revision,omitempty"`
+	Operation   string `json:"operation"`
+	Outcome     string `json:"outcome,omitempty"`
+	Detail      string `json:"detail,omitempty"`
+	Revision    uint64 `json:"revision,omitempty"`
+	OperationID string `json:"operation_id,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 // EventRecord is a durable event together with its sequence and observation
@@ -211,7 +213,7 @@ func (e Envelope) DecodeManifest() (Manifest, error) {
 	}
 	if manifest.Receipts != "" {
 		var receipts []RecordReceipt
-		if json.Unmarshal([]byte(manifest.Receipts), &receipts) != nil {
+		if json.Unmarshal([]byte(manifest.Receipts), &receipts) != nil || validateReceipts(receipts) != nil {
 			return Manifest{}, malformedError("Malformed manifest record receipts", "Inspect and repair the manifest record")
 		}
 	}
