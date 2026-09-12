@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -158,6 +159,9 @@ type taskView struct {
 	Reason                 string `json:"reason,omitempty"`
 	Activity               string `json:"activity,omitempty"`
 	Result                 string `json:"result,omitempty"`
+	Disposition            string `json:"disposition,omitempty"`
+	DispositionReason      string `json:"disposition_reason,omitempty"`
+	DispositionRevision    uint64 `json:"disposition_revision,omitempty"`
 	Committed              bool   `json:"committed"`
 	Dirty                  bool   `json:"dirty"`
 	Untracked              bool   `json:"untracked"`
@@ -195,7 +199,7 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|disposition|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
 	case "credential":
@@ -288,6 +292,19 @@ func taskCommand(args []string, stdout io.Writer) int {
 		return write(stdout, taskDetailView{Task: task})
 	case "start":
 		return writeError(stdout, "usage", "The `akagent task start` shortcut was removed", false, "Run `akagent task create --title <title>` and then `akagent task launch <task-id> --target <shell|pi>`")
+	case "disposition":
+		if len(args) < 4 {
+			return writeError(stdout, "usage", "Usage: akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]", false, "Set record-only work disposition without changing process or Git state")
+		}
+		disposition, reason, expectedRevision, ok := parseDisposition(args[2:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]", false, "Set a valid disposition and reason; use the current revision for a guarded transition")
+		}
+		manifest, err := manager.SetDisposition(args[1], disposition, reason, expectedRevision)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, taskDetailView{Task: view(args[1], manifest)})
 	case "list":
 		options, ok := parseTaskList(args[1:])
 		if !ok {
@@ -316,12 +333,12 @@ func taskCommand(args []string, stdout io.Writer) int {
 				resourcesLoaded = true
 				return resources, nil
 			}
-			if !options.All && !actionable(manifest) {
+			if !options.All {
 				resources, err = loadResources()
 				if err != nil {
 					return lifecycleError(stdout, err)
 				}
-				if !actionableResources(resources) {
+				if !includeTaskInView(manifest, resources, options.View) {
 					continue
 				}
 			}
@@ -502,6 +519,7 @@ type taskListOptions struct {
 	Repository string
 	Worktree   string
 	Keyword    string
+	View       string
 	Format     outputFormat
 }
 
@@ -511,7 +529,7 @@ func parseTaskList(args []string) (taskListOptions, bool) {
 		switch args[index] {
 		case "--all":
 			options.All = true
-		case "--repository", "--worktree", "--format":
+		case "--repository", "--worktree", "--format", "--view":
 			if index+1 >= len(args) || args[index+1] == "" {
 				return options, false
 			}
@@ -526,6 +544,11 @@ func parseTaskList(args []string) (taskListOptions, bool) {
 					return options, false
 				}
 				options.Format = format
+			case "--view":
+				if !validTaskListView(args[index+1]) {
+					return options, false
+				}
+				options.View = args[index+1]
 			}
 			index++
 		default:
@@ -1146,6 +1169,49 @@ func parseCredentialCleanup(args []string) (lifecycle.CleanupOptions, bool) {
 	return options, true
 }
 
+func parseDisposition(args []string) (lifecycle.WorkDisposition, string, *uint64, bool) {
+	var disposition lifecycle.WorkDisposition
+	var reason string
+	var revision *uint64
+	for index := 0; index < len(args); index++ {
+		flag := args[index]
+		if !strings.HasPrefix(flag, "-") {
+			if disposition != "" {
+				return "", "", nil, false
+			}
+			disposition = lifecycle.WorkDisposition(flag)
+			continue
+		}
+		if index+1 >= len(args) || args[index+1] == "" {
+			return "", "", nil, false
+		}
+		value := args[index+1]
+		index++
+		switch flag {
+		case "--reason":
+			if reason != "" {
+				return "", "", nil, false
+			}
+			reason = value
+		case "--expected-revision":
+			if revision != nil {
+				return "", "", nil, false
+			}
+			parsed, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return "", "", nil, false
+			}
+			revision = &parsed
+		default:
+			return "", "", nil, false
+		}
+	}
+	if disposition != lifecycle.DispositionInFlight && disposition != lifecycle.DispositionDeferred && disposition != lifecycle.DispositionTerminal {
+		return "", "", nil, false
+	}
+	return disposition, reason, revision, reason != ""
+}
+
 func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	for len(args) > 0 {
 		if len(args) < 2 {
@@ -1167,41 +1233,68 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|disposition|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]", false, "Filter by a case-sensitive title or branch keyword; use `--format human` for terminal output")
+	return writeError(stdout, "usage", "Usage: akagent task list [keyword] [--all] [--view <in-flight|attention|maintenance|deferred|history>] [--repository <name>] [--worktree <path>] [--format <toon|human>]", false, "Use a bounded inventory view; `--all` retains the historical compatibility view")
 }
 
-func actionable(manifest store.Manifest) bool {
-	return manifest.ArchiveState != "complete" ||
-		(manifest.CleanupState != "" && manifest.CleanupState != "complete") ||
-		(manifest.WorktreeCleanupState != "" && manifest.WorktreeCleanupState != "complete") ||
-		(manifest.CredentialCleanupState != "" && manifest.CredentialCleanupState != "complete") ||
-		manifest.CleanupDebt ||
-		strings.TrimSpace(manifest.RecoveryDebt) != ""
+func validTaskListView(view string) bool {
+	switch view {
+	case "in-flight", "attention", "maintenance", "deferred", "history":
+		return true
+	default:
+		return false
+	}
 }
 
-func actionableResources(resources []store.Resource) bool {
+func includeTaskInView(manifest store.Manifest, resources []store.Resource, requested string) bool {
+	if requested == "" {
+		requested = "in-flight"
+	}
+	disposition := lifecycle.WorkDispositionOf(manifest)
+	switch requested {
+	case "in-flight":
+		return acceptedInFlight(disposition)
+	case "deferred":
+		return disposition == lifecycle.DispositionDeferred
+	case "history":
+		return disposition == lifecycle.DispositionTerminal
+	case "maintenance":
+		return hasMaintenanceDebt(manifest, resources)
+	case "attention":
+		return acceptedInFlight(disposition) && hasAttention(manifest)
+	default:
+		return false
+	}
+}
+
+func acceptedInFlight(disposition lifecycle.WorkDisposition) bool {
+	return disposition != lifecycle.DispositionDeferred && disposition != lifecycle.DispositionTerminal
+}
+
+func hasMaintenanceDebt(manifest store.Manifest, resources []store.Resource) bool {
+	if strings.TrimSpace(manifest.RecoveryDebt) != "" || manifest.CleanupDebt || incompleteTaskState(manifest.ArchiveState) || incompleteTaskState(manifest.CleanupState) || incompleteTaskState(manifest.WorktreeCleanupState) || incompleteTaskState(manifest.CredentialCleanupState) {
+		return true
+	}
 	for _, resource := range resources {
-		// Legacy resources mirror task-level cleanup and may predate independent resource state.
-		if resource.ID == "legacy" {
-			if resource.CleanupDebt || strings.TrimSpace(resource.RecoveryDebt) != "" {
-				return true
-			}
-			continue
-		}
-		if (resource.ArchiveState != "" && resource.ArchiveState != "complete") ||
-			(resource.CleanupState != "" && resource.CleanupState != "complete") ||
-			(resource.WorktreeCleanupState != "" && resource.WorktreeCleanupState != "complete") ||
-			(resource.CredentialCleanupState != "" && resource.CredentialCleanupState != "complete") ||
-			resource.CleanupDebt ||
-			strings.TrimSpace(resource.RecoveryDebt) != "" {
+		if strings.TrimSpace(resource.RecoveryDebt) != "" || resource.CleanupDebt || incompleteTaskState(resource.ArchiveState) || incompleteTaskState(resource.CleanupState) || incompleteTaskState(resource.WorktreeCleanupState) || incompleteTaskState(resource.CredentialCleanupState) {
 			return true
 		}
 	}
 	return false
+}
+
+func incompleteTaskState(value string) bool {
+	return value != "" && value != "none" && value != "complete"
+}
+
+func hasAttention(manifest store.Manifest) bool {
+	if manifest.Condition == "waiting" || manifest.Condition == "blocked" || manifest.Condition == "failed" || strings.TrimSpace(manifest.RecoveryDebt) != "" {
+		return true
+	}
+	return status(manifest) == "unknown"
 }
 
 func viewResource(resource store.Resource) resourceView {
@@ -1285,6 +1378,12 @@ func compactSessionReferences(references []store.SessionReference) string {
 
 func view(id string, manifest store.Manifest) taskView {
 	result := taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
+	effectiveDisposition := lifecycle.WorkDispositionOf(manifest)
+	if effectiveDisposition != lifecycle.DispositionInFlight || (manifest.Disposition != "" && manifest.DispositionRevision > 0) {
+		result.Disposition = string(effectiveDisposition)
+		result.DispositionReason = manifest.DispositionReason
+		result.DispositionRevision = manifest.DispositionRevision
+	}
 	if manifest.Launch != nil {
 		result.Execution = manifest.Launch.Target
 		if manifest.Launch.Target == "pi" {
