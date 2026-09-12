@@ -197,28 +197,59 @@ func (s *Store) AppendEvent(taskID string, event Event) (int, error) {
 	}
 	var sequence int
 	err := s.WithLock(taskID, func() error {
-		if err := s.ensureTaskDir(taskID); err != nil {
-			return err
-		}
-		envelope, err := eventEnvelope(taskID, event)
-		if err != nil {
-			return internalError("encode a task event", "Retry the operation")
-		}
-		encoded, err := encodeRecord(envelope)
-		if err != nil {
-			return err
-		}
-		next, err := s.nextSequence(taskID)
-		if err != nil {
-			return err
-		}
-		if err := s.atomicallyWrite(s.eventPath(taskID, next), encoded); err != nil {
-			return err
-		}
-		sequence = next
-		return nil
+		var err error
+		sequence, err = s.appendEventLocked(taskID, event)
+		return err
 	})
 	return sequence, err
+}
+
+// AppendEventIfAbsent appends event once while holding the task lock.
+// Matching includes the revision so a later A -> B -> A transition cannot
+// reuse the audit event from the earlier A revision during repair.
+func (s *Store) AppendEventIfAbsent(taskID string, event Event) (int, bool, error) {
+	if err := validateTaskID(taskID); err != nil {
+		return 0, false, err
+	}
+	var sequence int
+	appended := false
+	err := s.WithLock(taskID, func() error {
+		events, err := s.ReadEvents(taskID)
+		if err != nil {
+			return err
+		}
+		for _, record := range events {
+			if record.Event == event {
+				return nil
+			}
+		}
+		sequence, err = s.appendEventLocked(taskID, event)
+		appended = err == nil
+		return err
+	})
+	return sequence, appended, err
+}
+
+func (s *Store) appendEventLocked(taskID string, event Event) (int, error) {
+	if err := s.ensureTaskDir(taskID); err != nil {
+		return 0, err
+	}
+	envelope, err := eventEnvelope(taskID, event)
+	if err != nil {
+		return 0, internalError("encode a task event", "Retry the operation")
+	}
+	encoded, err := encodeRecord(envelope)
+	if err != nil {
+		return 0, err
+	}
+	next, err := s.nextSequence(taskID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.atomicallyWrite(s.eventPath(taskID, next), encoded); err != nil {
+		return 0, err
+	}
+	return next, nil
 }
 
 // ReadEvents returns the task's events in sequence order. A task with no

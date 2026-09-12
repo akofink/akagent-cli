@@ -131,7 +131,7 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource"}); err != nil {
 			return err
 		}
 		result = resource
@@ -179,7 +179,7 @@ func (s *Store) AdoptExternalTask(taskID string, request ExternalTaskRequest) (M
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "task"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "task"}); err != nil {
 			return err
 		}
 		result = manifest
@@ -267,7 +267,7 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if err := s.appendEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created"}); err != nil {
 			return err
 		}
 		result = execution
@@ -409,7 +409,7 @@ func (s *Store) CompleteExternalTask(taskID, callerID, operationID, contract, re
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if err := s.appendEventLocked(taskID, Event{Operation: "complete", Outcome: "declared"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "complete", Outcome: "declared"}); err != nil {
 			return err
 		}
 		result = manifest
@@ -569,7 +569,7 @@ func (s *Store) ArchiveExternalTask(taskID, callerID, operationID string, expect
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if err := s.appendEventLocked(taskID, Event{Operation: "archive", Outcome: "recorded"}); err != nil {
+		if _, err := s.appendEventLocked(taskID, Event{Operation: "archive", Outcome: "recorded"}); err != nil {
 			return err
 		}
 		events, err := s.ReadEvents(taskID)
@@ -891,25 +891,6 @@ func sameSessionReferences(a, b []SessionReference) bool {
 		}
 	}
 	return true
-}
-
-func (s *Store) appendEventLocked(taskID string, event Event) error {
-	if err := s.ensureTaskDir(taskID); err != nil {
-		return err
-	}
-	envelope, err := eventEnvelope(taskID, event)
-	if err != nil {
-		return internalError("encode a task record event", "Retry the operation")
-	}
-	encoded, err := encodeRecord(envelope)
-	if err != nil {
-		return err
-	}
-	next, err := s.nextSequence(taskID)
-	if err != nil {
-		return err
-	}
-	return s.atomicallyWrite(s.eventPath(taskID, next), encoded)
 }
 
 func (s *Store) appendResourceEventLocked(taskID, resourceID string, event Event) error {

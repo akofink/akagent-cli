@@ -71,6 +71,11 @@ func appendTaskFields(output *strings.Builder, indent string, task taskView) {
 	appendTextField(output, indent, "reason", task.Reason)
 	appendTextField(output, indent, "activity", task.Activity)
 	appendTextField(output, indent, "result", task.Result)
+	if task.Disposition != "" {
+		appendTextField(output, indent, "disposition", task.Disposition)
+		appendTextField(output, indent, "disposition_reason", task.DispositionReason)
+		appendTextField(output, indent, "disposition_revision", fmt.Sprintf("%d", task.DispositionRevision))
+	}
 	appendBoolField(output, indent, "committed", task.Committed)
 	appendBoolField(output, indent, "dirty", task.Dirty)
 	appendBoolField(output, indent, "untracked", task.Untracked)

@@ -1,18 +1,45 @@
-# Proposed charter boundary
+# Durable registry charter
 
-**Status:** design proposal for issue [#122](https://github.com/akofink/akagent-cli/issues/122).
+**Status:** accepted direction for issue [#138](https://github.com/akofink/akagent-cli/issues/138).
+
+This document distinguishes the shipped local implementation from the target boundary.
+The current orchestration behavior is compatibility behavior, not the end state.
 
 ## Recommendation
 
-`akagent` should become a narrow, local-first protocol for durable task, resource, and execution records, not the owner of process orchestration.
+`akagent` is a narrow, local-first protocol for durable task, resource, and execution records, not the long-term owner of process orchestration.
 
-The core should record intent, facts, conditions, recovery debt, and delivery references through the stable CLI.
-Local host adapters should own Git worktree mutation, process launch, tmux interaction, credential injection, and provider-specific session behavior.
+The core should record intent, facts, conditions, recovery debt, checkpoint references, and delivery references through the stable CLI.
+External tools and skills should own Git worktree mutation, process launch, tmux interaction, credential injection, and provider-specific session behavior.
+Optional local or provider adapters may provide those capabilities, but they are not required dependencies of the core or a feature-parity migration deliverable.
 
-This is a boundary proposal, not a behavioral removal or broad refactor.
+This accepted boundary does not itself remove behavior or authorize a broad refactor.
 Existing commands and records remain compatibility surfaces while the seams are introduced incrementally.
 
 The distinction is important: an execution record remains useful when a launcher, terminal, provider, or orchestrator disappears, but the record does not require `akagent` to have launched or killed the process.
+
+## Current implementation status
+
+The current CLI ships local Git/worktree mutation, process launch and stop, tmux attachment, credential handling, deployment execution, and reconciliation.
+Those paths are explicitly shipped but transitional compatibility behavior.
+The record model, protocol output, and direct self-service workflow are the durable product boundary.
+
+## Keep, deprecate, and remove matrix
+
+| Surface | Current status | Accepted direction |
+| --- | --- | --- |
+| Task, resource, and execution identities, typed state, events, archive history, recovery debt, and protocol output | Shipped | Keep in core |
+| Session-reference declarations, evidence metadata, and delivery references | Shipped | Keep in core; integrations own provider interpretation |
+| Task/resource/execution inspection, list, publication, finish, archive, and reconciliation records | Shipped | Keep in core; adapters submit observations |
+| Repository and resource records | Shipped, with local Git setup in the current implementation | Keep records in core; move Git mutation and ownership checks to external tools or skills, with optional adapters as a convenience |
+| `task launch`, `task execution launch`, and `integration launch` | Shipped compatibility behavior | Deprecate, then remove orchestration from core after the exit criteria |
+| `task attach`, execution attach, task/execution stop, and local deployment execution | Shipped compatibility behavior | Deprecate, then remove process, tmux, and deployment side effects from core; direct tools or skills may replace only the capabilities still needed |
+| Credential injection and cleanup | Shipped compatibility behavior | Move value resolution and cleanup outside core, or retire these capabilities; keep only non-secret observations and recovery facts in core |
+
+The matrix describes existing command families only.
+The migration does not require feature-parity adapters for every deprecated capability.
+Deployment and credential behavior may be intentionally retired when direct work does not need a replacement.
+Current syntax remains unchanged until an implementation issue changes it.
 
 ## Alternatives
 
@@ -48,10 +75,11 @@ This is the right transition phase, but not the final charter.
 ### Remove orchestration from the core
 
 The core retains task, resource, and execution identity; typed state transitions; append-only events; local durable storage; conditions and recovery debt; session-reference declarations; delivery metadata; archive; and protocol output.
-An adapter creates an execution record before starting work, then submits process and environment observations through explicit interfaces.
+An external tool, skill, or optional adapter creates an execution record before starting work, then submits process and environment observations through explicit interfaces.
 
 The core does not call tmux, inspect PIDs, run Git, create or remove worktrees, resolve credential values, parse provider sessions, or call GitHub.
-A local adapter may still provide all of those features, but it is replaceable and can fail without making the durable protocol unavailable.
+External tools and skills may provide the side effects still needed by a workflow, and optional adapters may make those tools more convenient.
+No adapter is required to reproduce every legacy feature, and an absent tool must not make the durable protocol unavailable.
 
 This is the recommended direction because it preserves the most valuable behavior while making authority explicit.
 `akagent` remains useful to direct agents and independent orchestrators without requiring either one to adopt a particular launcher.
@@ -65,15 +93,15 @@ The following ownership rules should guide future changes.
 | --- | --- | --- |
 | Protocol and domain | IDs, task/resource/execution records, lifecycle transitions, conditions, recovery debt, session-reference shape, delivery metadata, and compatibility rules | Processes, tmux, Git, credentials, provider files, or forge APIs |
 | Local store | Restrictive worker-local paths, envelopes, atomic replacement, append-only events, locks, archives, and recovery of store artifacts | Lifecycle policy, command parsing, tmux, Git, or credential values |
-| Local host adapter | Repository registration, Git facts, branch and worktree operations, process observations, and cleanup hooks | Provider session interpretation or durable record file access outside the store interface |
-| Interaction adapter | Launch, attach, stop, and observe for tmux or another terminal surface | Durable task truth or ambiguous window ownership decisions |
-| Provider adapter | Provider command construction, session discovery, provider policy, and provider-specific environment setup | Core record schema, forge delivery, or unrelated credentials |
+| External local tools and skills | Git facts, branch and worktree operations, process observations, cleanup hooks, and any local side effects still required by a workflow | Provider session interpretation or durable record file access outside the store interface |
+| Optional interaction adapter | Launch, attach, stop, and observe for tmux or another terminal surface | Durable task truth or ambiguous window ownership decisions |
+| Optional provider adapter | Provider command construction, session discovery, provider policy, and provider-specific environment setup | Core record schema, forge delivery, or unrelated credentials |
 | CLI layer | Narrow argument parsing, command dispatch, protocol encoding, and structured errors | Business policy hidden in command branches or direct store-file manipulation |
 | External delivery tooling | GitHub, Bitbucket, or other forge operations | Core task state and provider credentials in records or output |
 
-An adapter may report `unavailable`, `stale`, or `contradictory` observations.
+An external tool, skill, or optional adapter may report `unavailable`, `stale`, or `contradictory` observations.
 The core must preserve those facts and avoid inferring successful completion from a missing observation.
-Destructive actions such as killing a window or removing a worktree require an adapter-specific ownership proof and an explicit approval path.
+Destructive actions such as killing a window or removing a worktree require an ownership proof from the external tool or skill performing the action and an explicit approval path.
 
 Tmux metadata is an observation and routing hint, not an authorization token.
 A tmux adapter must resolve a new window from its pane-local identity, verify task and execution metadata immediately before attachment or cleanup, compare fresh process identity including start time, and refuse ambiguous matches.
@@ -104,18 +132,39 @@ These are focused extractions around existing interfaces, not permission to rede
 
 ## Migration and compatibility
 
-1. Document the protocol-only charter and add an explicit adapter interface while preserving the current implementation behind it.
-2. Make execution creation and observation submission the primary path.
-Keep launch-before-record behavior unsupported, so a failed launch remains recoverable.
-3. Move tmux, Git/worktree, and Pi behavior behind local or provider adapters.
-The existing adapters may initially call the same lifecycle methods while ownership moves out of the core.
-4. Keep `task launch`, `task execution launch`, and `integration launch` as compatibility commands that delegate to an installed local adapter and emit deprecation diagnostics on stderr.
-Their stdout schemas and existing durable records remain stable during the migration window.
-5. Add an explicit adapter capability or command discovery path for environments without tmux, Git worktrees, or a provider.
-Core task and record operations must continue to work in those environments.
-6. After adapter coverage and recovery tooling are established, remove direct launch behavior from the core and retain a separately versioned compatibility adapter for users who need the old commands.
+The migration has a finite sequence of gates.
 
-Existing manifests, archives, and event histories must remain readable.
+1. Adopt record-only task, resource, and execution creation and observation submission as the normal agent workflow.
+Launch-before-record behavior remains unsupported so a failed launch remains recoverable.
+2. Deliver independent in-flight and maintenance views that work from durable records while offline and do not require tmux, a provider, or a forge.
+3. Add crash-safe checkpoint references and same-machine reboot recovery.
+Recovery must identify unfinished work, preserve the last durable checkpoint, and allow a safe partial recovery without claiming exact process restoration.
+4. Move tmux, Git/worktree, credential, deployment, and provider side effects outside the core.
+Direct tools and skills are valid owners, while optional local or provider adapters are convenience integrations rather than required replacements.
+Core records must remain usable when any of them is absent.
+5. Deprecate the existing orchestration command families with stderr diagnostics while preserving their current syntax and stdout schemas during the migration window.
+6. Remove direct orchestration from core when the exit criteria below are met.
+Users of removed command families receive structured migration guidance to create or update records through the durable CLI and invoke an external tool, skill, or optional adapter only when the workflow still needs that side effect.
+Legacy manifests, archives, and event histories remain readable after removal.
+
+### Orchestration removal exit criteria
+
+Removal is allowed only when all of these are true:
+
+- Record-only create, inspect, publish, archive, and reconciliation flows pass offline without tmux, Git mutation, credentials, deployment executables, providers, or forge access.
+- In-flight and maintenance views expose unfinished work, recovery debt, checkpoint references, and adapter availability without provider transcripts or private context.
+- Checkpoint writes and concurrent updates are crash-safe and idempotent, and reboot recovery has tested safe partial recovery for missing, stale, and contradictory observations.
+- Direct external tools and skills, or optional adapters where useful, can create and submit the observations needed by retained workflows without core-side side effects.
+No feature-parity adapter is required for a capability that is intentionally retired.
+- Existing records and archives from the compatibility period can be inspected and migrated without data loss.
+- The removed command response and migration documentation are covered by protocol tests and identify the replacement record and the direct tool, skill, or optional adapter workflow when one exists.
+
+Same-machine reboot recovery assumes the worker filesystem survives.
+Disk loss requires a separately copied archive or other external backup.
+Cross-machine synchronization is not provided by the local store.
+Exact process restoration is not promised; a new process must be verified by an adapter.
+Provider session recovery is best effort and depends on provider-owned references and discovery.
+
 Adding optional observation or adapter metadata is compatible; changing lifecycle meanings or removing record fields requires a protocol version change.
 A provider or orchestrator that is replaced can reattach by recording a session reference and fresh observation instead of recreating the task.
 
@@ -127,12 +176,12 @@ External URLs and session references remain non-secret declarations and must be 
 
 The protocol should remain useful when tmux is absent, the operator terminal disconnects, the provider exits, or the network is unavailable.
 Launchers should create an execution record before side effects and use stable IDs for retries.
-Adapters should report uncertain outcomes rather than guessing, and reconciliation should be scoped to the execution and resource that the adapter owns.
+External tools, skills, and optional adapters should report uncertain outcomes rather than guessing, and reconciliation should be scoped to the execution and resource that the caller owns.
 The core can then preserve recovery debt and expose actionable state without attempting a dangerous cleanup itself.
 
 Local-first does not mean authority-free.
 The store continues to enforce restrictive permissions, descriptor-safe traversal, atomic writes, and per-task locking.
-Adapter commands must validate paths and ownership at the point of mutation, and no adapter may treat a display label, active tmux client, PID alone, or provider filename as proof of identity.
+External commands must validate paths and ownership at the point of mutation, and no tool, skill, or optional adapter may treat a display label, active tmux client, PID alone, or provider filename as proof of identity.
 
 ## Verification strategy
 

@@ -77,7 +77,7 @@ func TestTaskLifecycleCommandContract(t *testing.T) {
 	}
 
 	finished := runCommand(t, []string{"task", "finish", taskID, "succeeded", "done"})
-	wantFinished := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: finished\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: none\n  reason: coding\n  activity: tests\n  result: done\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
+	wantFinished := fmt.Sprintf("task:\n  id: task-14\n  title: Build feature\n  status: finished\n  worker: local\n  branch: main\n  base_revision: \"0000000000000000000000000000000000000001\"\n  worktree_path: %s\n  condition: none\n  reason: coding\n  activity: tests\n  result: done\n  disposition: terminal\n  disposition_reason: \"task finished: succeeded\"\n  disposition_revision: 1\n  committed: true\n  dirty: false\n  untracked: false\n", repositoryPath)
 	if finished.code != 0 || finished.stdout != wantFinished {
 		t.Fatalf("task finish = (%d, %q), want (0, %q)", finished.code, finished.stdout, wantFinished)
 	}
@@ -393,8 +393,8 @@ func TestTaskListHeterogeneousRowsCommandContract(t *testing.T) {
 		t.Fatalf("finished task finish = (%d, %q)", result.code, result.stdout)
 	}
 
-	result := runCommand(t, []string{"task", "list"})
-	want := fmt.Sprintf("tasks[2]{id,title,status,worker,branch,base_revision,worktree_path,condition,reason,activity,result,committed,dirty,untracked}:\n  a-14,Stopped,stopped,local,main,\"0000000000000000000000000000000000000001\",%s,none,null,null,null,true,false,false\n  b-14,Finished,finished,local,main,\"0000000000000000000000000000000000000001\",%s,none,coding,tests,done,true,false,false\ntotal: 2\n", repositoryPath, repositoryPath)
+	result := runCommand(t, []string{"task", "list", "--all"})
+	want := fmt.Sprintf("tasks[2]{id,title,status,worker,branch,base_revision,worktree_path,condition,reason,activity,result,disposition,disposition_reason,disposition_revision,committed,dirty,untracked}:\n  a-14,Stopped,stopped,local,main,\"0000000000000000000000000000000000000001\",%s,none,null,null,null,null,null,null,true,false,false\n  b-14,Finished,finished,local,main,\"0000000000000000000000000000000000000001\",%s,none,coding,tests,done,terminal,\"task finished: succeeded\",1,true,false,false\ntotal: 2\n", repositoryPath, repositoryPath)
 	if result.code != 0 || result.stdout != want {
 		t.Fatalf("heterogeneous task list = (%d, %q), want (0, %q)", result.code, result.stdout, want)
 	}
@@ -462,8 +462,8 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 	}
 
 	defaultList := runCommand(t, []string{"task", "list"})
-	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 2") || !strings.Contains(defaultList.stdout, "alpha-active") || strings.Contains(defaultList.stdout, "alpha-pending") || !strings.Contains(defaultList.stdout, "beta-active") || strings.Contains(defaultList.stdout, "alpha-history") {
-		t.Fatalf("default task list = (%d, %q), want only actionable tasks", defaultList.code, defaultList.stdout)
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 4") || !strings.Contains(defaultList.stdout, "alpha-active") || !strings.Contains(defaultList.stdout, "alpha-pending") || !strings.Contains(defaultList.stdout, "beta-active") || !strings.Contains(defaultList.stdout, "alpha-history") {
+		t.Fatalf("default task list = (%d, %q), want every in-flight task", defaultList.code, defaultList.stdout)
 	}
 	allAlpha := runCommand(t, []string{"task", "list", "--all", "--repository", "alpha"})
 	if allAlpha.code != 0 || !strings.Contains(allAlpha.stdout, "total: 3") || !strings.Contains(allAlpha.stdout, "alpha-history") || !strings.Contains(allAlpha.stdout, "alpha-pending") || !strings.Contains(allAlpha.stdout, "alpha-active") || strings.Contains(allAlpha.stdout, "beta-active") {
@@ -487,12 +487,12 @@ func TestTaskListFiltersArchivedHistoryAndComposesScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	debtList := runCommand(t, []string{"task", "list"})
-	if debtList.code != 0 || !strings.Contains(debtList.stdout, "total: 3") || !strings.Contains(debtList.stdout, "alpha-history") {
-		t.Fatalf("resource debt task list = (%d, %q), want archived task retained", debtList.code, debtList.stdout)
+	if debtList.code != 0 || !strings.Contains(debtList.stdout, "total: 4") || !strings.Contains(debtList.stdout, "alpha-history") {
+		t.Fatalf("resource debt task list = (%d, %q), want in-flight task retained", debtList.code, debtList.stdout)
 	}
 }
 
-func TestTaskListHidesArchivedTasksWithAbsentCleanupState(t *testing.T) {
+func TestTaskListIncludesInFlightTasksWithCompleteArchiveState(t *testing.T) {
 	setupTaskCommandTest(t)
 	for index := 0; index < 10; index++ {
 		taskID := fmt.Sprintf("archived-%02d", index)
@@ -511,12 +511,12 @@ func TestTaskListHidesArchivedTasksWithAbsentCleanupState(t *testing.T) {
 	}
 
 	defaultList := runCommand(t, []string{"task", "list"})
-	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 1") || !strings.Contains(defaultList.stdout, "active-110") {
-		t.Fatalf("default task list = (%d, %q), want only the active task", defaultList.code, defaultList.stdout)
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 11") || !strings.Contains(defaultList.stdout, "active-110") {
+		t.Fatalf("default task list = (%d, %q), want every in-flight task", defaultList.code, defaultList.stdout)
 	}
 	for index := 0; index < 10; index++ {
-		if strings.Contains(defaultList.stdout, fmt.Sprintf("archived-%02d", index)) {
-			t.Fatalf("default task list = (%d, %q), unexpectedly included archived task", defaultList.code, defaultList.stdout)
+		if !strings.Contains(defaultList.stdout, fmt.Sprintf("archived-%02d", index)) {
+			t.Fatalf("default task list = (%d, %q), missing in-flight task", defaultList.code, defaultList.stdout)
 		}
 	}
 
@@ -526,7 +526,7 @@ func TestTaskListHidesArchivedTasksWithAbsentCleanupState(t *testing.T) {
 	}
 }
 
-func TestTaskListHidesArchivedResourcesWithAbsentCleanupState(t *testing.T) {
+func TestTaskListIncludesInFlightTasksWithArchivedResources(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
 	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
@@ -553,8 +553,8 @@ func TestTaskListHidesArchivedResourcesWithAbsentCleanupState(t *testing.T) {
 	}
 
 	defaultList := runCommand(t, []string{"task", "list"})
-	if defaultList.code != 0 || defaultList.stdout != "tasks: []\ntotal: 0\n" {
-		t.Fatalf("default task list = (%d, %q), want no actionable tasks", defaultList.code, defaultList.stdout)
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 1") || !strings.Contains(defaultList.stdout, taskID) {
+		t.Fatalf("default task list = (%d, %q), want the accepted in-flight task", defaultList.code, defaultList.stdout)
 	}
 	all := runCommand(t, []string{"task", "list", "--all"})
 	if all.code != 0 || !strings.Contains(all.stdout, taskID) || !strings.Contains(all.stdout, "total: 1") {
@@ -562,7 +562,7 @@ func TestTaskListHidesArchivedResourcesWithAbsentCleanupState(t *testing.T) {
 	}
 }
 
-func TestTaskListHidesTaskArchiveWithUnrecordedResourceArchive(t *testing.T) {
+func TestTaskListIncludesInFlightTasksWithUnrecordedResourceArchive(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
 	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
@@ -586,8 +586,8 @@ func TestTaskListHidesTaskArchiveWithUnrecordedResourceArchive(t *testing.T) {
 	}
 
 	defaultList := runCommand(t, []string{"task", "list"})
-	if defaultList.code != 0 || defaultList.stdout != "tasks: []\ntotal: 0\n" {
-		t.Fatalf("default task list = (%d, %q), want archived task hidden", defaultList.code, defaultList.stdout)
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 1") || !strings.Contains(defaultList.stdout, taskID) {
+		t.Fatalf("default task list = (%d, %q), want the accepted in-flight task", defaultList.code, defaultList.stdout)
 	}
 	all := runCommand(t, []string{"task", "list", "--all"})
 	if all.code != 0 || !strings.Contains(all.stdout, taskID) || !strings.Contains(all.stdout, "total: 1") {
@@ -610,7 +610,7 @@ func TestTaskListHidesTaskArchiveWithUnrecordedResourceArchive(t *testing.T) {
 	}
 }
 
-func TestResourceCleanupClearsResolvedDebtFromDefaultTaskList(t *testing.T) {
+func TestResourceCleanupPreservesInFlightTaskInDefaultTaskList(t *testing.T) {
 	setupTaskCommandTest(t)
 	repositoryPath := filepath.Join(t.TempDir(), "repository")
 	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
@@ -653,8 +653,8 @@ func TestResourceCleanupClearsResolvedDebtFromDefaultTaskList(t *testing.T) {
 		t.Fatalf("resource cleanup = (%d, %q), want completed cleanup", cleaned.code, cleaned.stdout)
 	}
 	defaultList := runCommand(t, []string{"task", "list"})
-	if defaultList.code != 0 || defaultList.stdout != "tasks: []\ntotal: 0\n" {
-		t.Fatalf("default task list after resolved cleanup = (%d, %q), want no actionable tasks", defaultList.code, defaultList.stdout)
+	if defaultList.code != 0 || !strings.Contains(defaultList.stdout, "total: 1") || !strings.Contains(defaultList.stdout, taskID) {
+		t.Fatalf("default task list after resolved cleanup = (%d, %q), want the accepted in-flight task", defaultList.code, defaultList.stdout)
 	}
 	resource, err := state.ReadResource(taskID, resourceIDs[0])
 	if err != nil {

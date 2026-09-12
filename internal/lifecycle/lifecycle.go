@@ -106,20 +106,21 @@ type ExecutionStateTmux interface {
 }
 
 type Manager struct {
-	Store              *store.Store
-	Tmux               Tmux
-	Git                Git
-	Credentials        func() (*credential.Manifest, error)
-	Checker            *credential.Checker
-	Now                func() time.Time
-	HeartbeatTimeout   time.Duration
-	GitFacts           func(store.Manifest) (store.GitFacts, error)
-	TerminalHistory    func(string) (string, error)
-	CleanupWorktree    func(store.Manifest, store.GitFacts) error
-	CleanupCredentials func(store.Manifest) error
-	ResolveAgent       func(string) (string, error)
-	ExecAgent          func(string, []string, []string) error
-	operationMu        sync.Mutex
+	Store               *store.Store
+	Tmux                Tmux
+	Git                 Git
+	Credentials         func() (*credential.Manifest, error)
+	Checker             *credential.Checker
+	Now                 func() time.Time
+	HeartbeatTimeout    time.Duration
+	GitFacts            func(store.Manifest) (store.GitFacts, error)
+	TerminalHistory     func(string) (string, error)
+	CleanupWorktree     func(store.Manifest, store.GitFacts) error
+	CleanupCredentials  func(store.Manifest) error
+	AppendEventIfAbsent func(string, store.Event) (int, bool, error)
+	ResolveAgent        func(string) (string, error)
+	ExecAgent           func(string, []string, []string) error
+	operationMu         sync.Mutex
 }
 
 type StartRequest struct {
@@ -196,10 +197,11 @@ func New(state *store.Store) *Manager {
 		Store: state, Tmux: commandTmux{}, Git: commandGit{}, Credentials: func() (*credential.Manifest, error) {
 			return credential.Load(credential.ConfigPath())
 		}, Checker: credential.NewChecker(), Now: time.Now, HeartbeatTimeout: DefaultHeartbeatTimeout,
-		ResolveAgent:       exec.LookPath,
-		TerminalHistory:    func(string) (string, error) { return "", nil },
-		CleanupCredentials: func(store.Manifest) error { return nil },
-		ExecAgent:          syscall.Exec,
+		ResolveAgent:        exec.LookPath,
+		AppendEventIfAbsent: state.AppendEventIfAbsent,
+		TerminalHistory:     func(string) (string, error) { return "", nil },
+		CleanupCredentials:  func(store.Manifest) error { return nil },
+		ExecAgent:           syscall.Exec,
 	}
 	manager.GitFacts = manager.inspectGitFacts
 	manager.CleanupWorktree = manager.removeWorktree
@@ -387,7 +389,7 @@ func (m *Manager) Create(request CreateRequest) (StartResult, error) {
 		if request.Branch != "" || request.BaseRevision != "" || request.WorktreePath != "" {
 			return StartResult{}, &store.Error{Kind: store.KindUsage, Message: "Git inputs require a repository resource", Recovery: "Create the task first, then use `akagent task resource create`"}
 		}
-		manifest := store.Manifest{Title: request.Title, Worker: "local", Lifecycle: "created", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+		manifest := store.Manifest{Title: request.Title, Worker: "local", Lifecycle: "created", Condition: "none", Disposition: string(DispositionInFlight), HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
 		created, existing, err := m.Store.CreateManifest(request.ID, manifest)
 		if err != nil {
 			return StartResult{}, err
@@ -444,7 +446,7 @@ func (m *Manager) Create(request CreateRequest) (StartResult, error) {
 		if err != nil {
 			return err
 		}
-		manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree, Lifecycle: "created", Condition: "none", HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
+		manifest := store.Manifest{Title: request.Title, Worker: "local", Repository: request.Repository, Branch: branch, BaseRevision: base, WorktreePath: worktree, Lifecycle: "created", Condition: "none", Disposition: string(DispositionInFlight), HeartbeatAt: m.now(), Requirements: strings.Join(request.Requirements, ","), Warnings: strings.Join(warnings, "; ")}
 		created, existing, err := m.Store.CreateManifest(request.ID, manifest)
 		if err != nil {
 			return err
@@ -922,11 +924,16 @@ func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
 	}
 	var changed bool
 	manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
-		if manifest.Lifecycle == "finished" && manifest.Result == result && manifest.Condition == outcomeToCondition(outcome) {
+		if manifest.Lifecycle == "finished" && manifest.Result == result && manifest.Condition == outcomeToCondition(outcome) && WorkDispositionOf(*manifest) == DispositionTerminal {
 			return nil
 		}
 		changed = true
 		manifest.Lifecycle, manifest.Condition, manifest.Result = "finished", outcomeToCondition(outcome), result
+		if WorkDispositionOf(*manifest) != DispositionTerminal {
+			manifest.Disposition = string(DispositionTerminal)
+			manifest.DispositionReason = "task finished: " + outcome
+			manifest.DispositionRevision++
+		}
 		manifest.Observation, manifest.ObservationAt = ObservationMissing, m.now()
 		manifest.ObservedPID, manifest.ObservedStartTime = 0, 0
 		return nil
