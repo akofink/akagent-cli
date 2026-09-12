@@ -117,6 +117,7 @@ type TaskArchive struct {
 	TaskID     string        `json:"task_id"`
 	CapturedAt time.Time     `json:"captured_at"`
 	Manifest   Manifest      `json:"manifest"`
+	Checkpoint *Checkpoint   `json:"checkpoint,omitempty"`
 	Events     []EventRecord `json:"events"`
 	Resources  []Resource    `json:"resources,omitempty"`
 	Executions []Execution   `json:"executions,omitempty"`

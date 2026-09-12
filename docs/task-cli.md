@@ -66,6 +66,7 @@ repository:
 ```text
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--require <credential>] [--optional <credential>]
 akagent task deploy <task-id> --command <executable> [--arg <argument>] [--resource <resource-id>] [--require <credential>] [--label <label>]
+akagent task checkpoint <write|inspect> <task-id> ...
 akagent task resource <create|list|inspect|update|archive|clean> ...
 akagent task execution <create|launch|list|inspect|session|evidence|publish|attach|stop|archive|reconcile> ...
 akagent task launch <task-id> --target <shell|pi> [--resource <resource-id>] [--label <descriptive-label>] [--provider <provider>] [--model <model>] [--thinking <level>] [--prompt <path>] [--context <value>]
@@ -107,6 +108,8 @@ Human output is intended for people and is not a stable parsing interface.
 
 Task creation persists task intent and can create zero resources.
 The compatibility `--repository` form creates one initial resource without creating a tmux window or starting a process.
+Use `task checkpoint write` to acknowledge a bounded, provider-neutral recovery handoff with an expected revision and idempotency key.
+See [recovery checkpoints](recovery-checkpoints.md) for the complete checkpoint flags, inspection behavior, and reboot-equivalent drill.
 Use `akagent task resource create <task-id> --repository <name> [--resource-id <id>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--metadata <key=value>] [--external-url <https-url>]` to add each resource.
 Use `akagent task resource update <task-id> <resource-id> [--metadata <key=value>] [--external-url <https-url>]` to record mutable delivery metadata without changing Git ownership inputs.
 The `worktree` policy requires an explicit descriptive `--branch` value, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`, and creates an isolated worktree under the registered repository's worktree root.

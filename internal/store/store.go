@@ -28,6 +28,9 @@ type Store struct {
 	// unlockFn, when set, replaces the flock unlock during release so tests
 	// can exercise release failures. It is nil in normal operation.
 	unlockFn func() error
+	// checkpointEventFn, when set, replaces checkpoint event persistence in
+	// tests so the acknowledged-record/unfinished-event boundary is covered.
+	checkpointEventFn func(string, Event) error
 }
 
 // lockWait and lockRetryAfter bound how long Lock waits for a contended
@@ -200,19 +203,11 @@ func (s *Store) AppendEvent(taskID string, event Event) (int, error) {
 		if err := s.ensureTaskDir(taskID); err != nil {
 			return err
 		}
-		envelope, err := eventEnvelope(taskID, event)
-		if err != nil {
-			return internalError("encode a task event", "Retry the operation")
-		}
-		encoded, err := encodeRecord(envelope)
-		if err != nil {
-			return err
-		}
 		next, err := s.nextSequence(taskID)
 		if err != nil {
 			return err
 		}
-		if err := s.atomicallyWrite(s.eventPath(taskID, next), encoded); err != nil {
+		if err := s.appendEventLocked(taskID, next, event); err != nil {
 			return err
 		}
 		sequence = next
@@ -462,6 +457,9 @@ func (s *Store) recoverTaskLocked(taskID string, result *RecoveryResult) error {
 	}
 
 	if err := s.validateManifestForRecovery(taskID, result); err != nil {
+		return err
+	}
+	if err := s.validateCheckpointForRecovery(taskID, result); err != nil {
 		return err
 	}
 	if err := s.validateEventsForRecovery(taskID, result); err != nil {
@@ -1181,4 +1179,8 @@ func (s *Store) repositoryPath(name string) string {
 
 func (s *Store) eventPath(taskID string, sequence int) string {
 	return filepath.Join(s.eventsDir(taskID), fmt.Sprintf("%0*d.json", eventSequenceWidth, sequence))
+}
+
+func (s *Store) checkpointPath(taskID string) string {
+	return filepath.Join(s.taskDir(taskID), "checkpoint.json")
 }
