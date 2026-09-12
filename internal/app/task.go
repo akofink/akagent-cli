@@ -619,7 +619,7 @@ func taskMatchesKeyword(manifest store.Manifest, resources []store.Resource, key
 
 func taskExecutionCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
 	}
 	if args[0] == "launch" || args[0] == "attach" || args[0] == "stop" {
 		return removedCommandError(stdout, "task execution "+args[0], "Use the normal execution record commands; external tools own process and terminal side effects")
@@ -630,6 +630,32 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	switch args[0] {
+	case "observe":
+		if len(args) < 4 {
+			return writeError(stdout, "usage", "Usage: akagent task execution observe <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --source <source> --observed-at <RFC3339> --host-id <id> --boot-id <id> [--process-state <state>] [--result <result>] [--detail <text>]", false, "Record provenance and caller-submitted observations")
+		}
+		callerID, operationID, expectedRevision, observation, ok := parseExternalObservation(args[3:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task execution observe <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --source <source> --observed-at <RFC3339> --host-id <id> --boot-id <id> [--process-state <state>] [--result <result>] [--detail <text>]", false, "Provide complete observation provenance and the current execution revision")
+		}
+		execution, err := manager.RecordObservation(args[1], args[2], callerID, operationID, expectedRevision, observation)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, executionDetail(execution, manager))
+	case "finish", "complete":
+		if len(args) < 4 {
+			return writeError(stdout, "usage", "Usage: akagent task execution finish <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>", false, "Declare completion explicitly against a named external contract")
+		}
+		callerID, operationID, contract, resultValue, expectedRevision, ok := parseExternalCompletion(args[3:])
+		if !ok {
+			return writeError(stdout, "usage", "Usage: akagent task execution finish <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>", false, "Provide the original caller, operation, contract, result, and current execution revision")
+		}
+		execution, err := manager.CompleteExternalExecution(args[1], args[2], callerID, operationID, contract, resultValue, expectedRevision)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, executionDetail(execution, manager))
 	case "create":
 		if len(args) < 2 {
 			return writeError(stdout, "usage", "Usage: akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--require <credential>] [--resource <resource-id>] [--worktree <path>]", false, "Create an execution without starting it")
@@ -748,13 +774,108 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, executionListView{Executions: items, Total: len(items)})
 	default:
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
 	}
 }
 
 type lifecycleExecutionResult struct {
 	Execution store.Execution
 	Err       error
+}
+
+func parseExternalCompletion(args []string) (callerID, operationID, contract, resultValue string, expectedRevision uint64, ok bool) {
+	seen := map[string]bool{}
+	ok = true
+	for len(args) > 0 {
+		if len(args) < 2 {
+			return "", "", "", "", 0, false
+		}
+		flag, value := args[0], args[1]
+		args = args[2:]
+		if seen[flag] {
+			return "", "", "", "", 0, false
+		}
+		seen[flag] = true
+		switch flag {
+		case "--caller-id":
+			callerID = value
+		case "--operation-id":
+			operationID = value
+		case "--contract":
+			contract = value
+		case "--result":
+			resultValue = value
+		case "--expected-revision":
+			expectedRevision, ok = parseRevision(value)
+			if !ok {
+				return "", "", "", "", 0, false
+			}
+		default:
+			return "", "", "", "", 0, false
+		}
+	}
+	return callerID, operationID, contract, resultValue, expectedRevision, ok && callerID != "" && operationID != "" && contract != "" && resultValue != "" && expectedRevision > 0
+}
+
+func parseExternalObservation(args []string) (string, string, uint64, store.ExternalObservation, bool) {
+	var callerID, operationID string
+	var expectedRevision uint64
+	observation := store.ExternalObservation{}
+	seen := map[string]bool{}
+	for len(args) > 0 {
+		if len(args) < 2 {
+			return "", "", 0, observation, false
+		}
+		flag, value := args[0], args[1]
+		args = args[2:]
+		if seen[flag] {
+			return "", "", 0, observation, false
+		}
+		seen[flag] = true
+		switch flag {
+		case "--caller-id":
+			callerID = value
+		case "--operation-id":
+			operationID = value
+		case "--expected-revision":
+			var ok bool
+			expectedRevision, ok = parseRevision(value)
+			if !ok {
+				return "", "", 0, observation, false
+			}
+		case "--source":
+			observation.Source = value
+		case "--observed-at":
+			var ok bool
+			observation.ObservedAt, ok = parseObservedAt(value)
+			if !ok {
+				return "", "", 0, observation, false
+			}
+		case "--host-id":
+			observation.HostID = value
+		case "--boot-id":
+			observation.BootID = value
+		case "--process-state":
+			observation.ProcessState = value
+		case "--result":
+			observation.Result = value
+		case "--detail":
+			observation.Detail = value
+		default:
+			return "", "", 0, observation, false
+		}
+	}
+	return callerID, operationID, expectedRevision, observation, callerID != "" && operationID != "" && expectedRevision > 0 && observation.Source != "" && !observation.ObservedAt.IsZero() && observation.HostID != "" && observation.BootID != ""
+}
+
+func parseRevision(value string) (uint64, bool) {
+	revision, err := strconv.ParseUint(value, 10, 64)
+	return revision, err == nil
+}
+
+func parseObservedAt(value string) (time.Time, bool) {
+	observedAt, err := time.Parse(time.RFC3339Nano, value)
+	return observedAt.UTC(), err == nil
 }
 
 func parseSessionReference(args []string) (store.SessionReference, bool) {

@@ -217,7 +217,14 @@ func (m *Manager) FinishRecord(id, outcome, result string) (store.Manifest, erro
 	if outcome != "succeeded" && outcome != "failed" {
 		return store.Manifest{}, fmt.Errorf("finish outcome must be succeeded or failed")
 	}
+	changed := false
 	manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
+		if manifest.Lifecycle == "finished" || manifest.ExternalCompletion != nil || manifest.ArchiveState == "complete" {
+			if manifest.Result == result && (manifest.Condition == outcome || manifest.Condition == "none") {
+				return nil
+			}
+			return terminalFinishConflict(id)
+		}
 		manifest.Lifecycle, manifest.Condition, manifest.Result = "finished", outcomeToCondition(outcome), result
 		manifest.Disposition = string(DispositionTerminal)
 		manifest.Observation, manifest.ObservationAt = ObservationMissing, m.now()
@@ -227,10 +234,14 @@ func (m *Manager) FinishRecord(id, outcome, result string) (store.Manifest, erro
 		}
 		manifest.DispositionRevision++
 		manifest.HeartbeatAt = m.now()
+		changed = true
 		return nil
 	})
 	if err != nil {
 		return store.Manifest{}, err
+	}
+	if !changed {
+		return manifest, nil
 	}
 	if _, err := m.Store.AppendEvent(id, store.Event{Operation: "finish", Outcome: outcome}); err != nil {
 		return store.Manifest{}, err

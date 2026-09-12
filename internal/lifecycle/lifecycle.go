@@ -421,3 +421,7 @@ func outcomeToCondition(outcome string) string {
 func externalRecordOperationError(kind, id string) error {
 	return &store.Error{Kind: store.KindConflict, Message: fmt.Sprintf("%s %s is externally managed", kind, id), Recovery: "Use the retained task, resource, or execution record commands for externally managed records"}
 }
+
+func terminalFinishConflict(id string) error {
+	return &store.Error{Kind: store.KindConflict, Message: fmt.Sprintf("task %s is terminal and immutable", id), Recovery: "Retry the original outcome and result, or use the revision-checked external completion contract"}
+}

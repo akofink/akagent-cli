@@ -50,6 +50,26 @@ References are metadata only.
 The core never opens, parses, or interprets provider-owned content.
 Observations remain historical evidence and never prove present liveness, success, or ownership.
 
+Record an external execution observation with its provenance and current revision:
+
+```text
+akagent task execution observe <task-id> <execution-id> \
+  --caller-id <id> --operation-id <id> --expected-revision <revision> \
+  --source <source> --observed-at <RFC3339> --host-id <id> --boot-id <id> \
+  [--process-state <state>] [--result <result>] [--detail <text>]
+```
+
+Finish an external execution only with its owning caller, current revision, operation ID, and named completion contract:
+
+```text
+akagent task execution finish <task-id> <execution-id> \
+  --caller-id <id> --operation-id <id> --expected-revision <revision> \
+  --contract <name> --result <result>
+```
+
+Equivalent retries are successful no-ops.
+Stale revisions, changed operation inputs, wrong callers, and terminal mutations return conflicts.
+
 ## Completion and archive
 
 Completion is explicit and is checked against the caller's contract outside the core:

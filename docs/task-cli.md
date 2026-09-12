@@ -25,7 +25,7 @@ akagent task finish <task-id> <succeeded|failed> <result>
 akagent task archive <task-id>
 akagent task reconcile [<task-id>]
 akagent task resource <create|list|inspect|update|archive> ...
-akagent task execution <create|list|inspect|session|evidence|publish|archive|reconcile> ...
+akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile> ...
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -73,6 +73,8 @@ A resource archive contains the durable resource and event history without termi
 
 ```text
 akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--resource <resource-id>] [--worktree <path>]
+akagent task execution observe <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --source <source> --observed-at <RFC3339> --host-id <id> --boot-id <id> [--process-state <state>] [--result <result>] [--detail <text>]
+akagent task execution finish <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>
 akagent task execution list <task-id>
 akagent task execution inspect <task-id> [<execution-id>]
 akagent task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]
@@ -85,6 +87,12 @@ akagent task execution reconcile <task-id>
 Execution creation records an optional tool-neutral attempt without starting a process.
 The command and target are durable metadata, not instructions to execute a program.
 An execution can select one resource while coordinating other resources through the task ID.
+External callers can append typed provenance with `task execution observe`.
+Observation writes require `--caller-id`, `--operation-id`, and the current `--expected-revision`, plus source, timestamp, host, and boot provenance.
+Observations remain historical and do not change execution lifecycle state.
+External callers can finish an attempt with `task execution finish` by naming the completion contract and supplying the current revision.
+Equivalent operation retries return the existing record without changing its revision.
+A reused operation ID with different inputs, a stale revision, a different caller, or a terminal mutation returns a structured conflict.
 Execution archive contains the durable execution and event history without terminal capture or process inspection.
 
 A provider or external tool may record non-secret session provenance.
@@ -104,6 +112,7 @@ akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reaso
 Publication updates durable conditions and heartbeats only.
 It does not synchronize process, tmux, Git, credential, or provider state.
 Finish records explicit task completion and marks the task terminal without inferring success from a missing process.
+A repeated equivalent legacy finish is a successful no-op, but a different terminal result cannot overwrite the existing record without the revision-checked external completion contract.
 The record preserves unknown, stale, missing, and contradictory observations.
 A missing process never triggers completion or implicit reactivation.
 
