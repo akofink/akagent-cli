@@ -2,19 +2,19 @@
 
 `akagent` is a local-first durable registry protocol and CLI for coding agents.
 An agent invokes the CLI directly during ordinary coding work to create task state, update durable status, and record observations, recovery, and delivery facts.
-Git worktrees and tmux remain current local interaction surfaces, while the CLI provides durable state.
+Git worktrees and tmux are external interaction surfaces, while the CLI provides durable state.
 
-Use the [quick start](quick-start.md) for installation and the self-service task lifecycle.
+Use the [quick start](quick-start.md) for installation and the record-only task lifecycle.
 Use the [agent integration guide](agent-integration.md) for progressive disclosure, a generic `AGENTS.md` template, and a reusable lifecycle skill.
-This page is the project charter index and distinguishes shipped compatibility behavior from the accepted record-only target.
+This page indexes the shipped record-only boundary and migration guidance.
 
 The installed binary is `akagent`.
 `aka` is an optional interactive shell alias and is not a second protocol entry point.
 
 ## Public starting point
 
-- [`quick-start.md`](quick-start.md) provides the agent-safe installation, repository, task, resource, execution, status, delivery, reconciliation, archive, cleanup, and recovery path.
-- [`agent-integration.md`](agent-integration.md) progressively introduces the generic `AGENTS.md` template and lifecycle skill.
+- [`quick-start.md`](quick-start.md) provides the agent-safe installation, repository, task, resource, execution, status, delivery, reconciliation, archive, and recovery path.
+- [`agent-integration.md`](agent-integration.md) progressively introduces the generic `AGENTS.md` template and record-only lifecycle skill.
 - [`AGENTS.md`](AGENTS.md) provides concise repository guidance for adopting or self-bootstrapping an `akagent` task.
 - [`skills/akagent-lifecycle/SKILL.md`](skills/akagent-lifecycle/SKILL.md) provides reusable lifecycle instructions for coding agents.
 
@@ -87,30 +87,28 @@ The generated `_site/` directory is disposable and should not be committed.
 
 ## Design constraints
 
-- Preserve ordinary shell, tmux, and Git recovery paths.
-- Preserve repository-specific branch and worktree policies.
-- Make repeated mutations idempotent.
-- Keep tasks operable when integrations, operator processes, or network connections fail.
-- Do not infer completion from terminal output alone.
-- Do not trust a declared condition without checking process, tmux, filesystem, and Git facts where required.
-- Avoid fields and ambient context that do not change the next agent decision.
-- Expose worker capability and persistence differences instead of claiming false backend transparency.
-- Keep optional integrations replaceable and never require a launch adapter or daemon for the normal local workflow.
-- Never expose credential values in commands, output, logs, task records, or tmux metadata.
+- Keep the CLI useful offline and when external tools are unavailable.
+- Make repeated record mutations idempotent.
+- Preserve legacy manifests, archives, events, IDs, and storage schema version `1`.
+- Preserve unknown, stale, unavailable, and contradictory observations.
+- Never infer completion from process absence, terminal output, archive state, or age.
+- Keep provider-neutral references and delivery metadata separate from provider content.
+- Never expose credential values in commands, output, logs, task records, or diagnostics.
+- Keep side effects outside the core and do not require a daemon or feature-parity adapter.
 
 ## Current local boundary
 
-The current CLI registers local Git repositories, records state-only task intent, creates independently recoverable resources and isolated worktrees under the `worktree` policy, and keeps resource creation separate from execution.
-This is the shipped transitional implementation; the target core records Git facts and accepts observations from direct tools, skills, or optional adapters without owning Git mutation.
+The CLI records repository, task, resource, execution, observation, checkpoint, disposition, archive, recovery, and delivery facts.
+Repository registration and resource creation record caller-declared paths and Git facts without checking or mutating a checkout.
+Execution creation records a tool-neutral attempt without starting a process.
 
-A task can use an explicit detached shell execution for direct work or the optional Pi integration selected with `--target pi`.
-Both paths use the generic execution primitives, while task and resource creation remain independent of Pi availability.
-One execution can coordinate multiple task resources by selecting a resource worktree.
-No launch adapter or daemon is required to use these primitives today, and none is a prerequisite for the target core.
+The core does not launch or stop processes, inspect tmux or PIDs, run Git, create or remove worktrees, resolve credentials, parse provider sessions, capture terminal output, or call a forge.
+External tools and skills own those side effects when a workflow still needs them.
+Provider session references and evidence views are metadata-only.
 
-It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
-Worktree cleanup requires explicit approval and validates durable ownership before removal.
-Credential cleanup is an independent approval-gated hook with durable retry state.
+The default inventory is the in-flight view, with explicit attention, maintenance, deferred, and history views.
+Removed orchestration and credential commands return structured usage errors before store access.
+Worker protocol version `2` reports declarative capabilities, while storage schema version `1` remains readable.
 
 ## Rejected prerequisites and target boundary
 

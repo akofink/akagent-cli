@@ -25,7 +25,7 @@ func TestTokenMeasurement(t *testing.T) {
 	samples := map[string]any{
 		"home view": map[string]any{
 			"bin":         "~/bin/akagent",
-			"description": "Orchestrate local coding agents through tmux and Git worktrees",
+			"description": "Record durable coding-agent work without orchestration",
 			"tasks":       []string{},
 			"help": []string{
 				"Run `akagent id generate` to create a task ID",
@@ -36,10 +36,10 @@ func TestTokenMeasurement(t *testing.T) {
 		"worker inspect": map[string]any{
 			"worker": map[string]any{
 				"id":               "local",
-				"protocol_version": 1,
+				"protocol_version": 2,
 				"architecture":     "arm64",
 				"operating_system": "linux",
-				"features":         []string{"tmux", "git-worktree"},
+				"features":         []string{"registry", "checkpoint", "observation"},
 			},
 		},
 		"structured error": map[string]any{

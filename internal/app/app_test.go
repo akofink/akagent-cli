@@ -2,7 +2,6 @@ package app
 
 import (
 	"bytes"
-	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -28,24 +27,17 @@ func TestWorkerInspect(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"worker:", "id: local", "protocol_version: 1", "operating_system:"} {
+	for _, expected := range []string{"worker:", "id: local", "protocol_version: 2", "features[3]: registry,checkpoint,observation", "operating_system:"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
 	}
 }
 
-func TestInspectWorkerDetectsAvailableFeatures(t *testing.T) {
-	lookPath := func(name string) (string, error) {
-		if name == "git" {
-			return "/usr/bin/git", nil
-		}
-		return "", errors.New("not found")
-	}
-
-	worker := inspectWorker(lookPath)
-	if len(worker.Features) != 1 || worker.Features[0] != "git-worktree" {
-		t.Fatalf("inspectWorker() features = %v, want [git-worktree]", worker.Features)
+func TestInspectWorkerReportsDeclarativeRecordCapabilities(t *testing.T) {
+	worker := inspectWorker()
+	if len(worker.Features) != 3 || worker.Features[0] != "registry" || worker.Features[1] != "checkpoint" || worker.Features[2] != "observation" {
+		t.Fatalf("inspectWorker() features = %v, want declarative record capabilities", worker.Features)
 	}
 }
 
@@ -70,7 +62,7 @@ func TestHelp(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"usage: akagent <command>", "repository register <name> <path>", "task <create|checkpoint|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", "task disposition <task-id> <in-flight|deferred|terminal>", "task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>]"} {
+	for _, expected := range []string{"usage: akagent <command>", "repository register <name> <path>", "task <create|checkpoint|resource|execution|list|inspect|publish|finish|archive|reconcile>", "task disposition <task-id> <in-flight|deferred|terminal>", "task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>]"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
@@ -84,7 +76,7 @@ func TestHomeHelpPromotesSelfService(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"Manage local coding-agent tasks", "self-service task lifecycle management", "optional integration compatibility"} {
+	for _, expected := range []string{"Manage local coding-agent tasks", "self-service task lifecycle management", "optional automation signal"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}

@@ -8,7 +8,7 @@ description: Implements and reviews akagent-cli GitHub issues. Use when changing
 ## Orient
 
 1. Read the assigned GitHub issue, `AGENTS.md`, and `docs/handoff.md`.
-2. Read only the relevant design document: `docs/protocol.md`, `docs/credentials.md`, `docs/architecture.md`, or `docs/implementation-plan.md`.
+2. Read the relevant current design documents, especially `docs/protocol.md`, `docs/credentials.md`, `docs/architecture.md`, and `docs/implementation-plan.md` when changing the record-only boundary.
 3. Confirm the issue's owned files and out-of-scope boundaries before editing.
 
 ## Preserve the protocol
@@ -19,9 +19,9 @@ description: Implements and reviews akagent-cli GitHub issues. Use when changing
 - Keep diagnostics on stderr and opt-in.
 - Make mutations idempotent and recoverable.
 - Treat tmux as an interaction surface, not durable state.
-- Use generic execution records for process launches; optional provider integrations must remain outside task and resource lifecycle behavior.
-- Keep direct human shell execution explicitly available without requiring an external provider.
-- Never expose secret values or inherit unrelated credentials into managed processes.
+- Use generic execution records for caller-declared external work; the core never launches, attaches, stops, or manages a process.
+- Keep provider, Git, worktree, credential, cleanup, and forge side effects outside the durable lifecycle.
+- Never expose secret values in records, output, diagnostics, references, or process arguments.
 
 ## Verify
 

@@ -1,13 +1,9 @@
 # Quick start
 
 This guide uses only public commands and generic local paths.
-
-`akagent` is a local-first orchestration protocol and CLI for coding agents.
-Agents use it directly for durable task records, Git worktrees, status, recovery, and delivery metadata.
-Tmux-backed interaction is optional visibility and recovery, not the durable source of truth.
-It writes protocol data and errors as TOON on stdout.
-
-For a reusable integration, start with the [progressive agent integration guide](agent-integration.md), its [generic `AGENTS.md` template](AGENTS.md), and its [lifecycle skill](skills/akagent-lifecycle/SKILL.md).
+`akagent` is a local-first durable registry CLI for task, resource, execution, observation, checkpoint, and recovery records.
+The core does not launch processes, inspect tmux, run Git, mutate worktrees, resolve credentials, parse provider sessions, or capture terminal output.
+External tools and skills own those side effects when they remain needed.
 
 ## Install or update
 
@@ -19,275 +15,109 @@ cd /path/to/akagent-cli
 go build -o "$HOME/.local/bin/akagent" ./cmd/akagent
 ```
 
-The user-local binary directory must be on `PATH`.
-
 Update from a clean checkout on `main` with an explicit source path:
 
 ```bash
 akagent update --source /path/to/akagent-cli
 ```
 
-The updater fetches `origin`, fast-forwards the source checkout to `origin/main`, builds in a temporary detached worktree, and atomically replaces the installed binary.
-It does not discard source changes.
+The update command is an explicit installation operation outside task lifecycle.
+It may use Git and replace the installed binary atomically.
+Do not use it as a task or recovery command.
 
-## Use akagent during ordinary coding work
+## Create durable records
 
-The coding agent owns its own task, resource, and execution lifecycle.
-It calls `akagent` directly from the worktree instead of depending on a parent orchestrator, launch adapter, or daemon.
-
-After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
-The CLI remains usable when tmux, a provider session, or a network connection is unavailable.
-
-Tmux is useful for interactive visibility and human attachment.
-The CLI records the durable task identity, branch and worktree facts, status, session provenance, delivery metadata, observations, and recovery state.
-
-## Register a repository
-
-Register the root of an existing Git checkout before starting a task:
+Repository registration records identity without checking or changing the checkout:
 
 ```bash
-akagent repository register demo /path/to/checkout
-akagent repository list
+akagent repository register demo /path/to/checkout --policy direct
 akagent repository inspect demo
 ```
 
-Registration defaults to the `worktree` policy.
-Use `--policy direct` only when the task is intentionally allowed to use the registered checkout itself.
-
-Repository registration records the path and policy but never deletes the checkout or its Git metadata.
-The supported repository mutations are:
-
-```text
-akagent repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]
-akagent repository unregister <name>
-```
-
-Use `--worktree-root /home/user/dev/worktrees/demo` with the `worktree` policy to keep task worktrees separate from primary clones.
-The configured root must be absolute, and every managed worktree must remain beneath it.
-Without this option, the root remains `<checkout-parent>/.akagent/worktrees/<name>`.
-
-An update that would invalidate a task reference is rejected.
-Unregister removes only the registration and is rejected while tasks still reference it.
-
-## Create, launch, and inspect a task
-
-Create a task with a title and registered repository:
+Create a task and record a resource without Git or filesystem access:
 
 ```bash
-akagent task create --title "Review the build" --repository demo \
-  --branch akofink/review-build
-akagent task launch <task-id> --target shell
-akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
-akagent task inspect <task-id|keyword> [--format <toon|human>]
+akagent task create --title "Review the build" --task-id review-build
+akagent task resource create review-build \
+  --resource-id app-resource --repository demo \
+  --branch akofink/review-build --base base-revision --head head-revision \
+  --worktree /path/to/worktree
 ```
 
-The command generates a UUIDv7 task ID when `--task-id` is omitted.
-It creates a durable manifest, a task branch, and an isolated Git worktree under the registered repository's configured worktree root when the policy is `worktree`.
-Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
-When `--worktree` is omitted, its directory name is the branch label after the owner prefix beneath the registered root, so `akofink/80-worktree-labels` uses `<worktree-root>/80-worktree-labels`.
-Direct-policy tasks deliberately use the registered checkout's current branch when `--branch` is omitted.
-The `--branch`, `--base`, and `--worktree` options provide explicit immutable Git inputs.
-The default task list shows actionable records only, while `--all` includes archived history.
-Use `--format human` on either task view for deterministic labeled terminal output; TOON remains the default for agents and scripts.
-Actionable records include non-archived tasks and archived tasks with incomplete task or resource cleanup, cleanup debt, or recovery debt.
-Use `--all` to include fully archived history, and use `--repository` and `--worktree` to compose deterministic exact-match filters.
-Pass a case-sensitive keyword to `task list` to match task titles and task or resource branches only.
-Pass an exact task ID or a keyword to `task inspect`; keyword lookup requires exactly one matching title or branch.
-Task creation does not create a tmux resource or start a process.
-The explicit shell launch command creates a generic execution in a task-tagged tmux window when the agent or operator wants an interactive surface.
-Its display name is derived from the selected resource or task branch without the owner prefix, or supplied with `--label <descriptive-label>` when no branch is available.
-The task and execution IDs remain in window metadata for lifecycle verification.
-Managed execution windows publish `@agent_state` by matching those metadata IDs.
-Active execution clears the option, waiting and blocked publish their values, and completed execution publishes `done`.
-The window is a visibility and recovery aid; `akagent task inspect` remains the durable work-state view.
+The repository, branch, revision, and worktree values are durable declarations.
+External tools validate and mutate actual checkouts.
 
-Use `--target shell` for direct human or shell-driven work.
-Use `task execution create` and `task execution launch` when the caller needs explicit generic execution identity.
-A task can create multiple resources and coordinate them through one execution by selecting one resource as its working directory.
-For example, keep the primary worktree under a configured root while attaching a direct checkout for related notes:
+Create a tool-neutral execution without starting it:
 
 ```bash
-akagent repository register app /path/to/app --worktree-root /home/user/dev/worktrees/app
-akagent repository register notes /path/to/notes --policy direct
-akagent task create --title "Coordinate the release docs"
-akagent task resource create <task-id> --repository app --resource-id app-resource \
-  --branch akofink/release-docs
-akagent task resource create <task-id> --repository notes --resource-id notes-resource
-akagent task execution create <task-id> --execution-id coordinator \
-  --target shell --command /bin/sh --resource app-resource
-akagent task execution launch <task-id> coordinator
+akagent task execution create review-build \
+  --execution-id review-attempt --target external --command /path/to/tool \
+  --resource app-resource
 ```
 
-The execution can record provider-neutral session provenance and delivery metadata without importing provider state:
+The command and target are metadata only.
+No process, provider, credential, Git, or tmux operation is implied.
+
+## Inspect and publish
 
 ```bash
-akagent task execution session add <task-id> coordinator \
-  --tool example-tool --session-id <session-id> --reference-path /path/to/session-record
-akagent task resource update <task-id> app-resource \
-  --metadata delivery=published --external-url https://forge.example/pull/78
-akagent task inspect <task-id>
-akagent task execution inspect <task-id> coordinator
+akagent task list
+akagent task inspect review-build
+akagent task publish review-build --condition active --activity "running tests"
+akagent task execution publish review-build review-attempt \
+  --condition waiting --reason "external review" --activity "awaiting result"
+akagent task reconcile review-build
 ```
 
-Task, resource, and execution archives preserve these references.
+Inspection and reconciliation remain usable offline.
+They preserve unavailable, stale, missing, and contradictory observations rather than inferring completion.
 
-Use `--target pi` only to select the optional Pi integration.
-This integration is not required for the self-service local workflow.
-Agents that use another provider record its non-secret session reference through the generic execution commands rather than adding provider state to the core protocol.
-Pi must be installed and available as `pi` on `PATH` when that integration is selected.
+The default `task list` view is `in-flight`.
+Use `--view attention`, `--view maintenance`, `--view deferred`, `--view history`, or `--all` for other deterministic views.
+Use `--format human` only for direct terminal presentation.
 
-A minimal managed-launch example uses only placeholder task data and a local prompt-file reference:
+## Record external observations and sessions
 
-```bash
-akagent task create --title "Review the build" --repository demo \
-  --branch akofink/review-build
-akagent task launch <task-id> --target pi --provider openai-codex --model gpt-5.6-luna --thinking high \
-  --prompt /path/to/prompt.txt --context "example"
-```
-
-The prompt file must be a regular local file.
-Managed Pi launches default to `--provider openai-codex --model gpt-5.6-luna --thinking high`.
-Pass `--provider`, `--model`, or `--thinking` to request a validated non-secret override.
-Only the validated launch policy and prompt-file reference are passed to Pi, and standard input remains attached to the tmux terminal.
-This keeps Pi interactive while prompt contents stay out of process arguments, tmux commands, task events, and TOON output.
-The optional integration creates a generic execution with the selected resource worktree and non-secret context before tmux starts.
-The owned pane shows a non-secret startup line before Pi initializes.
-Pi's interactive status and tool views remain visible while the managed task works.
-A failed launch leaves the generic execution recoverable and does not change resource state.
-The managed process receives a minimal safe environment plus the non-secret `AKAGENT_TASK_ID` and `AKAGENT_EXECUTION_ID` context, along with requested environment credentials that passed readiness checks.
-An execution can use that context with `akagent task resource create`, `task resource list`, and `task resource update` without parent-orchestrator intervention.
-Resource metadata and external URLs are provider-neutral delivery records.
-Agents use provider tooling such as `gh` or Bitbucket tooling for pull request operations, then optionally record the resulting URL with `akagent`.
-Optional credentials produce non-secret warnings and are not injected.
-File credentials can be checked for readiness but cannot be injected into the managed environment.
-The core CLI does not provide GitHub, Bitbucket, or Pi delivery commands, and no launch adapter or daemon is needed.
-
-Task status is computed from lifecycle records and observations.
-Lifecycle values are `created`, `starting`, `running`, `stopped`, and `finished`.
-Computed statuses include `active`, `waiting`, `blocked`, `failed`, `stopped`, `finished`, and `unknown`.
-
-Use TOON output as the protocol boundary rather than parsing human-oriented text.
-The default task views remain TOON even though `--format human` is available for direct terminal reading:
+External tools submit observations and session references without provider content:
 
 ```bash
-akagent task inspect <task-id|keyword>
-akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>]
-```
-
-## Publish, attach, and reconcile
-
-Self-service agents should publish durable state as part of normal work:
-
-```bash
-akagent task publish <task-id> --condition active --activity "running tests"
-akagent task publish <task-id> --condition waiting --reason "needs review"
-akagent task execution session add <task-id> <execution-id> \
-  --tool example-tool --session-id <session-id> \
+akagent task execution session add review-build review-attempt \
+  --tool example-tool --session-id session-123 \
   --reference-path /path/to/session-record
-akagent task resource update <task-id> <resource-id> \
-  --metadata pull-request=opened \
+akagent task resource update review-build app-resource \
+  --metadata delivery=published \
   --external-url https://forge.example/pull/78
 ```
 
-The CLI stores these facts independently of the terminal or provider session.
+The core validates non-secret reference shape and local path metadata only.
+It never opens or parses provider session files.
 
-Publish a condition and heartbeat from a trusted local integration, managed workflow, or shell:
-
-```bash
-akagent task publish <task-id> --condition active --activity "running tests"
-akagent task publish <task-id> --condition waiting --reason "needs review"
-```
-
-The accepted conditions are `active`, `waiting`, `blocked`, `failed`, and `none`.
-Publication changes durable task state and refreshes its heartbeat.
-For managed executions, active, failed, and none clear `@agent_state`.
-Reconciliation clears stale waiting or blocked state when process observations are no longer fresh.
-
-Attach a compatibility task execution or a selected generic execution only after inspecting it:
+## Checkpoints and completion
 
 ```bash
-akagent task attach <task-id>
-akagent task execution attach <task-id> <execution-id>
+akagent task checkpoint write review-build \
+  --idempotency-key checkpoint-1 --expected-revision 1 \
+  --task-kind implementation --completion-contract "verified delivery" \
+  --next-action "inspect the pull request and required checks"
+akagent task checkpoint inspect review-build
+akagent task finish review-build succeeded "verified delivery"
+akagent task archive review-build
 ```
 
-Attachment requires a running task or execution, a fresh heartbeat, a fresh process observation, exactly one matching process, and matching task and execution tmux metadata where applicable.
-For the optional Pi integration, the integration worker replaces itself with Pi so process identity checks refer to the Pi process.
-It verifies the selected window immediately before calling `tmux attach-session`.
-It refuses stale, missing, contradictory, stopped, and finished observations.
-It never creates, kills, renames, or retargets tmux resources.
+Completion is an explicit declaration against the caller's contract.
+A missing process, checkout, provider session, or credential never proves success.
+Archives contain durable records, event history, checkpoints, and caller-submitted facts without terminal capture or host inspection.
 
-Reconcile after a disconnect, a terminal change, or an unexpected process exit:
+Legacy unfinished and stopped tasks require explicit store-only migration or adoption.
+The migration preserves task and resource IDs and historical Git and session facts.
+It does not create duplicate tasks or worktrees and does not implicitly reactivate work.
+Storage schema version `1`, legacy manifests, archives, events, credential metadata, and recovery debt remain readable.
 
-```bash
-akagent task reconcile
-akagent task execution reconcile <task-id>
-akagent task inspect <task-id>
-```
+## Removed command families
 
-Reconciliation repairs safe derived observations and Git facts.
-It does not delete task state, branches, worktrees, windows, or terminal history.
+Launch, attach, stop, deployment, cleanup, credential, provider orchestration, and the transitional `task record` family are removed.
+Recognized public and hidden forms return structured usage errors with exit code `2` before opening or mutating the state store.
+The error names only the command family and gives safe migration guidance.
 
-## Stop, finish, archive, and clean
-
-Stop a running task when the work should remain available for recovery:
-
-```bash
-akagent task stop <task-id>
-```
-
-Stopping ends the tagged task or execution tmux window and preserves the durable task, execution, and Git resource records.
-Execution stop is independent from resource state.
-It does not mark the task as successfully finished.
-
-Finish only after the task process has exited:
-
-```bash
-akagent task finish <task-id> succeeded "Build completed"
-akagent task finish <task-id> failed "Tests still fail"
-```
-
-Archive a stopped or finished task:
-
-```bash
-akagent task archive <task-id>
-```
-
-Archive captures the manifest, event history, non-secret Git facts, and terminal history when it is still available.
-Unavailable terminal history is reported as a warning.
-Archive is idempotent and must complete before cleanup.
-
-Clean only after reviewing the archived Git facts:
-
-```bash
-akagent task clean <task-id>
-akagent task clean <task-id> --allow-committed --allow-dirty --allow-untracked --allow-worktree --allow-credentials
-```
-
-Cleanup refuses to act while the verified task process is live and refuses to discard committed, dirty, or untracked work unless each category is explicitly authorized.
-For isolated worktree tasks, `--allow-worktree` is a separate approval that enables the ownership-checked worktree cleanup hook.
-The hook removes only the task worktree, preserves the branch and archived Git facts, and never removes a direct registered checkout.
-Without that approval, the worktree remains available for direct human recovery and cleanup state records the debt.
-Credential cleanup requires the separate `--allow-credentials` approval and can be retried without touching the worktree:
-
-```bash
-akagent credential clean <task-id> --allow-credentials
-```
-
-## Recovery rules
-
-Start with `task inspect` and `task reconcile` when observations are unclear or a possibly mutating command fails.
-Use the agent skill for automated lifecycle behavior and manual fallback only after those checks.
-
-If an execution launch fails, inspect and reconcile its state before retrying the same explicit command.
-Equivalent repeated creates and launches are idempotent; changing immutable task or launch inputs returns a conflict.
-
-Do not attach when the heartbeat or process observation is stale.
-
-Stop the task before archiving or cleaning it.
-
-Review `committed`, `dirty`, `untracked`, `archive_state`, `cleanup_state`, `credential_cleanup_state`, and `cleanup_debt` before authorizing cleanup.
-
-Treat structured errors and their recovery fields as the supported recovery guidance.
-
-Credential requirements use named IDs through `--require` and `--optional`.
-Credential values are never printed, stored in task output, or placed in command arguments.
+`akagent integration inspect` remains a read-only `AKAGENT_ENABLED` compatibility signal for optional automation.
+`akagent worker inspect` reports protocol version `2` and declarative `registry`, `checkpoint`, and `observation` capabilities.

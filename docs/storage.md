@@ -2,20 +2,13 @@
 
 ## Purpose
 
-`internal/store` provides the secure, worker-local durable storage primitives that task lifecycle commands will build on.
-It stores typed, versioned task manifests and an append-only event history, resolves the XDG state root, and provides atomic writes, per-task locking, and recovery.
-
-The package is deliberately independent of tmux, Git worktrees, credentials, and CLI command parsing.
-Those surfaces read and mutate through the store rather than touching its files directly.
+`internal/store` provides secure worker-local durable storage primitives for record-only task lifecycle operations.
+It stores typed versioned manifests, append-only events, checkpoints, archives, locks, and recovery facts.
+It is independent of tmux, Git, worktrees, credentials, providers, and CLI parsing.
 
 ## Layout
 
-The store lives under the XDG state root for the `akagent` application:
-
-| Context | Root |
-| --- | --- |
-| `$XDG_STATE_HOME` set | `$XDG_STATE_HOME/akagent` |
-| otherwise | `$HOME/.local/state/akagent` |
+The store lives under `$XDG_STATE_HOME/akagent`, or `$HOME/.local/state/akagent` when unset:
 
 ```text
 <root>/
@@ -23,7 +16,6 @@ The store lives under the XDG state root for the `akagent` application:
   tasks/<task-id>/manifest.json
   tasks/<task-id>/checkpoint.json
   tasks/<task-id>/events/000001.json
-  tasks/<task-id>/events/000002.json
   tasks/<task-id>/resources/<resource-id>/manifest.json
   tasks/<task-id>/resources/<resource-id>/events/000001.json
   tasks/<task-id>/resources/<resource-id>/archive.json
@@ -34,151 +26,68 @@ The store lives under the XDG state root for the `akagent` application:
   locks/<task-id>.lock
 ```
 
-- `manifest.json` is the mutable task manifest, atomically replaced.
-- `checkpoint.json` is the authoritative revision-checked recovery checkpoint, atomically replaced under the task lock.
-It includes durable operation receipts and audit debt so an interrupted event can be repaired after later revisions.
-- `events/<sequence>.json` is an immutable task event record; sequences are 1-based and zero-padded.
-- Each resource has its own mutable manifest, event history, and archive under `resources/<resource-id>`.
-- Each execution has its own mutable manifest, event history, and archive under `executions/<execution-id>`.
-- Execution records contain tool-neutral command and observation metadata, not resource Git state.
-- Execution records may contain multiple non-secret session references with a tool identifier, session ID, and optional absolute local reference path.
-- `archive.json` is an atomically replaced snapshot of the corresponding task, resource, or execution manifest and event history.
-Task archives include the acknowledged checkpoint, resource snapshots, and execution snapshots so recovery intent, delivery metadata, and execution session references remain available after the live records change.
-- Resource and execution archives are independently recoverable and do not require sibling resource or execution cleanup.
-- `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
+Manifests are atomically replaced.
+Checkpoints and archives are durable snapshots.
+Events are immutable, append-only records.
+Resource and execution archives are independently recoverable.
+Session references contain metadata only and never provider content.
 
-## Permissions
+## Permissions and safety
 
-The store is restrictive because event history and manifests can carry sensitive context:
+Directories are created with mode `0700` and record and lock files with mode `0600`.
+Owned paths reject group or other access, symbolic links, and non-regular record files.
+Descriptor-relative traversal with no-follow semantics prevents intermediate symlink races.
+Per-task locks serialize mutations and kernel locks are released when a writer exits.
 
-- Directories are created `0700`.
-- Record files and lock files are created `0600`.
-- Existing directories and files with any group or other access (`mode & 0077 != 0`) are rejected with a typed `unsafe_permissions` error whose recovery suggests the exact `chmod` command.
-- Symbolic links anywhere in the store tree and record paths that are not regular files are rejected with a typed `unsafe_path` error, so a task directory or record symlink cannot redirect reads or writes outside the configured state root.
-- Reads and event-directory listings use descriptor-relative `openat` traversal with `O_NOFOLLOW` on every component, avoiding intermediate symlink traversal and the separate `Lstat`/read check/use race.
-- `Open`/`OpenAt` validate the root, `tasks`, and `locks` directories; reads also validate task and events directories and record files.
+## Envelope and schema
 
-Permissions are restored on creation even when a restrictive `umask` is not set.
-The strict check applies to paths the store owns, not to ancestors such as `$HOME`.
-
-## Envelope and schema version
-
-Every record is a typed, versioned envelope serialized as JSON:
+Every record uses a typed JSON envelope:
 
 ```json
 {
   "schema_version": 1,
   "kind": "manifest",
   "task_id": "019fe8f2-ac67-7406-a6e6-2717b2cd31c6",
-  "resource_id": "019f-resource",
   "observed_at": "2026-08-09T21:59:00Z",
-  "data": { ... }
+  "data": {}
 }
 ```
 
-The envelope carries the schema version, record kind, task ID, optional resource or execution ID, and observation time (`observed_at`, UTC).
 `internal/store.SchemaVersion` is `1`.
-Envelopes without an observation time are rejected as malformed.
+Readers reject unsupported versions and malformed envelopes rather than guessing field meanings.
+Optional fields may be added without a version bump.
+Removing fields, changing meanings, or changing record kinds requires a storage version change.
+Legacy schema version `1` remains readable after protocol version `2` orchestration removal.
 
-### Version behavior
+## Record semantics
 
-- Readers reject records whose `schema_version` is anything other than the current version instead of guessing at field meanings.
-- Adding optional fields is backward compatible and does not require a version bump.
-- Removing fields, changing meanings, or changing the kind set requires a version bump.
-- A higher-than-current version means the record came from a newer `akagent`; the operator is told to upgrade or repair.
+Task, resource, execution, repository, checkpoint, disposition, observation, delivery, archive, and recovery records are caller-declared or historical facts.
+The store does not inspect paths, processes, Git, tmux, provider files, or credentials.
+Legacy manifests and archives retain historical orchestration and credential fields as opaque readable data.
+Store-only migration preserves IDs and facts and does not reactivate work or create duplicates.
 
-The durable encoding is JSON.
-Whether strict TOON is also safe for durable mutable records remains an open decision tracked by the TOON issue; TOON stays an output and interchange encoding until then.
-
-## Resource semantics
-
-A resource manifest is keyed by its owning task ID and immutable resource ID.
-Resource mutations use the owning task lock, while Git setup also uses the repository lock.
-Git ownership inputs remain immutable, while non-secret provider-neutral metadata and HTTPS external URLs are mutable through the lifecycle package.
-Resource archive, cleanup, and recovery fields are never inferred from sibling resources.
-
-Legacy task manifests with one embedded Git resource are migrated lazily by lifecycle resource operations.
-The migration writes a `legacy` resource record and preserves the original task fields for compatibility.
-Legacy task manifests with launch or process fields are migrated lazily by execution operations into a `legacy` execution record.
-Execution migration preserves the legacy process identity and never starts or stops tmux.
-
-## Manifest semantics
-
-`WriteManifest` fully replaces the task manifest under the per-task lock using atomic replacement:
-
-1. Write a temporary sibling file.
-2. Set restrictive permissions and `fsync` it.
-3. `rename` it over the target.
-4. `fsync` the containing directory for durability.
-
-`fsync` on the containing directory is tolerated to fail with `EINVAL` because some filesystems and platforms do not support directory sync.
-Because replacement is atomic, a reader never observes a truncated or partially written manifest, and a failed write leaves the previous valid manifest intact.
-
-## Event semantics
-
-`AppendEvent` writes one immutable event and returns its sequence number.
-Task, resource, and execution event sequences are computed under the per-task lock, so concurrent appends yield contiguous, non-overlapping sequences.
-Event file names must be zero-padded six-digit sequences (`000001.json`) starting at 1 with no gaps; reads, appends, and recovery report malformed names and gaps rather than silently skipping them.
-Hidden entries and directory entries in the events directory are also reported as malformed; only temporary write entries are removed during recovery before validation.
-Events are never rewritten in place.
-
-## Concurrency and locking
-
-- Task mutation (`WriteManifest`, `AppendEvent`) acquires the per-task lock via `Lock`/`WithLock`.
-- Resource and execution mutation acquire the owning task lock.
-- `Lock` waits a short bounded time for a contended lock and returns a typed, retryable `lock_contention` error otherwise, so callers can retry safely.
-- `WithLock` returns the callback's error when it fails and also surfaces failures to release the lock.
-- Reads (`ReadManifest`, `ReadEvents`) do not take the lock; atomic replacement and append-only files make them safe without it.
-
-Lock files use descriptor-relative `openat` with `O_NOFOLLOW` and direct kernel `flock` operations.
-Lock-file creation uses exclusive create followed by a reopen on `EEXIST`, avoiding an APFS race where concurrent non-exclusive `O_CREAT` calls can return `ENOENT` even though another creator has made the file.
-Kernel file locks are released when the owning process exits, so a crashed writer never leaves a held lock; leftover lock files are harmless marker files.
-The bounded wait is long enough for durable fsync-backed mutations, while callers still receive a retryable contention error if the bound expires.
+`WriteManifest` writes a temporary sibling, applies restrictive permissions, syncs the file, renames it atomically, and syncs the directory when supported.
+A reader never observes a truncated manifest.
+`AppendEvent` writes a six-digit sequence under the task lock and rejects malformed names, gaps, and duplicates.
+Manifest replacement and event append remain separate writes, so the durability guarantee is bounded and not crash-atomic across both files.
 
 ## Recovery
 
-`Recover` scans each valid task's directory under its per-task lock and:
-
-- Removes temporary files left behind by an interrupted write (names beginning `.akagent-write-`) with descriptor-relative `unlinkat`, never path-based `WalkDir`/`Remove`.
-- Validates the manifest, checkpoint when present, each event file, and any archive snapshot.
-- Reports malformed records in `RecoveryResult.MalformedRecords` without deleting them, so an operator can inspect before acting.
-- Reports tasks whose lock is contended in `RecoveryResult.SkippedLocked` and leaves them alone.
+`Recover` scans valid task directories under their locks.
+It removes only interrupted temporary write files, validates manifests, checkpoints, event files, and archives, and reports malformed records without deleting them.
+Contended locks are reported as skipped.
+Recovery is store-only and offline-safe.
+It never launches processes, inspects tmux, runs Git, reads provider files, resolves credentials, or performs cleanup.
 
 ## Errors
 
-Store failures are typed `*store.Error` values carrying a kind, message, retryable flag, and recovery guidance:
+Store failures are typed `*store.Error` values with a kind, message, retryable flag, and recovery guidance.
+Kinds include `usage`, `not_found`, `lock_contention`, `malformed`, `unsafe_permissions`, `unsafe_path`, `partial`, and `internal`.
+The CLI translates these into structured TOON errors.
 
-| Kind | Meaning |
-| --- | --- |
-| `usage` | Invalid input, such as an unsafe task ID. |
-| `not_found` | No record exists for the requested task. |
-| `lock_contention` | Another writer holds the per-task lock; retryable. |
-| `malformed` | A record is unreadable, lacks an observation time, or has an unsupported schema version. |
-| `unsafe_permissions` | A store directory or file is accessible by other users. |
-| `unsafe_path` | A store-owned path is a symbolic link or not a regular record file. |
-| `partial` | A callback and lock release both failed, or a durable replacement completed without directory synchronization. |
-| `internal` | An unexpected storage failure. |
+## Boundary
 
-Callers translate these kinds into protocol errors at the command boundary.
-
-## Archive and cleanup semantics
-
-`Archive` writes an idempotent snapshot for stopped or finished tasks and records partial attempts in the task manifest and event history so a later retry can complete the snapshot.
-
-`Clean` never runs while a task's verified tmux identity is live.
-It archives first, preserves committed, dirty, or untracked Git facts unless the operator explicitly authorizes each category, and records worktree and credential cleanup debt independently.
-Resource cleanup applies the same policy to one resource and records its worktree and credential debt without mutating sibling resources.
-Reconciliation does not invoke either destructive operation.
-
-## Out of scope
-
-Starting or stopping executions, task lifecycle commands, credentials, tmux, and Git remain outside this package.
-The store has no Pi-specific execution fields and does not interpret command targets or provider session files.
-Session reference paths are validated as absolute local paths without storing the referenced file content.
-Missing provider files remain valid references so historical archives do not become unreadable when a provider cleans up its state.
-The store also persists repository registration records, including an optional absolute `worktree_root` for worktree-policy registrations.
-Older registrations without that field continue to use the derived root in the lifecycle package without a migration rewrite.
-The lifecycle package supplies repository validation and archive and cleanup policy.
-Worktree removal is available only through the lifecycle approval-gated hook and preserves the task archive and branch.
-Credential cleanup is an independent local hook with its own approval, manifest state, append-only events, and retry path.
-Credential cleanup never removes or rewrites the credential manifest itself.
+The store does not implement lifecycle policy or host-side side effects.
+The lifecycle layer applies record transitions and inventory views through this interface.
+External tools submit observations, session references, delivery URLs, and cleanup or recovery facts through the CLI.
+Credential values, prompt content, provider session content, terminal output, and secret arguments never enter the store.

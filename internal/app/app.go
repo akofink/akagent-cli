@@ -4,19 +4,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 
-	"github.com/akofink/akagent-cli/internal/integration"
-	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/output"
-	"github.com/akofink/akagent-cli/internal/store"
 	updatecmd "github.com/akofink/akagent-cli/internal/update"
 	"github.com/google/uuid"
 )
 
-const description = "Manage local coding-agent tasks with durable state, Git worktrees, and tmux recovery"
+const description = "Manage local coding-agent tasks with durable state and explicit recovery records"
 
 type homeView struct {
 	Bin         string   `json:"bin"`
@@ -58,14 +54,12 @@ func Run(args []string, stdout io.Writer) int {
 		return write(stdout, helpView{
 			Usage: "akagent <command>",
 			Commands: []string{
-				"credential <list|inspect|doctor|clean>",
-				"integration <inspect|launch>",
+				"integration inspect",
 				"id generate",
 				"repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository <list|inspect|unregister>",
-				"task <create|checkpoint|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
-				"task record <task|adopt|execution|observe|complete|archive> ...",
+				"task <create|checkpoint|resource|execution|list|inspect|publish|finish|archive|reconcile>",
 				"task checkpoint <write|inspect> <task-id> ...",
 				"task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]",
 				"task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--format <toon|human>]",
@@ -79,7 +73,7 @@ func Run(args []string, stdout io.Writer) int {
 
 	switch args[0] {
 	case "credential":
-		return credentialCommand(args[1:], stdout)
+		return removedCommandError(stdout, "credential", "Record credential references as historical metadata; external tools own credential readiness and cleanup")
 	case "integration":
 		return integrationCommand(args[1:], stdout)
 	case "id":
@@ -95,39 +89,11 @@ func Run(args []string, stdout io.Writer) int {
 	case "task":
 		return taskCommand(args[1:], stdout)
 	case "worker":
-		if len(args) >= 4 && args[1] == "launch-pi" {
-			state, err := store.Open()
-			if err != nil {
-				return 1
-			}
-			if err := integration.LaunchPi(lifecycle.New(state), args[2], args[3], args[4:], os.Stderr, nil); err != nil {
-				return 1
-			}
-			return 0
-		}
-		if len(args) == 3 && args[1] == "launch" {
-			state, err := store.Open()
-			if err != nil {
-				return 1
-			}
-			if err := lifecycle.New(state).Launch(args[2]); err != nil {
-				return 1
-			}
-			return 0
-		}
-		if len(args) == 4 && args[1] == "deploy" {
-			state, err := store.Open()
-			if err != nil {
-				return 1
-			}
-			if err := lifecycle.New(state).RunDeployment(args[2], args[3]); err != nil {
-				fmt.Fprintln(os.Stderr, "akagent: local deployment failed")
-				return 1
-			}
-			return 0
+		if len(args) > 1 && (args[1] == "launch" || args[1] == "launch-pi" || args[1] == "deploy") {
+			return removedCommandError(stdout, "worker "+args[1], "Create a record-only execution and use an external tool for process or deployment work")
 		}
 		if len(args) == 2 && args[1] == "inspect" {
-			return write(stdout, workerView{Worker: inspectWorker(exec.LookPath)})
+			return write(stdout, workerView{Worker: inspectWorker()})
 		}
 	case "update":
 		sourceDir, valid := updateSource(args)
@@ -165,21 +131,13 @@ func updateSource(args []string) (string, bool) {
 	return "", false
 }
 
-func inspectWorker(lookPath func(string) (string, error)) worker {
-	features := make([]string, 0, 2)
-	if _, err := lookPath("tmux"); err == nil {
-		features = append(features, "tmux")
-	}
-	if _, err := lookPath("git"); err == nil {
-		features = append(features, "git-worktree")
-	}
-
+func inspectWorker() worker {
 	return worker{
 		ID:              "local",
-		ProtocolVersion: 1,
+		ProtocolVersion: 2,
 		Architecture:    runtime.GOARCH,
 		OperatingSystem: runtime.GOOS,
-		Features:        features,
+		Features:        []string{"registry", "checkpoint", "observation"},
 	}
 }
 
@@ -199,13 +157,16 @@ func home() homeView {
 		Tasks:       []string{},
 		Help: []string{
 			"Use `akagent task ...` directly for self-service task lifecycle management",
-			"Run `akagent integration inspect` only to inspect optional integration compatibility",
-			"Run `akagent credential doctor` to check local credential readiness",
+			"Run `akagent integration inspect` only to inspect the optional automation signal",
 			"Run `akagent id generate` to create a task ID",
 			"Run `akagent update` to update from the local source checkout",
 			"Run `akagent worker inspect` to inspect the local worker",
 		},
 	}
+}
+
+func removedCommandError(stdout io.Writer, family, recovery string) int {
+	return writeError(stdout, "usage", fmt.Sprintf("The `%s` command family was removed from akagent", family), false, recovery)
 }
 
 func formatArgs(args []string) string {
