@@ -2,12 +2,13 @@
 
 ## Goal
 
-Make `akagent` a local-first orchestration protocol and CLI for coding agents.
-Agents should use the CLI directly during ordinary coding work to maintain durable task state while preserving ordinary Git worktree and tmux recovery paths.
+Make `akagent` a local-first durable registry protocol and CLI for coding agents.
+Agents should use the CLI directly during ordinary coding work to maintain durable task state, typed observations, checkpoint references, and recovery while preserving ordinary Git worktree and tmux paths.
 Tmux is visibility and recovery; the CLI is durable state.
-No launch adapter or daemon is required.
+The current local orchestration paths remain shipped but transitional compatibility behavior.
+No launch adapter or daemon is required for the current direct workflow or the target core.
 
-## Shipped behavior
+## Shipped behavior - transitional implementation
 
 - Compact `akagent` home view.
 - `akagent id generate` using UUIDv7.
@@ -28,11 +29,16 @@ No launch adapter or daemon is required.
 - Git branch and worktree creation with explicit immutable branch, base, and worktree inputs.
 - Task and execution-tagged detached tmux resources, shared `@agent_state` publication by execution metadata, optional Pi execution integration, and verified attachment using fresh process identity and heartbeat observations.
 - A per-environment integration signal inspected by `akagent integration inspect`.
-- A stable CLI boundary that lets coding agents manage task, resource, and execution lifecycle without a parent orchestrator.
+- A stable CLI boundary that lets coding agents manage task, resource, and execution records without a parent orchestrator.
 - Work-scoped deployment executions with readiness checks, in-memory environment injection, and durable success or failure results.
 - Public coding-agent scaffolding from #108, delivered by this PR, including the integration guide, generic `AGENTS.md` template, and reusable lifecycle skill.
 
 ## Current workflow
+
+The current workflow is implemented and documented, but its local launch, stop, attach, Git/worktree, credential, tmux, and deployment side effects are transitional compatibility behavior.
+The accepted target keeps the durable record operations and moves side effects outside core to direct tools and skills when they remain needed.
+Optional adapters may provide convenience, but they are not required replacements for every current capability.
+Current command syntax remains unchanged until an implementation issue changes it.
 
 `task create` is state-only task creation: it records durable task intent and can create zero resources without creating a tmux window or starting a process.
 Worktree-policy repository registrations accept an absolute `--worktree-root` for task and resource worktrees.
@@ -45,6 +51,7 @@ When `--worktree` is omitted, the worktree directory uses the branch label after
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.
 `task execution create` records an optional tool-neutral execution without a process side effect.
 A coding agent can call the stable CLI directly from its task context without a parent orchestrator or launch adapter.
+This direct record workflow is the migration path toward the accepted record-only core.
 `task execution launch` starts the selected execution when an interactive local process is useful, and a multi-resource task may attach one resource with `--resource` during execution creation.
 The execution ID, resource ID, branch, worktree, and process facts remain durable even when no tmux window is available.
 `task execution session add` records provider-neutral session provenance without parsing Pi or another provider's session files.
@@ -53,6 +60,7 @@ The execution ID, resource ID, branch, worktree, and process facts remain durabl
 Execution stop, archive, attach, and reconcile operate independently from resource state.
 The `task launch --target shell` path creates and launches a generic shell execution.
 The optional `task launch --target pi` path delegates to the Pi integration, which creates and launches a generic execution.
+These are current compatibility paths, not new target-core contracts.
 Compatibility launches derive their execution and tmux display labels from the selected resource or task branch without the owner prefix, or require an explicit descriptive `--label`.
 Tmux stores task and execution IDs in window metadata for lifecycle verification.
 Managed execution lifecycle state uses those metadata IDs to clear active state, publish waiting or blocked state, and mark completed execution `done` through `@agent_state`.
@@ -89,6 +97,22 @@ Agent self-service is the normal workflow over this stable CLI boundary.
 The agent skill should guide direct CLI use while preserving direct human commands and optional provider integrations.
 After a command that may have mutated state fails, inspect the task and run reconciliation before attempting a manual fallback.
 No daemon, remote scheduler, or launch adapter is part of the required lifecycle.
+
+## Accepted target and migration boundary
+
+The accepted target is a record-only core for task, resource, and execution identity, typed state transitions, structured observations, checkpoint references, append-only events, archive history, recovery debt, delivery metadata, and protocol output.
+External tools and skills will own process launch, stop, and attach; tmux control; Git and worktree mutation; credential injection and cleanup; deployments; and provider-native session recovery when those capabilities remain needed.
+Optional local or provider adapters may provide convenience integrations, but feature-parity adapters are not required and deployment or credential capabilities may be retired.
+
+The migration order is record-only adoption, independent in-flight and maintenance views, crash-safe checkpoints and same-machine reboot recovery, adapter migration, orchestration removal, and skill rollout.
+Removal waits for the finite exit criteria in [`charter.md`](charter.md).
+Until then, existing orchestration commands remain documented at their current syntax and may emit deprecation diagnostics as implementations migrate.
+After removal, legacy manifests, archives, and event history remain readable, while removed command families return structured migration guidance to the record and the direct tool, skill, or optional adapter workflow when one exists.
+
+Same-machine reboot recovery assumes the worker filesystem survives.
+Disk loss requires an external backup or copied archive.
+Cross-machine synchronization and exact process restoration are outside the local store.
+Provider session recovery is best effort and depends on provider-owned references and discovery.
 
 ## Durable work-state model and migration boundary
 
@@ -156,9 +180,13 @@ akagent worker inspect
 
 ## Tracked follow-ups
 
-- Skill-guided adoption in ordinary coding workflows remains the primary follow-up.
-- Durable examples for session provenance, pull-request metadata, reconciliation, and archive recovery.
-- Broader local deployment integrations beyond direct executable commands.
+- Record-only adoption in ordinary coding workflows.
+- Independent in-flight and maintenance views that work offline.
+- Crash-safe checkpoint references and safe partial same-machine reboot recovery.
+- Side-effect migration to direct tools and skills, with optional adapters for convenience.
+- Removal of direct orchestration from core after the charter exit criteria pass.
+- Skill rollout for durable inspection, publication, reconciliation, checkpoint, and archive recovery.
 
-Launch adapters, resident daemons, and remote orchestration are explicitly out of scope for the normal workflow.
+Launch adapters, resident daemons, and remote orchestration are not prerequisites for the current workflow or the target core.
+Optional adapters remain planned integration surfaces for side effects that are removed from core, but no feature-parity adapter is required for a retired capability.
 The detailed public delivery map is in [`implementation-plan.md`](implementation-plan.md).
