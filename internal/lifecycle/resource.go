@@ -120,6 +120,9 @@ func (m *Manager) UpdateResource(taskID, resourceID string, request ResourceUpda
 	}
 	var changed bool
 	resource, err := m.Store.UpdateResource(taskID, resourceID, func(resource *store.Resource) error {
+		if resource.Provenance == store.ProvenanceExternal {
+			return externalRecordOperationError("resource", resourceID)
+		}
 		if len(request.Metadata) > 0 {
 			if resource.Metadata == nil {
 				resource.Metadata = map[string]string{}
@@ -156,6 +159,9 @@ func (m *Manager) ArchiveResource(taskID, resourceID string) (store.Resource, er
 	resource, err := m.InspectResource(taskID, resourceID)
 	if err != nil {
 		return store.Resource{}, err
+	}
+	if resource.Provenance == store.ProvenanceExternal {
+		return store.Resource{}, externalRecordOperationError("resource", resourceID)
 	}
 	if resource.ArchiveState == archiveComplete {
 		if _, err := m.Store.ReadResourceArchive(taskID, resource.ID); err == nil {
@@ -224,6 +230,9 @@ func (m *Manager) CleanResource(taskID, resourceID string, options CleanupOption
 	resource, err := m.InspectResource(taskID, resourceID)
 	if err != nil {
 		return store.Resource{}, err
+	}
+	if resource.Provenance == store.ProvenanceExternal {
+		return store.Resource{}, externalRecordOperationError("resource", resourceID)
 	}
 	if resource.CleanupState == cleanupComplete &&
 		resource.WorktreeCleanupState == cleanupComplete &&

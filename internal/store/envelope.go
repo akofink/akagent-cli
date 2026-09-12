@@ -45,44 +45,58 @@ type LaunchConfig struct {
 	WorkingContext   string `json:"working_context,omitempty"`
 }
 
+// RecordReceipt is a durable idempotency receipt for one caller operation.
+// It separates stable caller identity from the operation key and survives
+// interleaved updates under the task lock.
+type RecordReceipt struct {
+	OperationID string `json:"operation_id"`
+	Fingerprint string `json:"fingerprint"`
+	Revision    uint64 `json:"revision"`
+}
+
 // Manifest is the typed mutable payload of a task manifest.
 type Manifest struct {
-	Title                  string        `json:"title"`
-	Worker                 string        `json:"worker"`
-	Repository             string        `json:"repository,omitempty"`
-	Branch                 string        `json:"branch,omitempty"`
-	BaseRevision           string        `json:"base_revision,omitempty"`
-	WorktreeBaseRevision   string        `json:"worktree_base_revision,omitempty"`
-	WorktreePath           string        `json:"worktree_path,omitempty"`
-	Lifecycle              string        `json:"lifecycle"`
-	Condition              string        `json:"condition"`
-	Reason                 string        `json:"reason,omitempty"`
-	Activity               string        `json:"activity,omitempty"`
-	HeartbeatAt            time.Time     `json:"heartbeat_at,omitempty"`
-	TmuxWindow             string        `json:"tmux_window,omitempty"`
-	Requirements           string        `json:"requirements,omitempty"`
-	Warnings               string        `json:"warnings,omitempty"`
-	Result                 string        `json:"result,omitempty"`
-	Committed              bool          `json:"committed,omitempty"`
-	Dirty                  bool          `json:"dirty,omitempty"`
-	Untracked              bool          `json:"untracked,omitempty"`
-	RecoveryDebt           string        `json:"recovery_debt,omitempty"`
-	ArchiveState           string        `json:"archive_state,omitempty"`
-	CleanupState           string        `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState   string        `json:"worktree_cleanup_state,omitempty"`
-	CredentialCleanupState string        `json:"credential_cleanup_state,omitempty"`
-	CleanupDebt            bool          `json:"cleanup_debt,omitempty"`
-	Git                    GitFacts      `json:"git,omitempty"`
-	ProcessPID             int           `json:"process_pid,omitempty"`
-	ProcessStartTime       uint64        `json:"process_start_time,omitempty"`
-	ObservedPID            int           `json:"observed_pid,omitempty"`
-	ObservedStartTime      uint64        `json:"observed_start_time,omitempty"`
-	ProcessPane            string        `json:"process_pane,omitempty"`
-	Observation            string        `json:"observation,omitempty"`
-	ObservationAt          time.Time     `json:"observation_at,omitempty"`
-	Launch                 *LaunchConfig `json:"launch,omitempty"`
-	ResourceIDs            string        `json:"resource_ids,omitempty"`
-	ExecutionIDs           string        `json:"execution_ids,omitempty"`
+	Title                  string              `json:"title"`
+	Provenance             string              `json:"provenance,omitempty"`
+	CallerID               string              `json:"caller_id,omitempty"`
+	Revision               uint64              `json:"revision,omitempty"`
+	Worker                 string              `json:"worker"`
+	Repository             string              `json:"repository,omitempty"`
+	Branch                 string              `json:"branch,omitempty"`
+	BaseRevision           string              `json:"base_revision,omitempty"`
+	WorktreeBaseRevision   string              `json:"worktree_base_revision,omitempty"`
+	WorktreePath           string              `json:"worktree_path,omitempty"`
+	Lifecycle              string              `json:"lifecycle"`
+	Condition              string              `json:"condition"`
+	Reason                 string              `json:"reason,omitempty"`
+	Activity               string              `json:"activity,omitempty"`
+	HeartbeatAt            time.Time           `json:"heartbeat_at,omitempty"`
+	TmuxWindow             string              `json:"tmux_window,omitempty"`
+	Requirements           string              `json:"requirements,omitempty"`
+	Warnings               string              `json:"warnings,omitempty"`
+	Result                 string              `json:"result,omitempty"`
+	Committed              bool                `json:"committed,omitempty"`
+	Dirty                  bool                `json:"dirty,omitempty"`
+	Untracked              bool                `json:"untracked,omitempty"`
+	RecoveryDebt           string              `json:"recovery_debt,omitempty"`
+	ArchiveState           string              `json:"archive_state,omitempty"`
+	CleanupState           string              `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string              `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string              `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool                `json:"cleanup_debt,omitempty"`
+	Git                    GitFacts            `json:"git,omitempty"`
+	ProcessPID             int                 `json:"process_pid,omitempty"`
+	ProcessStartTime       uint64              `json:"process_start_time,omitempty"`
+	ObservedPID            int                 `json:"observed_pid,omitempty"`
+	ObservedStartTime      uint64              `json:"observed_start_time,omitempty"`
+	ProcessPane            string              `json:"process_pane,omitempty"`
+	Observation            string              `json:"observation,omitempty"`
+	ObservationAt          time.Time           `json:"observation_at,omitempty"`
+	Launch                 *LaunchConfig       `json:"launch,omitempty"`
+	ResourceIDs            string              `json:"resource_ids,omitempty"`
+	ExecutionIDs           string              `json:"execution_ids,omitempty"`
+	ExternalCompletion     *ExternalCompletion `json:"external_completion,omitempty"`
+	Receipts               string              `json:"receipts,omitempty"`
 }
 
 // GitFacts are non-secret observations captured for recovery and cleanup
@@ -97,6 +111,28 @@ type GitFacts struct {
 }
 
 // Event is the typed immutable payload of an append-only task event.
+// ExternalObservation is a caller-submitted observation. It is historical
+// evidence only: the record service never treats it as proof of current
+// liveness, success, or ownership.
+type ExternalObservation struct {
+	Source       string    `json:"source"`
+	ObservedAt   time.Time `json:"observed_at"`
+	HostID       string    `json:"host_id"`
+	BootID       string    `json:"boot_id"`
+	ProcessState string    `json:"process_state,omitempty"`
+	Result       string    `json:"result,omitempty"`
+	Detail       string    `json:"detail,omitempty"`
+}
+
+// ExternalCompletion is an explicit caller declaration against a named
+// completion contract. It is never inferred from process absence.
+type ExternalCompletion struct {
+	Contract   string    `json:"contract"`
+	Result     string    `json:"result"`
+	CallerID   string    `json:"caller_id"`
+	DeclaredAt time.Time `json:"declared_at"`
+}
+
 type Event struct {
 	Operation string `json:"operation"`
 	Outcome   string `json:"outcome,omitempty"`
@@ -160,6 +196,20 @@ func (e Envelope) DecodeManifest() (Manifest, error) {
 	}
 	if err := json.Unmarshal(e.Data, &manifest); err != nil {
 		return Manifest{}, malformedError("Malformed manifest payload", "Inspect and repair the manifest record")
+	}
+	if manifest.Provenance == ProvenanceExternal {
+		if manifest.Revision == 0 || validateCallerID(manifest.CallerID) != nil {
+			return Manifest{}, malformedError("External manifest provenance is incomplete", "Inspect and repair the external task record")
+		}
+		if manifest.ExternalCompletion != nil && validateExternalCompletion(*manifest.ExternalCompletion) != nil {
+			return Manifest{}, malformedError("External manifest completion is invalid", "Inspect and repair the external task record")
+		}
+	}
+	if manifest.Receipts != "" {
+		var receipts []RecordReceipt
+		if json.Unmarshal([]byte(manifest.Receipts), &receipts) != nil {
+			return Manifest{}, malformedError("Malformed manifest record receipts", "Inspect and repair the manifest record")
+		}
 	}
 	return manifest, nil
 }

@@ -171,6 +171,9 @@ func (m *Manager) InspectExecution(taskID, executionID string) (store.Execution,
 // inspect, lock, archive, or mutate any task resource after launch selection.
 func (m *Manager) LaunchExecutionRecord(taskID, executionID string) (store.Execution, error) {
 	execution, err := m.InspectExecution(taskID, executionID)
+	if err == nil && execution.Provenance == store.ProvenanceExternal {
+		return store.Execution{}, externalRecordOperationError("execution", executionID)
+	}
 	if err != nil {
 		return store.Execution{}, err
 	}
@@ -241,6 +244,9 @@ func (m *Manager) LaunchExecutionRecord(taskID, executionID string) (store.Execu
 func (m *Manager) AddExecutionSessionReference(taskID, executionID string, reference store.SessionReference) (store.Execution, error) {
 	var changed bool
 	execution, err := m.Store.UpdateExecution(taskID, executionID, func(execution *store.Execution) error {
+		if execution.Provenance == store.ProvenanceExternal {
+			return externalRecordOperationError("execution", executionID)
+		}
 		for _, existing := range execution.SessionReferences {
 			if existing == reference {
 				return nil
@@ -273,6 +279,9 @@ func (m *Manager) PublishExecution(taskID, executionID, condition, reason, activ
 	}
 	var changed bool
 	execution, err := m.Store.UpdateExecution(taskID, executionID, func(execution *store.Execution) error {
+		if execution.Provenance == store.ProvenanceExternal {
+			return externalRecordOperationError("execution", executionID)
+		}
 		changed = execution.Condition != condition || execution.Reason != reason || execution.Activity != activity
 		execution.Condition, execution.Reason, execution.Activity, execution.HeartbeatAt = condition, reason, activity, m.now()
 		return nil
@@ -294,6 +303,9 @@ func (m *Manager) StopExecution(taskID, executionID string) (store.Execution, er
 	execution, err := m.InspectExecution(taskID, executionID)
 	if err != nil {
 		return store.Execution{}, err
+	}
+	if execution.Provenance == store.ProvenanceExternal {
+		return store.Execution{}, externalRecordOperationError("execution", executionID)
 	}
 	if err := m.stopExecutionWindow(taskID, executionID); err != nil {
 		return store.Execution{}, err
@@ -354,6 +366,9 @@ func executionAttachError(taskID, executionID, reason string) error {
 
 func (m *Manager) ArchiveExecution(taskID, executionID string) (store.Execution, error) {
 	execution, err := m.InspectExecution(taskID, executionID)
+	if err == nil && execution.Provenance == store.ProvenanceExternal {
+		return store.Execution{}, externalRecordOperationError("execution", executionID)
+	}
 	if err != nil {
 		return store.Execution{}, err
 	}
@@ -428,6 +443,9 @@ func (m *Manager) ReconcileExecutions(taskID string) ([]store.Execution, error) 
 		execution, err := m.Store.ReadExecution(taskID, id)
 		if err != nil {
 			return nil, err
+		}
+		if execution.Provenance == store.ProvenanceExternal {
+			continue
 		}
 		observation, observeErr := m.observeExecution(taskID, id)
 		if observeErr != nil {

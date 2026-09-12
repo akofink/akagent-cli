@@ -17,6 +17,9 @@ import (
 
 type resourceView struct {
 	ID                     string            `json:"id"`
+	Provenance             string            `json:"provenance,omitempty"`
+	CallerID               string            `json:"caller_id,omitempty"`
+	Revision               uint64            `json:"revision,omitempty"`
 	Repository             string            `json:"repository"`
 	Branch                 string            `json:"branch,omitempty"`
 	BaseRevision           string            `json:"base_revision,omitempty"`
@@ -37,6 +40,9 @@ type resourceView struct {
 
 type resourceListItem struct {
 	ID                     string `json:"id"`
+	Provenance             string `json:"provenance,omitempty"`
+	CallerID               string `json:"caller_id,omitempty"`
+	Revision               uint64 `json:"revision,omitempty"`
 	Repository             string `json:"repository"`
 	Branch                 string `json:"branch,omitempty"`
 	BaseRevision           string `json:"base_revision,omitempty"`
@@ -70,25 +76,31 @@ type sessionReferenceView struct {
 }
 
 type executionView struct {
-	ID                string `json:"id"`
-	TaskID            string `json:"task_id"`
-	Label             string `json:"label"`
-	Target            string `json:"target"`
-	Command           string `json:"command,omitempty"`
-	Requirements      string `json:"requirements,omitempty"`
-	ResourceID        string `json:"resource_id,omitempty"`
-	WorkingDirectory  string `json:"working_directory,omitempty"`
-	Status            string `json:"status"`
-	Condition         string `json:"condition,omitempty"`
-	Reason            string `json:"reason,omitempty"`
-	Activity          string `json:"activity,omitempty"`
-	Result            string `json:"result,omitempty"`
-	TmuxWindow        string `json:"tmux_window,omitempty"`
-	ProcessPID        int    `json:"process_pid,omitempty"`
-	Observation       string `json:"observation,omitempty"`
-	RecoveryDebt      string `json:"recovery_debt,omitempty"`
-	ArchiveState      string `json:"archive_state,omitempty"`
-	SessionReferences string `json:"session_references,omitempty"`
+	ID                   string                      `json:"id"`
+	Provenance           string                      `json:"provenance,omitempty"`
+	CallerID             string                      `json:"caller_id,omitempty"`
+	Revision             uint64                      `json:"revision,omitempty"`
+	PredecessorID        string                      `json:"predecessor_id,omitempty"`
+	ExternalObservations []store.ExternalObservation `json:"external_observations,omitempty"`
+	ExternalCompletion   *store.ExternalCompletion   `json:"external_completion,omitempty"`
+	TaskID               string                      `json:"task_id"`
+	Label                string                      `json:"label"`
+	Target               string                      `json:"target"`
+	Command              string                      `json:"command,omitempty"`
+	Requirements         string                      `json:"requirements,omitempty"`
+	ResourceID           string                      `json:"resource_id,omitempty"`
+	WorkingDirectory     string                      `json:"working_directory,omitempty"`
+	Status               string                      `json:"status"`
+	Condition            string                      `json:"condition,omitempty"`
+	Reason               string                      `json:"reason,omitempty"`
+	Activity             string                      `json:"activity,omitempty"`
+	Result               string                      `json:"result,omitempty"`
+	TmuxWindow           string                      `json:"tmux_window,omitempty"`
+	ProcessPID           int                         `json:"process_pid,omitempty"`
+	Observation          string                      `json:"observation,omitempty"`
+	RecoveryDebt         string                      `json:"recovery_debt,omitempty"`
+	ArchiveState         string                      `json:"archive_state,omitempty"`
+	SessionReferences    string                      `json:"session_references,omitempty"`
 }
 
 type executionListView struct {
@@ -147,32 +159,36 @@ type executionEvidenceDetailView struct {
 }
 
 type taskView struct {
-	ID                     string `json:"id"`
-	Title                  string `json:"title"`
-	Status                 string `json:"status"`
-	Worker                 string `json:"worker"`
-	Branch                 string `json:"branch,omitempty"`
-	BaseRevision           string `json:"base_revision,omitempty"`
-	WorktreePath           string `json:"worktree_path,omitempty"`
-	Condition              string `json:"condition,omitempty"`
-	Reason                 string `json:"reason,omitempty"`
-	Activity               string `json:"activity,omitempty"`
-	Result                 string `json:"result,omitempty"`
-	Committed              bool   `json:"committed"`
-	Dirty                  bool   `json:"dirty"`
-	Untracked              bool   `json:"untracked"`
-	RecoveryDebt           string `json:"recovery_debt,omitempty"`
-	Warnings               string `json:"warnings,omitempty"`
-	ArchiveState           string `json:"archive_state,omitempty"`
-	CleanupState           string `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState   string `json:"worktree_cleanup_state,omitempty"`
-	CredentialCleanupState string `json:"credential_cleanup_state,omitempty"`
-	CleanupDebt            bool   `json:"cleanup_debt,omitempty"`
-	Agent                  string `json:"agent,omitempty"`
-	AgentCommand           string `json:"agent_command,omitempty"`
-	PromptReference        string `json:"prompt_reference,omitempty"`
-	WorkingContext         string `json:"working_context,omitempty"`
-	Execution              string `json:"execution,omitempty"`
+	ID                     string                    `json:"id"`
+	Provenance             string                    `json:"provenance,omitempty"`
+	CallerID               string                    `json:"caller_id,omitempty"`
+	Revision               uint64                    `json:"revision,omitempty"`
+	ExternalCompletion     *store.ExternalCompletion `json:"external_completion,omitempty"`
+	Title                  string                    `json:"title"`
+	Status                 string                    `json:"status"`
+	Worker                 string                    `json:"worker"`
+	Branch                 string                    `json:"branch,omitempty"`
+	BaseRevision           string                    `json:"base_revision,omitempty"`
+	WorktreePath           string                    `json:"worktree_path,omitempty"`
+	Condition              string                    `json:"condition,omitempty"`
+	Reason                 string                    `json:"reason,omitempty"`
+	Activity               string                    `json:"activity,omitempty"`
+	Result                 string                    `json:"result,omitempty"`
+	Committed              bool                      `json:"committed"`
+	Dirty                  bool                      `json:"dirty"`
+	Untracked              bool                      `json:"untracked"`
+	RecoveryDebt           string                    `json:"recovery_debt,omitempty"`
+	Warnings               string                    `json:"warnings,omitempty"`
+	ArchiveState           string                    `json:"archive_state,omitempty"`
+	CleanupState           string                    `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string                    `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string                    `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool                      `json:"cleanup_debt,omitempty"`
+	Agent                  string                    `json:"agent,omitempty"`
+	AgentCommand           string                    `json:"agent_command,omitempty"`
+	PromptReference        string                    `json:"prompt_reference,omitempty"`
+	WorkingContext         string                    `json:"working_context,omitempty"`
+	Execution              string                    `json:"execution,omitempty"`
 }
 
 type taskListView struct {
@@ -195,9 +211,11 @@ func taskCommand(args []string, stdout io.Writer) int {
 	}
 	manager := lifecycle.New(state)
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <create|record|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
+	case "record":
+		return taskRecordCommand(args[1:], stdout)
 	case "credential":
 		if len(args) < 3 || args[1] != "clean" {
 			return writeError(stdout, "usage", "Usage: akagent task credential clean <task-id> [--allow-credentials]", false, "Inspect the task before authorizing credential cleanup")
@@ -1167,7 +1185,7 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent task <create|record|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>", false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {
@@ -1205,7 +1223,7 @@ func actionableResources(resources []store.Resource) bool {
 }
 
 func viewResource(resource store.Resource) resourceView {
-	return resourceView{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: resource.Metadata, ExternalURLs: resource.ExternalURLs}
+	return resourceView{ID: resource.ID, Provenance: resource.Provenance, CallerID: resource.CallerID, Revision: resource.Revision, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: resource.Metadata, ExternalURLs: resource.ExternalURLs}
 }
 
 func viewResourceList(resource store.Resource) resourceListItem {
@@ -1214,11 +1232,15 @@ func viewResourceList(resource store.Resource) resourceListItem {
 		metadata = append(metadata, key+"="+value)
 	}
 	sort.Strings(metadata)
-	return resourceListItem{ID: resource.ID, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: strings.Join(metadata, ";"), ExternalURLs: strings.Join(resource.ExternalURLs, ",")}
+	return resourceListItem{ID: resource.ID, Provenance: resource.Provenance, CallerID: resource.CallerID, Revision: resource.Revision, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: strings.Join(metadata, ";"), ExternalURLs: strings.Join(resource.ExternalURLs, ",")}
 }
 
 func viewExecution(execution store.Execution, manager *lifecycle.Manager) executionView {
-	return executionView{ID: execution.ID, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: lifecycle.ExecutionStatus(execution, time.Now().UTC(), lifecycle.DefaultHeartbeatTimeout), Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: compactSessionReferences(execution.SessionReferences)}
+	executionStatus := lifecycle.ExecutionStatus(execution, time.Now().UTC(), lifecycle.DefaultHeartbeatTimeout)
+	if execution.Provenance == store.ProvenanceExternal && execution.ExternalCompletion != nil {
+		executionStatus = "finished"
+	}
+	return executionView{ID: execution.ID, Provenance: execution.Provenance, CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: execution.ExternalObservations, ExternalCompletion: execution.ExternalCompletion, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: compactSessionReferences(execution.SessionReferences)}
 }
 
 func executionDetail(execution store.Execution, manager *lifecycle.Manager) executionDetailView {
@@ -1284,7 +1306,11 @@ func compactSessionReferences(references []store.SessionReference) string {
 }
 
 func view(id string, manifest store.Manifest) taskView {
-	result := taskView{ID: id, Title: manifest.Title, Status: status(manifest), Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
+	taskStatus := status(manifest)
+	if manifest.Provenance == store.ProvenanceExternal && manifest.ExternalCompletion != nil {
+		taskStatus = "finished"
+	}
+	result := taskView{ID: id, Provenance: manifest.Provenance, CallerID: manifest.CallerID, Revision: manifest.Revision, ExternalCompletion: manifest.ExternalCompletion, Title: manifest.Title, Status: taskStatus, Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
 	if manifest.Launch != nil {
 		result.Execution = manifest.Launch.Target
 		if manifest.Launch.Target == "pi" {

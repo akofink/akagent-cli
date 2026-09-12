@@ -29,32 +29,39 @@ type SessionReference struct {
 }
 
 type Execution struct {
-	ID                string             `json:"id"`
-	TaskID            string             `json:"task_id"`
-	Label             string             `json:"label"`
-	Target            string             `json:"target"`
-	Command           string             `json:"command,omitempty"`
-	Arguments         []string           `json:"arguments,omitempty"`
-	Requirements      string             `json:"requirements,omitempty"`
-	ResourceID        string             `json:"resource_id,omitempty"`
-	WorkingDirectory  string             `json:"working_directory,omitempty"`
-	SessionReferences []SessionReference `json:"session_references,omitempty"`
-	Lifecycle         string             `json:"lifecycle"`
-	Condition         string             `json:"condition"`
-	Reason            string             `json:"reason,omitempty"`
-	Activity          string             `json:"activity,omitempty"`
-	HeartbeatAt       time.Time          `json:"heartbeat_at,omitempty"`
-	Result            string             `json:"result,omitempty"`
-	TmuxWindow        string             `json:"tmux_window,omitempty"`
-	ProcessPID        int                `json:"process_pid,omitempty"`
-	ProcessStartTime  uint64             `json:"process_start_time,omitempty"`
-	ObservedPID       int                `json:"observed_pid,omitempty"`
-	ObservedStartTime uint64             `json:"observed_start_time,omitempty"`
-	ProcessPane       string             `json:"process_pane,omitempty"`
-	Observation       string             `json:"observation,omitempty"`
-	ObservationAt     time.Time          `json:"observation_at,omitempty"`
-	ArchiveState      string             `json:"archive_state,omitempty"`
-	RecoveryDebt      string             `json:"recovery_debt,omitempty"`
+	ID                   string                `json:"id"`
+	TaskID               string                `json:"task_id"`
+	Provenance           string                `json:"provenance,omitempty"`
+	CallerID             string                `json:"caller_id,omitempty"`
+	Revision             uint64                `json:"revision,omitempty"`
+	PredecessorID        string                `json:"predecessor_id,omitempty"`
+	ExternalObservations []ExternalObservation `json:"external_observations,omitempty"`
+	ExternalCompletion   *ExternalCompletion   `json:"external_completion,omitempty"`
+	Receipts             []RecordReceipt       `json:"receipts,omitempty"`
+	Label                string                `json:"label"`
+	Target               string                `json:"target"`
+	Command              string                `json:"command,omitempty"`
+	Arguments            []string              `json:"arguments,omitempty"`
+	Requirements         string                `json:"requirements,omitempty"`
+	ResourceID           string                `json:"resource_id,omitempty"`
+	WorkingDirectory     string                `json:"working_directory,omitempty"`
+	SessionReferences    []SessionReference    `json:"session_references,omitempty"`
+	Lifecycle            string                `json:"lifecycle"`
+	Condition            string                `json:"condition"`
+	Reason               string                `json:"reason,omitempty"`
+	Activity             string                `json:"activity,omitempty"`
+	HeartbeatAt          time.Time             `json:"heartbeat_at,omitempty"`
+	Result               string                `json:"result,omitempty"`
+	TmuxWindow           string                `json:"tmux_window,omitempty"`
+	ProcessPID           int                   `json:"process_pid,omitempty"`
+	ProcessStartTime     uint64                `json:"process_start_time,omitempty"`
+	ObservedPID          int                   `json:"observed_pid,omitempty"`
+	ObservedStartTime    uint64                `json:"observed_start_time,omitempty"`
+	ProcessPane          string                `json:"process_pane,omitempty"`
+	Observation          string                `json:"observation,omitempty"`
+	ObservationAt        time.Time             `json:"observation_at,omitempty"`
+	ArchiveState         string                `json:"archive_state,omitempty"`
+	RecoveryDebt         string                `json:"recovery_debt,omitempty"`
 }
 
 // ExecutionArchive is an independently recoverable execution snapshot.
@@ -133,6 +140,29 @@ func validateExecution(execution Execution) error {
 func validateStoredExecution(execution Execution) error {
 	if err := validateExecutionID(execution.ID); err != nil {
 		return err
+	}
+	if execution.Provenance == ProvenanceExternal {
+		if err := validateCallerID(execution.CallerID); err != nil {
+			return err
+		}
+		if execution.Revision == 0 {
+			return newError(KindUsage, "external execution records require a revision", "Repair the execution with the state-only record command")
+		}
+		if execution.PredecessorID != "" {
+			if err := validateExecutionID(execution.PredecessorID); err != nil {
+				return err
+			}
+		}
+		for _, observation := range execution.ExternalObservations {
+			if err := validateExternalObservation(observation); err != nil {
+				return err
+			}
+		}
+		if execution.ExternalCompletion != nil {
+			if err := validateExternalCompletion(*execution.ExternalCompletion); err != nil {
+				return err
+			}
+		}
 	}
 	return validateExecutionReferences(execution, false)
 }

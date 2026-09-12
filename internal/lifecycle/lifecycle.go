@@ -216,7 +216,7 @@ func (m *Manager) RegisterRepository(name, path, policy string, worktreeRoots ..
 		return store.Repository{}, fmt.Errorf("repository path is not a Git worktree")
 	}
 	root, err = filepath.Abs(root)
-	if err != nil || root != abs {
+	if err != nil || !sameFilesystemPath(root, abs) {
 		return store.Repository{}, fmt.Errorf("repository path must be the Git worktree root")
 	}
 	if policy == "" {
@@ -336,7 +336,7 @@ func (m *Manager) validateRepositoryPath(path string) error {
 		return fmt.Errorf("repository path is not a Git worktree")
 	}
 	root, err = filepath.Abs(root)
-	if err != nil || root != path {
+	if err != nil || !sameFilesystemPath(root, path) {
 		return fmt.Errorf("repository path must be the Git worktree root")
 	}
 	return nil
@@ -869,6 +869,11 @@ func (m *Manager) ensureStarted(id string, manifest *store.Manifest) error {
 }
 
 func (m *Manager) Publish(id, condition, reason, activity string) (store.Manifest, error) {
+	if manifest, err := m.manifest(id); err != nil {
+		return store.Manifest{}, err
+	} else if manifest.Provenance == store.ProvenanceExternal {
+		return store.Manifest{}, externalRecordOperationError("task", id)
+	}
 	if !validCondition(condition) {
 		return store.Manifest{}, fmt.Errorf("condition must be active, waiting, blocked, failed, or none")
 	}
@@ -896,6 +901,11 @@ func (m *Manager) Finish(id, outcome, result string) (store.Manifest, error) {
 
 	if outcome != "succeeded" && outcome != "failed" {
 		return store.Manifest{}, fmt.Errorf("finish outcome must be succeeded or failed")
+	}
+	if manifest, err := m.manifest(id); err != nil {
+		return store.Manifest{}, err
+	} else if manifest.Provenance == store.ProvenanceExternal {
+		return store.Manifest{}, externalRecordOperationError("task", id)
 	}
 	observation, err := m.Tmux.Observe(id)
 	if err != nil {
@@ -945,6 +955,9 @@ func (m *Manager) Stop(id string) (store.Manifest, error) {
 	manifest, err := m.manifest(id)
 	if err != nil {
 		return store.Manifest{}, err
+	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return store.Manifest{}, externalRecordOperationError("task", id)
 	}
 	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
 		if syncErr := m.updateExecutionFromManifest(id, manifest); syncErr != nil {
@@ -1011,12 +1024,19 @@ func (m *Manager) ReconcileTask(taskID string) (store.Manifest, error) {
 }
 
 func (m *Manager) reconcileTask(taskID string) (store.Manifest, error) {
+	manifest, err := m.manifest(taskID)
+	if err != nil {
+		return store.Manifest{}, err
+	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return manifest, nil
+	}
 	observation, err := m.Tmux.Observe(taskID)
 	if err != nil {
 		return store.Manifest{}, err
 	}
 	var changed bool
-	manifest, err := m.Store.UpdateManifest(taskID, func(manifest *store.Manifest) error {
+	manifest, err = m.Store.UpdateManifest(taskID, func(manifest *store.Manifest) error {
 		beforeObservation, beforeLifecycle := manifest.Observation, manifest.Lifecycle
 		beforeGit := *manifest
 		legacyProcess := manifest.ProcessPID == 0 || manifest.ProcessStartTime == 0
@@ -1358,6 +1378,15 @@ func validBranch(branch string) bool {
 		return false
 	}
 	return regexp.MustCompile(`^[A-Za-z0-9._/-]+$`).MatchString(branch)
+}
+
+func sameFilesystemPath(left, right string) bool {
+	leftResolved, leftErr := filepath.EvalSymlinks(left)
+	rightResolved, rightErr := filepath.EvalSymlinks(right)
+	if leftErr != nil || rightErr != nil {
+		return filepath.Clean(left) == filepath.Clean(right)
+	}
+	return filepath.Clean(leftResolved) == filepath.Clean(rightResolved)
 }
 
 func within(path, root string) bool {

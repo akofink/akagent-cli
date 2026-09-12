@@ -65,6 +65,7 @@ func Run(args []string, stdout io.Writer) int {
 				"repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository <list|inspect|unregister>",
 				"task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>",
+				"task record <task|adopt|execution|observe|complete|archive> ...",
 				"task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]",
 				"task execution evidence <list|inspect> <task-id> <execution-id> [<capture-id>]",
 				"update [--source <path>]",

@@ -48,6 +48,9 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 	if err != nil {
 		return store.Manifest{}, err
 	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return store.Manifest{}, externalRecordOperationError("task", id)
+	}
 	if manifest.ArchiveState == archiveComplete {
 		if _, archiveErr := m.Store.ReadArchive(id); archiveErr == nil {
 			if syncErr := m.syncExecutionStates(id); syncErr != nil {
@@ -183,6 +186,9 @@ func (m *Manager) Clean(id string, options CleanupOptions) (store.Manifest, erro
 	manifest, err := m.manifest(id)
 	if err != nil {
 		return store.Manifest{}, err
+	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return store.Manifest{}, externalRecordOperationError("task", id)
 	}
 	if manifest.CleanupState == cleanupComplete &&
 		manifest.WorktreeCleanupState == cleanupComplete &&
@@ -351,6 +357,9 @@ func (m *Manager) CleanCredentials(id string, options CleanupOptions) (store.Man
 	manifest, err := m.manifest(id)
 	if err != nil {
 		return store.Manifest{}, err
+	}
+	if manifest.Provenance == store.ProvenanceExternal {
+		return store.Manifest{}, externalRecordOperationError("task", id)
 	}
 	if manifest.CredentialCleanupState == cleanupComplete {
 		return manifest, nil
