@@ -177,7 +177,8 @@ akagent credential <list|inspect|doctor|clean>
 akagent integration <inspect|launch>
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task <create|checkpoint|deploy|resource|execution|credential|launch|list|inspect|attach|publish|finish|stop|archive|clean|reconcile>
+akagent task checkpoint <write|inspect> <task-id> ...
 akagent task list [keyword] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
 akagent task inspect <task-id|keyword> [--format <toon|human>]
 akagent task resource <create|list|inspect|update|archive|clean>
@@ -189,6 +190,9 @@ akagent worker inspect
 Task creation validates credential requirements and persists a task manifest without creating a tmux window or starting a process.
 When `--repository` is supplied for compatibility, it also creates the initial legacy resource.
 A task with no repository starts with zero resources.
+`task checkpoint write` records a bounded, provider-neutral recovery handoff with an expected revision and idempotency key without invoking Git, tmux, a provider, or a network service.
+`task checkpoint inspect` reads that handoff independently from process and integration observations.
+See [recovery checkpoints](recovery-checkpoints.md) for the field contract and reboot-equivalent recovery drill.
 `task resource create` adds each immutable repository, branch, base, and worktree association and creates its Git worktree when needed.
 Worktree-policy tasks require an explicit descriptive branch, conventionally `akofink/<issue-or-ticket>-<2-3-word-description>`.
 Direct-policy tasks deliberately use the registered checkout's current branch when no branch is provided.

@@ -21,6 +21,7 @@ The store lives under the XDG state root for the `akagent` application:
 <root>/
   repositories/<name>.json
   tasks/<task-id>/manifest.json
+  tasks/<task-id>/checkpoint.json
   tasks/<task-id>/events/000001.json
   tasks/<task-id>/events/000002.json
   tasks/<task-id>/resources/<resource-id>/manifest.json
@@ -34,13 +35,15 @@ The store lives under the XDG state root for the `akagent` application:
 ```
 
 - `manifest.json` is the mutable task manifest, atomically replaced.
+- `checkpoint.json` is the authoritative revision-checked recovery checkpoint, atomically replaced under the task lock.
+It includes durable operation receipts and audit debt so an interrupted event can be repaired after later revisions.
 - `events/<sequence>.json` is an immutable task event record; sequences are 1-based and zero-padded.
 - Each resource has its own mutable manifest, event history, and archive under `resources/<resource-id>`.
 - Each execution has its own mutable manifest, event history, and archive under `executions/<execution-id>`.
 - Execution records contain tool-neutral command and observation metadata, not resource Git state.
 - Execution records may contain multiple non-secret session references with a tool identifier, session ID, and optional absolute local reference path.
 - `archive.json` is an atomically replaced snapshot of the corresponding task, resource, or execution manifest and event history.
-Task archives include resource and execution snapshots so delivery metadata and execution session references remain available with the task record.
+Task archives include the acknowledged checkpoint, resource snapshots, and execution snapshots so recovery intent, delivery metadata, and execution session references remain available after the live records change.
 - Resource and execution archives are independently recoverable and do not require sibling resource or execution cleanup.
 - `locks/<task-id>.lock` is the per-task advisory lock file, opened and locked by descriptor rather than by path.
 
@@ -137,7 +140,7 @@ The bounded wait is long enough for durable fsync-backed mutations, while caller
 `Recover` scans each valid task's directory under its per-task lock and:
 
 - Removes temporary files left behind by an interrupted write (names beginning `.akagent-write-`) with descriptor-relative `unlinkat`, never path-based `WalkDir`/`Remove`.
-- Validates the manifest, each event file, and any archive snapshot.
+- Validates the manifest, checkpoint when present, each event file, and any archive snapshot.
 - Reports malformed records in `RecoveryResult.MalformedRecords` without deleting them, so an operator can inspect before acting.
 - Reports tasks whose lock is contended in `RecoveryResult.SkippedLocked` and leaves them alone.
 

@@ -91,6 +91,12 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 	if err != nil {
 		return m.archiveFailure(id, manifest, err)
 	}
+	var checkpoint *store.Checkpoint
+	if value, checkpointErr := m.Store.ReadCheckpoint(id); checkpointErr == nil {
+		checkpoint = &value
+	} else if !store.IsKind(checkpointErr, store.KindNotFound) {
+		return m.archiveFailure(id, manifest, checkpointErr)
+	}
 	manifest, err = m.manifest(id)
 	if err != nil {
 		return m.archiveFailure(id, manifest, err)
@@ -109,6 +115,7 @@ func (m *Manager) archive(id string) (store.Manifest, error) {
 		TaskID:     id,
 		CapturedAt: time.Now().UTC(),
 		Manifest:   manifest,
+		Checkpoint: checkpoint,
 		Events:     events,
 		Resources:  resources,
 		Executions: executions,

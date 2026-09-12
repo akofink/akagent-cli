@@ -167,7 +167,7 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = resource
@@ -248,7 +248,7 @@ func (s *Store) AdoptExternalTask(taskID string, request ExternalTaskRequest) (M
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "task", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "task", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = manifest
@@ -377,7 +377,7 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = execution
@@ -581,7 +581,7 @@ func (s *Store) CompleteExternalTask(taskID, callerID, operationID, contract, re
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "complete", Outcome: "declared", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+		if err := s.appendRecordEventLocked(taskID, Event{Operation: "complete", Outcome: "declared", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		result = manifest
@@ -814,7 +814,7 @@ func (s *Store) ArchiveExternalTask(taskID, callerID, operationID string, expect
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
 			return err
 		}
-		if _, err := s.appendEventLocked(taskID, Event{Operation: "archive", Outcome: "recorded", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+		if err := s.appendRecordEventLocked(taskID, Event{Operation: "archive", Outcome: "recorded", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
 			return err
 		}
 		events, err := s.ReadEvents(taskID)
@@ -1281,7 +1281,7 @@ func (s *Store) ensureExternalTaskChildProjectionLocked(taskID, callerID, operat
 	if err := s.writeManifestLocked(taskID, manifest); err != nil {
 		return err
 	}
-	_, err = s.appendEventLocked(taskID, Event{Operation: operation, Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision})
+	err = s.appendRecordEventLocked(taskID, Event{Operation: operation, Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: manifest.Revision})
 	return err
 }
 
@@ -1342,6 +1342,14 @@ func eventHasReceipt(events []EventRecord, operationID, fingerprint string) bool
 	return false
 }
 
+func (s *Store) appendRecordEventLocked(taskID string, event Event) error {
+	next, err := s.nextSequence(taskID)
+	if err != nil {
+		return err
+	}
+	return s.appendEventLocked(taskID, next, event)
+}
+
 func (s *Store) ensureTaskRecordEventLocked(taskID, operationID, fingerprint string, revision uint64) error {
 	events, err := s.ReadEvents(taskID)
 	if err != nil {
@@ -1350,7 +1358,7 @@ func (s *Store) ensureTaskRecordEventLocked(taskID, operationID, fingerprint str
 	if eventHasReceipt(events, operationID, fingerprint) {
 		return nil
 	}
-	_, err = s.appendEventLocked(taskID, Event{Operation: "record_repair", Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: revision})
+	err = s.appendRecordEventLocked(taskID, Event{Operation: "record_repair", Outcome: "repaired", OperationID: operationID, Fingerprint: fingerprint, Revision: revision})
 	return err
 }
 
