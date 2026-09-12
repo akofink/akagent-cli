@@ -2,10 +2,11 @@
 
 ## Thesis
 
-Standardize task identity, lifecycle operations, durable records, and recovery behavior.
+Standardize task identity, durable records, typed observations, and recovery behavior.
 Do not make unlike execution environments appear identical.
 
-The current system is a local self-service task boundary with a stable CLI protocol.
+The accepted target is a local-first, record-only task boundary with a stable CLI protocol.
+The current system also ships local orchestration for compatibility, but that side-effect authority is transitional.
 
 ## One executable and current surfaces
 
@@ -36,6 +37,8 @@ The removed `task start` shortcut is rejected with migration guidance.
 
 ## Components
 
+The following descriptions distinguish current shipped behavior from the accepted target.
+
 ### CLI layer
 
 The CLI:
@@ -51,7 +54,7 @@ The first release has one implicit local worker.
 
 ### Lifecycle layer
 
-The lifecycle layer owns:
+The current lifecycle layer owns:
 
 - Task records and event history.
 - Independently recoverable resource records, Git facts, provider-neutral delivery metadata, archives, cleanup state, and recovery debt.
@@ -63,6 +66,10 @@ The lifecycle layer owns:
 - Durable condition publication and heartbeat refresh.
 - Process and Git reconciliation.
 - Archive capture and cleanup-preservation policy.
+
+These local side effects are shipped but transitional.
+The target lifecycle core keeps the records, transitions, observations, references, archives, and protocol output while external tools and skills perform side effects that remain needed and submit their facts.
+Optional local or provider adapters may provide convenience integrations, but the core has no dependency on them or on feature-parity replacements for retired capabilities.
 
 The lifecycle exposes approval-gated worktree and credential cleanup hooks.
 The worktree hook validates ownership before removal, direct repositories are never removed, and credential cleanup never rewrites the credential manifest.
@@ -127,6 +134,8 @@ Deployment execution state remains independent from resource cleanup and task ar
 
 Shell helpers, LLM hooks, plugins, and installable skills are optional adapters.
 They must invoke the CLI, request small field sets, preserve structured errors, and never write the task store directly.
+In the accepted target, external tools and skills own process, tmux, Git/worktree, credential, and deployment side effects that remain needed, while optional provider adapters may provide provider policy and session discovery.
+The core accepts typed observations from any of these callers and never treats an absent tool or adapter as proof that work completed.
 
 Optional automated integrations are enabled unless `AKAGENT_ENABLED=0` is present.
 The optional provider-neutral `integration launch` entry point checks the compatibility signal before opening the state store, records a generic workflow execution, and delegates startup to the lifecycle.
@@ -139,6 +148,9 @@ Forge and provider-specific behavior remains outside the core lifecycle.
 Task records should survive loss of the operator process and terminal attachment when the worker filesystem survives.
 Uncommitted work should survive process failure and ordinary stop operations.
 Worker replacement preserves nothing unless Git state and declared artifacts have been copied to durable external storage.
+A same-machine reboot can recover accepted unfinished work from surviving records and checkpoint references, but only an adapter can verify a replacement process.
+Disk loss and cross-machine synchronization are outside the local store.
+Provider session recovery is best effort and depends on provider-owned references.
 
 Terminal disconnects, stale PIDs, PID reuse, duplicate starts, partial setup, disk exhaustion, credential expiration, cleanup races, and false idle detection are expected conditions.
 
@@ -147,3 +159,9 @@ Terminal disconnects, stale PIDs, PID reuse, duplicate starts, partial setup, di
 - Automatic worker placement.
 - Multi-tenant security isolation.
 - A web dashboard.
+- Cross-machine synchronization in the local store.
+- Exact process restoration after reboot.
+- Provider transcript indexing or private context persistence.
+
+Orchestration removal is a planned migration, not a current behavioral change.
+The finite exit criteria and removed-command behavior are defined in [`charter.md`](charter.md).
