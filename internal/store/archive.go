@@ -18,6 +18,11 @@ func (s *Store) WriteArchive(taskID string, archive TaskArchive) error {
 	if archive.CapturedAt.IsZero() {
 		return newError(KindUsage, "Archive capture time is required", "Retry archive")
 	}
+	if archive.Checkpoint != nil {
+		if err := validateStoredCheckpoint(*archive.Checkpoint, taskID); err != nil {
+			return newError(KindUsage, "Task archive contains an invalid checkpoint snapshot", "Retry archive with valid checkpoint state")
+		}
+	}
 	for _, execution := range archive.Executions {
 		if execution.TaskID != taskID || validateStoredExecution(execution) != nil {
 			return newError(KindUsage, "Task archive contains an invalid execution snapshot", "Retry archive with valid execution state")
@@ -64,6 +69,11 @@ func (s *Store) ReadArchive(taskID string) (TaskArchive, error) {
 			fmt.Sprintf("Malformed archive for task %s", taskID),
 			fmt.Sprintf("Inspect and repair %s", s.archivePath(taskID)))
 	}
+	if archive.Checkpoint != nil && validateStoredCheckpoint(*archive.Checkpoint, taskID) != nil {
+		return TaskArchive{}, malformedError(
+			fmt.Sprintf("Malformed checkpoint snapshot in archive for task %s", taskID),
+			fmt.Sprintf("Inspect and repair %s", s.archivePath(taskID)))
+	}
 	for _, resource := range archive.Resources {
 		if resource.TaskID != taskID || validateResource(resource) != nil {
 			return TaskArchive{}, malformedError(
@@ -97,6 +107,10 @@ func (s *Store) validateArchiveForRecovery(taskID string, result *RecoveryResult
 	}
 	archive, err := envelope.DecodeArchive()
 	if err != nil || archive.TaskID != taskID || archive.CapturedAt.IsZero() {
+		result.MalformedRecords = append(result.MalformedRecords, path)
+		return nil
+	}
+	if archive.Checkpoint != nil && validateStoredCheckpoint(*archive.Checkpoint, taskID) != nil {
 		result.MalformedRecords = append(result.MalformedRecords, path)
 		return nil
 	}
