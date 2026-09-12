@@ -16,27 +16,48 @@ const (
 	KindResourceArchive  = "resource_archive"
 )
 
+// ProvenanceExternal marks a caller-declared record that must never be used
+// as proof of local Git ownership by legacy cleanup paths.
+const ProvenanceExternal = "external"
+
+// ExternalResourceObservation preserves caller-declared binding facts when an
+// external resource advances to a new revision.
+type ExternalResourceObservation struct {
+	CallerID     string    `json:"caller_id"`
+	ObservedAt   time.Time `json:"observed_at"`
+	Repository   string    `json:"repository"`
+	Branch       string    `json:"branch"`
+	BaseRevision string    `json:"base_revision"`
+	WorktreePath string    `json:"worktree_path"`
+	Head         string    `json:"head"`
+}
+
 // Resource is one repository, branch, and worktree association owned by a
 // task. Git ownership inputs are immutable while delivery metadata is mutable.
 // Its Git, archive, cleanup, and recovery observations are separate from both
 // the task and every other resource.
 type Resource struct {
-	ID                     string            `json:"id"`
-	TaskID                 string            `json:"task_id"`
-	Repository             string            `json:"repository"`
-	Branch                 string            `json:"branch,omitempty"`
-	BaseRevision           string            `json:"base_revision,omitempty"`
-	WorktreeBaseRevision   string            `json:"worktree_base_revision,omitempty"`
-	WorktreePath           string            `json:"worktree_path,omitempty"`
-	Metadata               map[string]string `json:"metadata,omitempty"`
-	ExternalURLs           []string          `json:"external_urls,omitempty"`
-	Git                    GitFacts          `json:"git,omitempty"`
-	RecoveryDebt           string            `json:"recovery_debt,omitempty"`
-	ArchiveState           string            `json:"archive_state,omitempty"`
-	CleanupState           string            `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState   string            `json:"worktree_cleanup_state,omitempty"`
-	CredentialCleanupState string            `json:"credential_cleanup_state,omitempty"`
-	CleanupDebt            bool              `json:"cleanup_debt,omitempty"`
+	ID                     string                        `json:"id"`
+	TaskID                 string                        `json:"task_id"`
+	Provenance             string                        `json:"provenance,omitempty"`
+	CallerID               string                        `json:"caller_id,omitempty"`
+	Revision               uint64                        `json:"revision,omitempty"`
+	ObservationHistory     []ExternalResourceObservation `json:"observation_history,omitempty"`
+	Receipts               []RecordReceipt               `json:"receipts,omitempty"`
+	Repository             string                        `json:"repository"`
+	Branch                 string                        `json:"branch,omitempty"`
+	BaseRevision           string                        `json:"base_revision,omitempty"`
+	WorktreeBaseRevision   string                        `json:"worktree_base_revision,omitempty"`
+	WorktreePath           string                        `json:"worktree_path,omitempty"`
+	Metadata               map[string]string             `json:"metadata,omitempty"`
+	ExternalURLs           []string                      `json:"external_urls,omitempty"`
+	Git                    GitFacts                      `json:"git,omitempty"`
+	RecoveryDebt           string                        `json:"recovery_debt,omitempty"`
+	ArchiveState           string                        `json:"archive_state,omitempty"`
+	CleanupState           string                        `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string                        `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string                        `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool                          `json:"cleanup_debt,omitempty"`
 }
 
 // ResourceArchive is an independently recoverable snapshot of one resource.
@@ -383,12 +404,34 @@ func validateResource(resource Resource) error {
 	if err := validateResourceID(resource.ID); err != nil {
 		return err
 	}
+	if resource.Provenance == ProvenanceExternal {
+		if err := validateCallerID(resource.CallerID); err != nil {
+			return err
+		}
+		if resource.Revision == 0 || !filepath.IsAbs(resource.WorktreePath) || strings.ContainsAny(resource.WorktreePath, "\r\n\x00") || len(resource.WorktreePath) > 4096 {
+			return newError(KindUsage, "external resource records require a bounded absolute referenced worktree and revision", "Repair the external binding with the state-only record command")
+		}
+		if len(resource.ObservationHistory) > externalHistoryLimit {
+			return newError(KindUsage, "external resource observation history is too large", "Repair the external resource history within its bound")
+		}
+		for _, observation := range resource.ObservationHistory {
+			if err := validateCallerID(observation.CallerID); err != nil || observation.ObservedAt.IsZero() || len(observation.WorktreePath) > 4096 || strings.ContainsAny(observation.Repository+observation.Branch+observation.BaseRevision+observation.WorktreePath+observation.Head, "\r\n\x00") {
+				return newError(KindUsage, "external resource observation history is invalid", "Inspect and repair the external resource record")
+			}
+		}
+		if err := validateReceipts(resource.Receipts); err != nil {
+			return err
+		}
+	}
 	if resource.TaskID != "" && !taskIDPattern.MatchString(resource.TaskID) {
 		return newError(KindUsage, "Resource task ID is invalid", "Retry with the owning task ID")
 	}
+	if len(resource.Metadata) > 64 {
+		return newError(KindUsage, "Resource metadata has too many entries", "Repair the resource with at most 64 metadata entries")
+	}
 	for key, value := range resource.Metadata {
-		if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n") || strings.ContainsAny(value, "\r\n") {
-			return newError(KindUsage, "Resource metadata keys and values must be non-empty single lines", "Retry with non-secret single-line metadata")
+		if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n\x00") || len(key) > 256 || strings.ContainsAny(value, "\r\n\x00") || len(value) > 4096 {
+			return newError(KindUsage, "Resource metadata keys and values must be bounded single lines", "Retry with bounded non-secret metadata")
 		}
 	}
 	for _, reference := range resource.ExternalURLs {
