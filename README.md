@@ -1,8 +1,8 @@
 # akagent
 
-`akagent` is a Local-first orchestration protocol and CLI for coding agents.
-Agents invoke it directly during ordinary coding work to preserve durable task identity, structured state, reconciliation, and recovery around local Git worktrees.
-Tmux provides interactive visibility and recovery, while the `akagent` CLI is the durable source of truth.
+`akagent` is a local-first durable registry protocol and CLI for coding agents.
+Agents invoke it directly during ordinary coding work to preserve durable task identity, structured observations, reconciliation, and recovery around local work.
+Tmux, Git, and providers remain local interaction surfaces today, while the `akagent` CLI is the durable source of truth.
 
 The installed binary is `akagent`.
 `aka` may be configured as an optional shell alias, but it is not a second binary or protocol entry point.
@@ -12,6 +12,9 @@ The installed binary is `akagent`.
 The repository provides the protocol foundation and the initial local task lifecycle.
 Task, resource, and execution manifests and append-only events are durable state.
 Coding agents create, inspect, update, reconcile, and archive that state themselves through the CLI.
+The current local launch, Git, tmux, credential, and deployment behavior is shipped but transitional compatibility behavior.
+The accepted target is a record-only core that accepts typed observations while external tools and skills own side effects that remain needed.
+Optional local or provider adapters are convenience integrations, not required dependencies or feature-parity replacements.
 Tmux is an observed interaction surface for visibility, attachment, and recovery, not the durable state store.
 
 Current commands:
@@ -50,7 +53,8 @@ akagent task publish <task-id> --condition active --activity "running tests"
 akagent task reconcile <task-id>
 ```
 
-No parent orchestrator, launch adapter, or daemon is required.
+No parent orchestrator, launch adapter, or daemon is required for the current direct workflow.
+The migration target does not make any of those components a core prerequisite either.
 
 Registration requires the root of an existing Git checkout.
 The default repository policy creates an isolated branch and Git worktree for each task.
@@ -186,13 +190,19 @@ It supports macOS and Linux.
 
 Automatic update on every invocation remains intentionally deferred because ordinary commands should not unexpectedly require network access or mutate source.
 
-## Direction
+## Direction and migration
 
-The current CLI remains local-first: it uses the registered checkout, Git worktrees, and tmux on the invoking machine.
-The next priority is skill-guided adoption so coding agents use the self-service lifecycle during ordinary implementation, review, and recovery work.
+The accepted direction is a durable record-only core for task, resource, and execution identity, typed observations, checkpoint references, events, archive history, recovery debt, delivery metadata, and protocol output.
+The current local launch, stop, attach, Git/worktree, credential, tmux, and deployment paths remain shipped compatibility behavior while external tools and skills take ownership of side effects that remain needed.
+Optional adapters can provide convenience, but migration does not require recreating every deprecated capability.
+The migration is finite: record-only adoption, independent in-flight and maintenance views, crash-safe checkpoints and same-machine reboot recovery, adapter migration, then removal of orchestration from the core.
+Legacy manifests and archives remain readable throughout the migration.
+Once the exit criteria in [`docs/charter.md`](docs/charter.md) are met, removed orchestration commands return structured migration guidance rather than silently retaining compatibility wrappers in core.
+The guidance points to direct tools or skills, or to an optional adapter when one exists.
+The next priority is durable adoption and reboot recovery, followed by orchestration removal and skill rollout.
 Forge and provider-specific delivery behavior remains outside the core lifecycle and is recorded only through provider-neutral metadata and session references.
-A daemon, remote scheduler, or launch adapter is intentionally outside the normal workflow.
-Tracked follow-ups are broader skill guidance and work-specific secrets and deployment behavior.
+A daemon, remote scheduler, or launch adapter is not required for the current workflow or the target core.
+Direct tools and skills remain valid replacements, and optional adapters are not a required migration deliverable.
 
 ## Design documentation
 

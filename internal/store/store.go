@@ -216,6 +216,39 @@ func (s *Store) AppendEvent(taskID string, event Event) (int, error) {
 	return sequence, err
 }
 
+// AppendEventIfAbsent appends event once while holding the task lock.
+// Matching includes the revision so a later A -> B -> A transition cannot
+// reuse the audit event from the earlier A revision during repair.
+func (s *Store) AppendEventIfAbsent(taskID string, event Event) (int, bool, error) {
+	if err := validateTaskID(taskID); err != nil {
+		return 0, false, err
+	}
+	var sequence int
+	appended := false
+	err := s.WithLock(taskID, func() error {
+		events, err := s.ReadEvents(taskID)
+		if err != nil {
+			return err
+		}
+		for _, record := range events {
+			if record.Event == event {
+				return nil
+			}
+		}
+		next, err := s.nextSequence(taskID)
+		if err != nil {
+			return err
+		}
+		if err := s.appendEventLocked(taskID, next, event); err != nil {
+			return err
+		}
+		sequence = next
+		appended = true
+		return nil
+	})
+	return sequence, appended, err
+}
+
 // ReadEvents returns the task's events in sequence order. A task with no
 // events yields an empty slice. Event file names must form a contiguous,
 // zero-padded sequence starting at 1; malformed history is reported rather

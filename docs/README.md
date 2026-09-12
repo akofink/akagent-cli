@@ -1,12 +1,12 @@
 # akagent documentation
 
-`akagent` is a local-first orchestration protocol and CLI for coding agents.
-An agent invokes the CLI directly during ordinary coding work to create task state, update durable status, and record recovery and delivery facts.
-Git worktrees remain the implementation boundary, while tmux provides visibility and recovery rather than durable state.
+`akagent` is a local-first durable registry protocol and CLI for coding agents.
+An agent invokes the CLI directly during ordinary coding work to create task state, update durable status, and record observations, recovery, and delivery facts.
+Git worktrees and tmux remain current local interaction surfaces, while the CLI provides durable state.
 
 Use the [quick start](quick-start.md) for installation and the self-service task lifecycle.
 Use the [agent integration guide](agent-integration.md) for progressive disclosure, a generic `AGENTS.md` template, and a reusable lifecycle skill.
-This page is the project charter and indexes the design documentation and current decisions.
+This page is the project charter index and distinguishes shipped compatibility behavior from the accepted record-only target.
 
 The installed binary is `akagent`.
 `aka` is an optional interactive shell alias and is not a second protocol entry point.
@@ -20,8 +20,9 @@ The installed binary is `akagent`.
 
 ## Normal agent workflow
 
-The coding agent is the owner of its local lifecycle.
+The coding agent is the owner of its durable local records.
 It uses `akagent` as a self-service protocol instead of handing state to a parent orchestrator.
+The current CLI can still perform local orchestration, but those side effects are shipped transitional compatibility behavior.
 
 1. Register the checkout once and create a durable task with the requested branch and worktree facts.
 2. Create or select resources and executions from the task context.
@@ -35,8 +36,8 @@ Tmux windows and process inspection make active work visible and attachable.
 
 ## Documents
 
-- [`architecture.md`](architecture.md) defines current components, ownership, persistence, integrations, discovery, and explicit non-goals.
-- [`charter.md`](charter.md) proposes a narrower durable protocol boundary and an incremental migration away from core orchestration.
+- [`architecture.md`](architecture.md) defines current components, target ownership, persistence, integrations, recovery, and explicit non-goals.
+- [`charter.md`](charter.md) defines the accepted durable registry boundary, compatibility matrix, and finite migration exit criteria.
 - [`protocol.md`](protocol.md) defines worker and task resources, state, lifecycle, TOON output, errors, compatibility, and reconciliation.
 - [`task-cli.md`](task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
 - [`credentials.md`](credentials.md) defines local credential sources, requirements, validation, and current limitations.
@@ -74,14 +75,15 @@ The generated `_site/` directory is disposable and should not be committed.
 
 1. Use one executable that coding agents invoke directly during ordinary work.
 2. Keep the CLI as the permanent boundary for humans, agents, skills, and optional provider integrations.
-3. Make task, resource, and execution lifecycle self-service, durable, inspectable, and recoverable.
+3. Make task, resource, and execution identity, observations, checkpoints, events, archive history, and recovery self-service, durable, inspectable, and recoverable.
 4. Use tmux for interactive visibility and recovery, never as the durable source of truth.
-5. Keep one implicit local worker and local Git worktree boundaries.
-6. Keep infrastructure provisioning, launch adapters, and daemon processes outside the protocol.
-7. Use TOON for agent-consumed stdout and treat token use as an interface constraint.
-8. Keep worker-local durable task records and derive status from reconciled observations.
-9. Keep application source and releases in this repository while allowing an external installer to install the binary.
-10. Source credentials locally, validate named requirements, and never expose credential values.
+5. Keep one implicit local worker and local Git worktree boundaries during the transition.
+6. Treat current launch, stop, attach, Git/worktree, credential, and deployment behavior as shipped but transitional compatibility behavior.
+7. Move those side effects outside core to direct tools and skills, with optional adapters for convenience, and remove them from core after the finite charter exit criteria pass.
+8. Use TOON for agent-consumed stdout and treat token use as an interface constraint.
+9. Keep worker-local durable records and derive status from reconciled observations.
+10. Keep application source and releases in this repository while allowing an external installer to install the binary.
+11. Source credentials locally, validate named requirements, and never expose credential values.
 
 ## Design constraints
 
@@ -99,17 +101,18 @@ The generated `_site/` directory is disposable and should not be committed.
 ## Current local boundary
 
 The current CLI registers local Git repositories, records state-only task intent, creates independently recoverable resources and isolated worktrees under the `worktree` policy, and keeps resource creation separate from execution.
+This is the shipped transitional implementation; the target core records Git facts and accepts observations from direct tools, skills, or optional adapters without owning Git mutation.
 
 A task can use an explicit detached shell execution for direct work or the optional Pi integration selected with `--target pi`.
 Both paths use the generic execution primitives, while task and resource creation remain independent of Pi availability.
 One execution can coordinate multiple task resources by selecting a resource worktree.
-No launch adapter or daemon is required to use these primitives.
+No launch adapter or daemon is required to use these primitives today, and none is a prerequisite for the target core.
 
 It supports inspection, durable condition publication, safe verified attachment, stop, finish, reconciliation, archive, and cleanup-state tracking.
 Worktree cleanup requires explicit approval and validates durable ownership before removal.
 Credential cleanup is an independent approval-gated hook with durable retry state.
 
-## Rejected initial approaches
+## Rejected prerequisites and target boundary
 
 ### Tmux as the database
 
@@ -121,6 +124,7 @@ The CLI records the task, resource, execution, session, delivery, Git, and recon
 
 A local coding agent should not need a resident daemon, remote scheduler, or launch adapter to use the protocol.
 The agent calls `akagent` directly, and optional integrations remain replaceable callers of the same CLI boundary.
+The target does not remove optional adapters from the ecosystem; it removes side-effect authority from the core and does not require an adapter for every retired capability.
 
 ### One opaque secret bundle
 

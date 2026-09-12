@@ -63,6 +63,9 @@ type Manifest struct {
 	Requirements           string        `json:"requirements,omitempty"`
 	Warnings               string        `json:"warnings,omitempty"`
 	Result                 string        `json:"result,omitempty"`
+	Disposition            string        `json:"disposition,omitempty"`
+	DispositionReason      string        `json:"disposition_reason,omitempty"`
+	DispositionRevision    uint64        `json:"disposition_revision,omitempty"`
 	Committed              bool          `json:"committed,omitempty"`
 	Dirty                  bool          `json:"dirty,omitempty"`
 	Untracked              bool          `json:"untracked,omitempty"`
@@ -101,6 +104,7 @@ type Event struct {
 	Operation string `json:"operation"`
 	Outcome   string `json:"outcome,omitempty"`
 	Detail    string `json:"detail,omitempty"`
+	Revision  uint64 `json:"revision,omitempty"`
 }
 
 // EventRecord is a durable event together with its sequence and observation
