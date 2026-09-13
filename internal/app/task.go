@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +13,58 @@ import (
 	"github.com/akofink/akagent-cli/internal/store"
 	"github.com/google/uuid"
 )
+
+type externalObservationView struct {
+	Source       string    `json:"source"`
+	ObservedAt   time.Time `json:"observed_at"`
+	HostID       string    `json:"host_id"`
+	BootID       string    `json:"boot_id"`
+	ProcessState string    `json:"process_state,omitempty"`
+	Result       string    `json:"result,omitempty"`
+	Detail       string    `json:"detail,omitempty"`
+}
+
+type externalCompletionView struct {
+	Contract   string    `json:"contract"`
+	Result     string    `json:"result"`
+	CallerID   string    `json:"caller_id"`
+	DeclaredAt time.Time `json:"declared_at"`
+}
+
+func viewExternalObservation(observation store.ExternalObservation) externalObservationView {
+	return externalObservationView{
+		Source:       observation.Source,
+		ObservedAt:   observation.ObservedAt,
+		HostID:       observation.HostID,
+		BootID:       observation.BootID,
+		ProcessState: observation.ProcessState,
+		Result:       observation.Result,
+		Detail:       observation.Detail,
+	}
+}
+
+func viewExternalObservations(observations []store.ExternalObservation) []externalObservationView {
+	if len(observations) == 0 {
+		return nil
+	}
+	views := make([]externalObservationView, 0, len(observations))
+	for _, observation := range observations {
+		views = append(views, viewExternalObservation(observation))
+	}
+	return views
+}
+
+func viewExternalCompletion(completion *store.ExternalCompletion) *externalCompletionView {
+	if completion == nil {
+		return nil
+	}
+	return &externalCompletionView{
+		Contract:   completion.Contract,
+		Result:     completion.Result,
+		CallerID:   completion.CallerID,
+		DeclaredAt: completion.DeclaredAt,
+	}
+}
 
 type resourceView struct {
 	ID                     string            `json:"id"`
@@ -39,26 +90,26 @@ type resourceView struct {
 }
 
 type resourceListItem struct {
-	ID                     string `json:"id"`
-	Provenance             string `json:"provenance,omitempty"`
-	CallerID               string `json:"caller_id,omitempty"`
-	Revision               uint64 `json:"revision,omitempty"`
-	Repository             string `json:"repository"`
-	Branch                 string `json:"branch,omitempty"`
-	BaseRevision           string `json:"base_revision,omitempty"`
-	WorktreePath           string `json:"worktree_path,omitempty"`
-	Head                   string `json:"head,omitempty"`
-	Committed              bool   `json:"committed"`
-	Dirty                  bool   `json:"dirty"`
-	Untracked              bool   `json:"untracked"`
-	RecoveryDebt           string `json:"recovery_debt,omitempty"`
-	ArchiveState           string `json:"archive_state,omitempty"`
-	CleanupState           string `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState   string `json:"worktree_cleanup_state,omitempty"`
-	CredentialCleanupState string `json:"credential_cleanup_state,omitempty"`
-	CleanupDebt            bool   `json:"cleanup_debt,omitempty"`
-	Metadata               string `json:"metadata,omitempty"`
-	ExternalURLs           string `json:"external_urls,omitempty"`
+	ID                     string            `json:"id"`
+	Provenance             string            `json:"provenance,omitempty"`
+	CallerID               string            `json:"caller_id,omitempty"`
+	Revision               uint64            `json:"revision,omitempty"`
+	Repository             string            `json:"repository"`
+	Branch                 string            `json:"branch,omitempty"`
+	BaseRevision           string            `json:"base_revision,omitempty"`
+	WorktreePath           string            `json:"worktree_path,omitempty"`
+	Head                   string            `json:"head,omitempty"`
+	Committed              bool              `json:"committed"`
+	Dirty                  bool              `json:"dirty"`
+	Untracked              bool              `json:"untracked"`
+	RecoveryDebt           string            `json:"recovery_debt,omitempty"`
+	ArchiveState           string            `json:"archive_state,omitempty"`
+	CleanupState           string            `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string            `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string            `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool              `json:"cleanup_debt,omitempty"`
+	Metadata               map[string]string `json:"metadata,omitempty"`
+	ExternalURLs           []string          `json:"external_urls,omitempty"`
 }
 
 type resourceListView struct {
@@ -76,31 +127,31 @@ type sessionReferenceView struct {
 }
 
 type executionView struct {
-	ID                   string                      `json:"id"`
-	Provenance           string                      `json:"provenance,omitempty"`
-	CallerID             string                      `json:"caller_id,omitempty"`
-	Revision             uint64                      `json:"revision,omitempty"`
-	PredecessorID        string                      `json:"predecessor_id,omitempty"`
-	ExternalObservations []store.ExternalObservation `json:"external_observations,omitempty"`
-	ExternalCompletion   *store.ExternalCompletion   `json:"external_completion,omitempty"`
-	TaskID               string                      `json:"task_id"`
-	Label                string                      `json:"label"`
-	Target               string                      `json:"target"`
-	Command              string                      `json:"command,omitempty"`
-	Requirements         string                      `json:"requirements,omitempty"`
-	ResourceID           string                      `json:"resource_id,omitempty"`
-	WorkingDirectory     string                      `json:"working_directory,omitempty"`
-	Status               string                      `json:"status"`
-	Condition            string                      `json:"condition,omitempty"`
-	Reason               string                      `json:"reason,omitempty"`
-	Activity             string                      `json:"activity,omitempty"`
-	Result               string                      `json:"result,omitempty"`
-	TmuxWindow           string                      `json:"tmux_window,omitempty"`
-	ProcessPID           int                         `json:"process_pid,omitempty"`
-	Observation          string                      `json:"observation,omitempty"`
-	RecoveryDebt         string                      `json:"recovery_debt,omitempty"`
-	ArchiveState         string                      `json:"archive_state,omitempty"`
-	SessionReferences    string                      `json:"session_references,omitempty"`
+	ID                   string                    `json:"id"`
+	Provenance           string                    `json:"provenance,omitempty"`
+	CallerID             string                    `json:"caller_id,omitempty"`
+	Revision             uint64                    `json:"revision,omitempty"`
+	PredecessorID        string                    `json:"predecessor_id,omitempty"`
+	ExternalObservations []externalObservationView `json:"external_observations,omitempty"`
+	ExternalCompletion   *externalCompletionView   `json:"external_completion,omitempty"`
+	TaskID               string                    `json:"task_id"`
+	Label                string                    `json:"label"`
+	Target               string                    `json:"target"`
+	Command              string                    `json:"command,omitempty"`
+	Requirements         string                    `json:"requirements,omitempty"`
+	ResourceID           string                    `json:"resource_id,omitempty"`
+	WorkingDirectory     string                    `json:"working_directory,omitempty"`
+	Status               string                    `json:"status"`
+	Condition            string                    `json:"condition,omitempty"`
+	Reason               string                    `json:"reason,omitempty"`
+	Activity             string                    `json:"activity,omitempty"`
+	Result               string                    `json:"result,omitempty"`
+	TmuxWindow           string                    `json:"tmux_window,omitempty"`
+	ProcessPID           int                       `json:"process_pid,omitempty"`
+	Observation          string                    `json:"observation,omitempty"`
+	RecoveryDebt         string                    `json:"recovery_debt,omitempty"`
+	ArchiveState         string                    `json:"archive_state,omitempty"`
+	SessionReferences    []sessionReferenceView    `json:"session_references,omitempty"`
 }
 
 type executionListView struct {
@@ -145,14 +196,14 @@ type executionEvidenceSummaryView struct {
 }
 
 type executionEvidenceListItem struct {
-	CaptureID         string `json:"capture_id"`
-	SourceKind        string `json:"source_kind"`
-	Provider          string `json:"provider"`
-	ProviderSessionID string `json:"provider_session_id"`
-	State             string `json:"state"`
-	EvidenceClass     string `json:"evidence_class"`
-	Coverage          string `json:"coverage"`
-	RetentionClass    string `json:"retention_class"`
+	CaptureID         string   `json:"capture_id"`
+	SourceKind        string   `json:"source_kind"`
+	Provider          string   `json:"provider"`
+	ProviderSessionID string   `json:"provider_session_id"`
+	State             string   `json:"state"`
+	EvidenceClass     string   `json:"evidence_class"`
+	Coverage          []string `json:"coverage"`
+	RetentionClass    string   `json:"retention_class"`
 }
 
 type executionEvidenceListView struct {
@@ -162,20 +213,20 @@ type executionEvidenceListView struct {
 }
 
 type executionEvidenceDetailItem struct {
-	CaptureID         string `json:"capture_id"`
-	ExecutionID       string `json:"execution_id"`
-	SourceKind        string `json:"source_kind"`
-	Provider          string `json:"provider"`
-	ProviderSessionID string `json:"provider_session_id"`
-	State             string `json:"state"`
-	EvidenceClass     string `json:"evidence_class"`
-	Coverage          string `json:"coverage"`
-	ArtifactReference string `json:"artifact_reference,omitempty"`
-	ArtifactState     string `json:"artifact_state"`
-	RedactionPolicy   string `json:"redaction_policy"`
-	RetentionClass    string `json:"retention_class"`
-	ErrorCategory     string `json:"error_category,omitempty"`
-	Recovery          string `json:"recovery,omitempty"`
+	CaptureID         string   `json:"capture_id"`
+	ExecutionID       string   `json:"execution_id"`
+	SourceKind        string   `json:"source_kind"`
+	Provider          string   `json:"provider"`
+	ProviderSessionID string   `json:"provider_session_id"`
+	State             string   `json:"state"`
+	EvidenceClass     string   `json:"evidence_class"`
+	Coverage          []string `json:"coverage"`
+	ArtifactReference string   `json:"artifact_reference,omitempty"`
+	ArtifactState     string   `json:"artifact_state"`
+	RedactionPolicy   string   `json:"redaction_policy"`
+	RetentionClass    string   `json:"retention_class"`
+	ErrorCategory     string   `json:"error_category,omitempty"`
+	Recovery          string   `json:"recovery,omitempty"`
 }
 
 type executionEvidenceDetailView struct {
@@ -183,39 +234,39 @@ type executionEvidenceDetailView struct {
 }
 
 type taskView struct {
-	ID                     string                    `json:"id"`
-	Provenance             string                    `json:"provenance,omitempty"`
-	CallerID               string                    `json:"caller_id,omitempty"`
-	Revision               uint64                    `json:"revision,omitempty"`
-	ExternalCompletion     *store.ExternalCompletion `json:"external_completion,omitempty"`
-	Title                  string                    `json:"title"`
-	Status                 string                    `json:"status"`
-	Worker                 string                    `json:"worker"`
-	Branch                 string                    `json:"branch,omitempty"`
-	BaseRevision           string                    `json:"base_revision,omitempty"`
-	WorktreePath           string                    `json:"worktree_path,omitempty"`
-	Condition              string                    `json:"condition,omitempty"`
-	Reason                 string                    `json:"reason,omitempty"`
-	Activity               string                    `json:"activity,omitempty"`
-	Result                 string                    `json:"result,omitempty"`
-	Disposition            string                    `json:"disposition,omitempty"`
-	DispositionReason      string                    `json:"disposition_reason,omitempty"`
-	DispositionRevision    uint64                    `json:"disposition_revision,omitempty"`
-	Committed              bool                      `json:"committed"`
-	Dirty                  bool                      `json:"dirty"`
-	Untracked              bool                      `json:"untracked"`
-	RecoveryDebt           string                    `json:"recovery_debt,omitempty"`
-	Warnings               string                    `json:"warnings,omitempty"`
-	ArchiveState           string                    `json:"archive_state,omitempty"`
-	CleanupState           string                    `json:"cleanup_state,omitempty"`
-	WorktreeCleanupState   string                    `json:"worktree_cleanup_state,omitempty"`
-	CredentialCleanupState string                    `json:"credential_cleanup_state,omitempty"`
-	CleanupDebt            bool                      `json:"cleanup_debt,omitempty"`
-	Agent                  string                    `json:"agent,omitempty"`
-	AgentCommand           string                    `json:"agent_command,omitempty"`
-	PromptReference        string                    `json:"prompt_reference,omitempty"`
-	WorkingContext         string                    `json:"working_context,omitempty"`
-	Execution              string                    `json:"execution,omitempty"`
+	ID                     string                  `json:"id"`
+	Provenance             string                  `json:"provenance,omitempty"`
+	CallerID               string                  `json:"caller_id,omitempty"`
+	Revision               uint64                  `json:"revision,omitempty"`
+	ExternalCompletion     *externalCompletionView `json:"external_completion,omitempty"`
+	Title                  string                  `json:"title"`
+	Status                 string                  `json:"status"`
+	Worker                 string                  `json:"worker"`
+	Branch                 string                  `json:"branch,omitempty"`
+	BaseRevision           string                  `json:"base_revision,omitempty"`
+	WorktreePath           string                  `json:"worktree_path,omitempty"`
+	Condition              string                  `json:"condition,omitempty"`
+	Reason                 string                  `json:"reason,omitempty"`
+	Activity               string                  `json:"activity,omitempty"`
+	Result                 string                  `json:"result,omitempty"`
+	Disposition            string                  `json:"disposition,omitempty"`
+	DispositionReason      string                  `json:"disposition_reason,omitempty"`
+	DispositionRevision    uint64                  `json:"disposition_revision,omitempty"`
+	Committed              bool                    `json:"committed"`
+	Dirty                  bool                    `json:"dirty"`
+	Untracked              bool                    `json:"untracked"`
+	RecoveryDebt           string                  `json:"recovery_debt,omitempty"`
+	Warnings               string                  `json:"warnings,omitempty"`
+	ArchiveState           string                  `json:"archive_state,omitempty"`
+	CleanupState           string                  `json:"cleanup_state,omitempty"`
+	WorktreeCleanupState   string                  `json:"worktree_cleanup_state,omitempty"`
+	CredentialCleanupState string                  `json:"credential_cleanup_state,omitempty"`
+	CleanupDebt            bool                    `json:"cleanup_debt,omitempty"`
+	Agent                  string                  `json:"agent,omitempty"`
+	AgentCommand           string                  `json:"agent_command,omitempty"`
+	PromptReference        string                  `json:"prompt_reference,omitempty"`
+	WorkingContext         string                  `json:"working_context,omitempty"`
+	Execution              string                  `json:"execution,omitempty"`
 }
 
 type taskListView struct {
@@ -1693,12 +1744,12 @@ func viewResource(resource store.Resource) resourceView {
 }
 
 func viewResourceList(resource store.Resource) resourceListItem {
-	metadata := make([]string, 0, len(resource.Metadata))
+	metadata := make(map[string]string, len(resource.Metadata))
 	for key, value := range resource.Metadata {
-		metadata = append(metadata, key+"="+value)
+		metadata[key] = value
 	}
-	sort.Strings(metadata)
-	return resourceListItem{ID: resource.ID, Provenance: resource.Provenance, CallerID: resource.CallerID, Revision: resource.Revision, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: strings.Join(metadata, ";"), ExternalURLs: strings.Join(resource.ExternalURLs, ",")}
+	urls := append([]string(nil), resource.ExternalURLs...)
+	return resourceListItem{ID: resource.ID, Provenance: resource.Provenance, CallerID: resource.CallerID, Revision: resource.Revision, Repository: resource.Repository, Branch: resource.Branch, BaseRevision: resource.BaseRevision, WorktreePath: resource.WorktreePath, Head: resource.Git.Head, Committed: resource.Git.Committed, Dirty: resource.Git.Dirty, Untracked: resource.Git.Untracked, RecoveryDebt: resource.RecoveryDebt, ArchiveState: taskState(resource.ArchiveState), CleanupState: taskState(resource.CleanupState), WorktreeCleanupState: taskState(resource.WorktreeCleanupState), CredentialCleanupState: taskState(resource.CredentialCleanupState), CleanupDebt: resource.CleanupDebt, Metadata: metadata, ExternalURLs: urls}
 }
 
 func viewExecution(execution store.Execution, manager *lifecycle.Manager) executionView {
@@ -1706,7 +1757,11 @@ func viewExecution(execution store.Execution, manager *lifecycle.Manager) execut
 	if execution.Provenance == store.ProvenanceExternal && execution.ExternalCompletion != nil {
 		executionStatus = "finished"
 	}
-	return executionView{ID: execution.ID, Provenance: execution.Provenance, CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: execution.ExternalObservations, ExternalCompletion: execution.ExternalCompletion, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: compactSessionReferences(execution.SessionReferences)}
+	sessionReferences := make([]sessionReferenceView, 0, len(execution.SessionReferences))
+	for _, reference := range execution.SessionReferences {
+		sessionReferences = append(sessionReferences, sessionReferenceView{Tool: reference.Tool, SessionID: reference.SessionID, ReferencePath: reference.ReferencePath})
+	}
+	return executionView{ID: execution.ID, Provenance: execution.Provenance, CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: viewExternalObservations(execution.ExternalObservations), ExternalCompletion: viewExternalCompletion(execution.ExternalCompletion), TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: sessionReferences}
 }
 
 func executionDetail(execution store.Execution, manager *lifecycle.Manager) executionDetailView {
@@ -1720,7 +1775,7 @@ func executionDetail(execution store.Execution, manager *lifecycle.Manager) exec
 func executionEvidenceList(summary lifecycle.EvidenceSummary, captures []lifecycle.EvidenceCapture) executionEvidenceListView {
 	items := make([]executionEvidenceListItem, 0, len(captures))
 	for _, capture := range captures {
-		items = append(items, executionEvidenceListItem{CaptureID: capture.CaptureID, SourceKind: capture.SourceKind, Provider: capture.Provider, ProviderSessionID: capture.ProviderSessionID, State: capture.State, EvidenceClass: capture.EvidenceClass, Coverage: strings.Join(capture.Coverage, ","), RetentionClass: capture.RetentionClass})
+		items = append(items, executionEvidenceListItem{CaptureID: capture.CaptureID, SourceKind: capture.SourceKind, Provider: capture.Provider, ProviderSessionID: capture.ProviderSessionID, State: capture.State, EvidenceClass: capture.EvidenceClass, Coverage: append([]string(nil), capture.Coverage...), RetentionClass: capture.RetentionClass})
 	}
 	return executionEvidenceListView{
 		Evidence: executionEvidenceSummaryView{TaskID: summary.TaskID, ExecutionID: summary.ExecutionID, State: summary.State, EvidenceClass: summary.EvidenceClass, Reason: summary.Reason},
@@ -1730,7 +1785,7 @@ func executionEvidenceList(summary lifecycle.EvidenceSummary, captures []lifecyc
 }
 
 func executionEvidenceDetail(capture lifecycle.EvidenceCapture) executionEvidenceDetailView {
-	return executionEvidenceDetailView{Evidence: executionEvidenceDetailItem{CaptureID: capture.CaptureID, ExecutionID: capture.ExecutionID, SourceKind: capture.SourceKind, Provider: capture.Provider, ProviderSessionID: capture.ProviderSessionID, State: capture.State, EvidenceClass: capture.EvidenceClass, Coverage: strings.Join(capture.Coverage, ","), ArtifactReference: capture.ArtifactReference, ArtifactState: capture.ArtifactState, RedactionPolicy: capture.RedactionPolicy, RetentionClass: capture.RetentionClass, ErrorCategory: capture.ErrorCategory, Recovery: capture.Recovery}}
+	return executionEvidenceDetailView{Evidence: executionEvidenceDetailItem{CaptureID: capture.CaptureID, ExecutionID: capture.ExecutionID, SourceKind: capture.SourceKind, Provider: capture.Provider, ProviderSessionID: capture.ProviderSessionID, State: capture.State, EvidenceClass: capture.EvidenceClass, Coverage: append([]string(nil), capture.Coverage...), ArtifactReference: capture.ArtifactReference, ArtifactState: capture.ArtifactState, RedactionPolicy: capture.RedactionPolicy, RetentionClass: capture.RetentionClass, ErrorCategory: capture.ErrorCategory, Recovery: capture.Recovery}}
 }
 
 func taskDetail(manager *lifecycle.Manager, id string, manifest store.Manifest) (taskDetailView, error) {
@@ -1759,24 +1814,12 @@ func taskDetail(manager *lifecycle.Manager, id string, manifest store.Manifest) 
 	return taskDetailView{Task: view(id, manifest), Resources: resourceViews, Executions: executionViews}, nil
 }
 
-func compactSessionReferences(references []store.SessionReference) string {
-	values := make([]string, 0, len(references))
-	for _, reference := range references {
-		value := reference.Tool + ":" + reference.SessionID
-		if reference.ReferencePath != "" {
-			value += "@" + reference.ReferencePath
-		}
-		values = append(values, value)
-	}
-	return strings.Join(values, ",")
-}
-
 func view(id string, manifest store.Manifest) taskView {
 	taskStatus := status(manifest)
 	if manifest.Provenance == store.ProvenanceExternal && manifest.ExternalCompletion != nil {
 		taskStatus = "finished"
 	}
-	result := taskView{ID: id, Provenance: manifest.Provenance, CallerID: manifest.CallerID, Revision: manifest.Revision, ExternalCompletion: manifest.ExternalCompletion, Title: manifest.Title, Status: taskStatus, Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
+	result := taskView{ID: id, Provenance: manifest.Provenance, CallerID: manifest.CallerID, Revision: manifest.Revision, ExternalCompletion: viewExternalCompletion(manifest.ExternalCompletion), Title: manifest.Title, Status: taskStatus, Worker: manifest.Worker, Branch: manifest.Branch, BaseRevision: manifest.BaseRevision, WorktreePath: manifest.WorktreePath, Condition: manifest.Condition, Reason: manifest.Reason, Activity: manifest.Activity, Result: manifest.Result, Committed: manifest.Committed, Dirty: manifest.Dirty, Untracked: manifest.Untracked, RecoveryDebt: manifest.RecoveryDebt, Warnings: manifest.Warnings, ArchiveState: taskState(manifest.ArchiveState), CleanupState: taskState(manifest.CleanupState), WorktreeCleanupState: taskState(manifest.WorktreeCleanupState), CredentialCleanupState: taskState(manifest.CredentialCleanupState), CleanupDebt: manifest.CleanupDebt}
 	effectiveDisposition := lifecycle.WorkDispositionOf(manifest)
 	if effectiveDisposition != lifecycle.DispositionInFlight || (manifest.Disposition != "" && manifest.DispositionRevision > 0) {
 		result.Disposition = string(effectiveDisposition)

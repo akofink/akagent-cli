@@ -49,7 +49,8 @@ No external TOON encoder dependency remains.
 
 ## Supported output subset
 
-The encoder emits exactly the forms the CLI and its documented schemas need:
+The encoder emits exactly the forms the CLI and its documented schemas need.
+Nested typed lifecycle records therefore remain structured instead of being flattened into ad hoc strings.
 
 | Form | Example |
 | --- | --- |
@@ -58,7 +59,7 @@ The encoder emits exactly the forms the CLI and its documented schemas need:
 | Nested object | `worker:` followed by indented fields |
 | Non-empty primitive array (inline) | `tags[3]: admin,ops,dev` |
 | Empty array | `tasks: []` |
-| Tabular array of scalar objects | `tasks[2]{id,title,status}:` with one row per line and `null` for missing fields |
+| Tabular array of scalar or uniform nested objects | `tasks[2]{id,completion{contract,result}}:` with one row per line and `null` for missing scalar fields |
 | List array of nested or heterogeneous values | `items[2]:` with one `-` item per line and nested fields indented below objects |
 | Structured error envelope | `error:` with `category`, `message`, `retryable`, `recovery` |
 
@@ -80,11 +81,11 @@ Documented deviations and boundaries:
   other than 2): the encoder always uses comma and 2-space indentation.
 - Keyed tabular form (section 9.5) is not emitted; objects of objects remain
   ordinary nested objects.
-- Nested field groups in tabular arrays (section 9.3) are not emitted; a
-  tabular array whose columns are not all primitive scalars uses list form
-  only when at least one field is an array.
-- Uniform object arrays with only nested object fields remain outside the
-  supported subset and are rejected.
+- Nested field groups are emitted for tabular arrays when every non-null
+  object in a column has the same nested field shape.
+- Arrays, keyed objects, empty nested objects, and inconsistent nested object
+  shapes use list form when that form is valid, or are rejected loudly when it
+  cannot represent the value.
 - Empty object list items are rejected because the supported list representation
   requires a first field to establish the item's object shape.
 - Map values sort their keys alphabetically instead of preserving encounter

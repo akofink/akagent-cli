@@ -209,25 +209,24 @@ func TestListFormsPreserveNestedValues(t *testing.T) {
 	}
 }
 
-func TestUnsupportedNestedObjectAndEmptyObjectForms(t *testing.T) {
-	tests := []struct {
-		name  string
-		value any
-	}{
-		{"nested object fields", map[string]any{"orders": []any{
-			map[string]any{"id": 1, "customer": map[string]any{"name": "Ada"}},
-			map[string]any{"id": 2, "customer": map[string]any{"name": "Bob"}},
-		}}},
-		{"empty object list item", map[string]any{"items": []any{map[string]any{}}}},
+func TestNestedObjectAndEmptyObjectForms(t *testing.T) {
+	nested := map[string]any{"orders": []any{
+		map[string]any{"id": 1, "customer": map[string]any{"name": "Ada"}},
+		map[string]any{"id": 2, "customer": map[string]any{"name": "Bob"}},
+	}}
+	got, err := Encode(nested)
+	if err != nil {
+		t.Fatalf("Encode(%v) error = %v", nested, err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if _, err := Encode(tc.value); err == nil {
-				t.Errorf("Encode(%v) succeeded, want an unsupported-form error", tc.value)
-			} else if !errors.Is(err, ErrUnsupported) {
-				t.Errorf("Encode(%v) error = %v, want ErrUnsupported", tc.value, err)
-			}
-		})
+	want := "orders[2]{customer{name},id}:\n  Ada,1\n  Bob,2"
+	if got != want {
+		t.Fatalf("Encode(%v) = %q, want %q", nested, got, want)
+	}
+
+	if _, err := Encode(map[string]any{"items": []any{map[string]any{}}}); err == nil {
+		t.Fatal("Encode() succeeded for an empty object list item")
+	} else if !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("Encode() error = %v, want ErrUnsupported", err)
 	}
 }
 

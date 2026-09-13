@@ -33,7 +33,7 @@ func TestExecutionSessionReferencesAppearInInspection(t *testing.T) {
 		t.Fatalf("session add = (%d, %q)", result.code, result.stdout)
 	}
 	inspected := runCommand(t, []string{"task", "inspect", "session-cli"})
-	if inspected.code != 0 || !strings.Contains(inspected.stdout, "executions[1]") || !strings.Contains(inspected.stdout, "pi:session-1") {
+	if inspected.code != 0 || !strings.Contains(inspected.stdout, "executions[1]") || !strings.Contains(inspected.stdout, "session-1") || !strings.Contains(inspected.stdout, "reference_path") {
 		t.Fatalf("task inspect = (%d, %q)", inspected.code, inspected.stdout)
 	}
 }
