@@ -165,7 +165,9 @@ func (s *Store) UnregisterRepository(name string) error {
 	})
 }
 
-// RepositoryReferences returns task IDs whose durable manifests reference name.
+// RepositoryReferences returns task IDs whose durable manifests or resource
+// records reference name. It also checks retained task archives so an
+// archived or legacy resource cannot make unregister unsafe.
 func (s *Store) RepositoryReferences(name string) ([]string, error) {
 	if err := validateRepositoryName(name); err != nil {
 		return nil, err
@@ -174,7 +176,7 @@ func (s *Store) RepositoryReferences(name string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	references := make([]string, 0)
+	referenced := make(map[string]struct{})
 	for _, id := range ids {
 		envelope, err := s.ReadManifest(id)
 		if err != nil {
@@ -185,9 +187,39 @@ func (s *Store) RepositoryReferences(name string) ([]string, error) {
 			return nil, err
 		}
 		if manifest.Repository == name {
-			references = append(references, id)
+			referenced[id] = struct{}{}
+		}
+
+		resourceIDs, err := s.ResourceIDs(id)
+		if err != nil {
+			return nil, err
+		}
+		for _, resourceID := range resourceIDs {
+			resource, err := s.ReadResource(id, resourceID)
+			if err != nil {
+				return nil, err
+			}
+			if resource.Repository == name {
+				referenced[id] = struct{}{}
+			}
+		}
+
+		archive, err := s.ReadArchive(id)
+		if err == nil {
+			for _, resource := range archive.Resources {
+				if resource.Repository == name {
+					referenced[id] = struct{}{}
+				}
+			}
+		} else if !IsKind(err, KindNotFound) {
+			return nil, err
 		}
 	}
+	references := make([]string, 0, len(referenced))
+	for id := range referenced {
+		references = append(references, id)
+	}
+	sort.Strings(references)
 	return references, nil
 }
 

@@ -182,20 +182,43 @@ func TestEncodingQuotesAndEmptyArrays(t *testing.T) {
 	}
 }
 
-// TestUnsupportedFormsGuarded ensures shapes outside the supported subset fail
-// loudly instead of silently emitting a non-conforming document.
-func TestUnsupportedFormsGuarded(t *testing.T) {
+// TestListFormsPreserveNestedValues ensures nested and heterogeneous arrays
+// use a stable list representation rather than being discarded or stringified.
+func TestListFormsPreserveNestedValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  string
+	}{
+		{"typed nested array", map[string]any{"items": []any{
+			map[string]any{"id": 1, "observations": []any{map[string]any{"source": "worker", "detail": "historical"}}},
+		}}, "items[1]:\n  - id: 1\n    observations[1]{detail,source}:\n      historical,worker"},
+		{"mixed values", map[string]any{"items": []any{1, "text", map[string]any{"a": 1}}}, "items[3]:\n  - 1\n  - text\n  - a: 1"},
+		{"nested arrays", map[string]any{"grid": []any{[]any{1, 2}, []any{3, 4}}}, "grid[2]:\n  - [2]: 1,2\n  - [2]: 3,4"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Encode(tc.value)
+			if err != nil {
+				t.Fatalf("Encode(%v) error = %v", tc.value, err)
+			}
+			if got != tc.want {
+				t.Errorf("Encode(%v) = %q, want %q", tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestUnsupportedNestedObjectAndEmptyObjectForms(t *testing.T) {
 	tests := []struct {
 		name  string
 		value any
 	}{
-		{"nested field group in tabular", map[string]any{"orders": []any{
+		{"nested object fields", map[string]any{"orders": []any{
 			map[string]any{"id": 1, "customer": map[string]any{"name": "Ada"}},
 			map[string]any{"id": 2, "customer": map[string]any{"name": "Bob"}},
 		}}},
-		{"mixed arrays", map[string]any{"items": []any{1, "text", map[string]any{"a": 1}}}},
-		{"array of arrays", map[string]any{"grid": []any{[]any{1, 2}, []any{3, 4}}}},
-		{"empty object element disqualifies tabular", map[string]any{"items": []any{map[string]any{}}}},
+		{"empty object list item", map[string]any{"items": []any{map[string]any{}}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
