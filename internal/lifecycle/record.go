@@ -9,9 +9,28 @@ import (
 	"github.com/akofink/akagent-cli/internal/store"
 )
 
+// CreateExternalTask creates a caller-owned task without consulting host
+// state or relabeling an existing managed task.
+func (m *Manager) CreateExternalTask(taskID string, request store.ExternalTaskRequest) (store.Manifest, error) {
+	return m.Store.CreateExternalTask(taskID, request)
+}
+
 // RecordTask adopts a task identity without consulting host state.
 func (m *Manager) RecordTask(taskID string, request store.ExternalTaskRequest) (store.Manifest, error) {
 	return m.Store.AdoptExternalTask(taskID, request)
+}
+
+// CreateExternalResource records a caller-owned resource only beneath an
+// explicitly external task.
+func (m *Manager) CreateExternalResource(taskID string, request store.ExternalResourceRequest) (store.Resource, error) {
+	manifest, err := m.Inspect(taskID)
+	if err != nil {
+		return store.Resource{}, err
+	}
+	if manifest.Provenance != store.ProvenanceExternal {
+		return store.Resource{}, externalRecordOperationError("task", taskID)
+	}
+	return m.Store.AdoptExternalResource(taskID, request)
 }
 
 // RecordResource adopts caller-declared repository identity without consulting

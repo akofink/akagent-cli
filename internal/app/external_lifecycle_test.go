@@ -37,6 +37,106 @@ func createExternalExecutionForCLI(t *testing.T, taskID string) store.Execution 
 	return execution
 }
 
+func TestExternalRecordCreationCompletionAndArchiveCommands(t *testing.T) {
+	setupTaskCommandTest(t)
+	malformed := runCommand(t, []string{"task", "external", "create", "malformed", "--caller-id", "caller", "--operation-id", "create"})
+	if malformed.code != 2 {
+		t.Fatalf("malformed external task create = (%d, %q)", malformed.code, malformed.stdout)
+	}
+	state, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids, err := state.TaskIDs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("malformed external task create left records: %v", ids)
+	}
+
+	created := runCommand(t, []string{"task", "external", "create", "external-flow", "--title", "External flow", "--caller-id", "caller", "--operation-id", "task-create"})
+	if created.code != 0 || !strings.Contains(created.stdout, "provenance: external") || !strings.Contains(created.stdout, "revision: 1") {
+		t.Fatalf("external task create = (%d, %q)", created.code, created.stdout)
+	}
+	retry := runCommand(t, []string{"task", "external", "create", "external-flow", "--title", "External flow", "--caller-id", "caller", "--operation-id", "task-create"})
+	if retry.code != 0 || !strings.Contains(retry.stdout, "revision: 1") {
+		t.Fatalf("external task create retry = (%d, %q)", retry.code, retry.stdout)
+	}
+	resource := runCommand(t, []string{"task", "external", "resource", "create", "external-flow", "--resource-id", "external-resource", "--repository", "offline", "--branch", "external/main", "--base", "base", "--head", "head", "--worktree", "/offline/missing", "--caller-id", "caller", "--operation-id", "resource-create"})
+	if resource.code != 0 || !strings.Contains(resource.stdout, "provenance: external") {
+		t.Fatalf("external resource create = (%d, %q)", resource.code, resource.stdout)
+	}
+	execution := runCommand(t, []string{"task", "external", "execution", "create", "external-flow", "--execution-id", "external-execution", "--resource", "external-resource", "--caller-id", "caller", "--operation-id", "execution-create"})
+	if execution.code != 0 || !strings.Contains(execution.stdout, "provenance: external") {
+		t.Fatalf("external execution create = (%d, %q)", execution.code, execution.stdout)
+	}
+	managed, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lifecycle.New(managed).Create(lifecycle.CreateRequest{ID: "managed-flow", Title: "Managed flow"}); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"task", "execution", "create", "managed-flow", "--execution-id", "managed-execution", "--target", "external"}); result.code != 0 {
+		t.Fatalf("managed execution create = (%d, %q)", result.code, result.stdout)
+	}
+	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	managedObservation := runCommand(t, []string{"task", "execution", "observe", "managed-flow", "managed-execution", "--caller-id", "caller", "--operation-id", "observe", "--expected-revision", "1", "--source", "worker", "--observed-at", observedAt, "--host-id", "host", "--boot-id", "boot"})
+	if managedObservation.code != 1 || !strings.Contains(managedObservation.stdout, "not an externally declared record") {
+		t.Fatalf("managed execution external observation = (%d, %q)", managedObservation.code, managedObservation.stdout)
+	}
+
+	observed := runCommand(t, []string{"task", "execution", "observe", "external-flow", "external-execution", "--caller-id", "caller", "--operation-id", "observation", "--expected-revision", "1", "--source", "worker", "--observed-at", observedAt, "--host-id", "host", "--boot-id", "boot", "--process-state", "running"})
+	if observed.code != 0 || !strings.Contains(observed.stdout, "revision: 2") {
+		t.Fatalf("external observation = (%d, %q)", observed.code, observed.stdout)
+	}
+	stale := runCommand(t, []string{"task", "execution", "finish", "external-flow", "external-execution", "--caller-id", "caller", "--operation-id", "completion-stale", "--expected-revision", "1", "--contract", "external-v1", "--result", "succeeded"})
+	if stale.code != 1 || !strings.Contains(stale.stdout, "revision conflict") {
+		t.Fatalf("stale external completion = (%d, %q)", stale.code, stale.stdout)
+	}
+	wrongCaller := runCommand(t, []string{"task", "execution", "finish", "external-flow", "external-execution", "--caller-id", "other", "--operation-id", "completion-other", "--expected-revision", "2", "--contract", "external-v1", "--result", "succeeded"})
+	if wrongCaller.code != 1 || !strings.Contains(wrongCaller.stdout, "another caller") {
+		t.Fatalf("wrong external completion caller = (%d, %q)", wrongCaller.code, wrongCaller.stdout)
+	}
+	finished := runCommand(t, []string{"task", "execution", "finish", "external-flow", "external-execution", "--caller-id", "caller", "--operation-id", "completion", "--expected-revision", "2", "--contract", "external-v1", "--result", "succeeded"})
+	if finished.code != 0 || !strings.Contains(finished.stdout, "status: finished") {
+		t.Fatalf("external completion = (%d, %q)", finished.code, finished.stdout)
+	}
+	duplicate := runCommand(t, []string{"task", "execution", "finish", "external-flow", "external-execution", "--caller-id", "caller", "--operation-id", "completion", "--expected-revision", "2", "--contract", "external-v1", "--result", "succeeded"})
+	if duplicate.code != 0 || !strings.Contains(duplicate.stdout, "revision: 3") {
+		t.Fatalf("external completion retry = (%d, %q)", duplicate.code, duplicate.stdout)
+	}
+	changed := runCommand(t, []string{"task", "execution", "finish", "external-flow", "external-execution", "--caller-id", "caller", "--operation-id", "completion", "--expected-revision", "3", "--contract", "external-v1", "--result", "failed"})
+	if changed.code != 1 || !strings.Contains(changed.stdout, "already used with different inputs") {
+		t.Fatalf("changed external completion retry = (%d, %q)", changed.code, changed.stdout)
+	}
+	late := runCommand(t, []string{"task", "execution", "observe", "external-flow", "external-execution", "--caller-id", "caller", "--operation-id", "late-observation", "--expected-revision", "3", "--source", "worker", "--observed-at", observedAt, "--host-id", "host", "--boot-id", "boot"})
+	if late.code != 1 || !strings.Contains(late.stdout, "terminal and immutable") {
+		t.Fatalf("late external observation = (%d, %q)", late.code, late.stdout)
+	}
+	executionArchive := runCommand(t, []string{"task", "external", "execution", "archive", "external-flow", "external-execution", "--caller-id", "caller", "--operation-id", "execution-archive", "--expected-revision", "3"})
+	if executionArchive.code != 0 || !strings.Contains(executionArchive.stdout, "archive_state: complete") {
+		t.Fatalf("external execution archive = (%d, %q)", executionArchive.code, executionArchive.stdout)
+	}
+	resourceArchive := runCommand(t, []string{"task", "external", "resource", "archive", "external-flow", "external-resource", "--caller-id", "caller", "--operation-id", "resource-archive", "--expected-revision", "1"})
+	if resourceArchive.code != 0 || !strings.Contains(resourceArchive.stdout, "archive_state: complete") {
+		t.Fatalf("external resource archive = (%d, %q)", resourceArchive.code, resourceArchive.stdout)
+	}
+	taskFinished := runCommand(t, []string{"task", "external", "finish", "external-flow", "--caller-id", "caller", "--operation-id", "task-complete", "--expected-revision", "3", "--contract", "external-v1", "--result", "succeeded"})
+	if taskFinished.code != 0 || !strings.Contains(taskFinished.stdout, "status: finished") {
+		t.Fatalf("external task completion = (%d, %q)", taskFinished.code, taskFinished.stdout)
+	}
+	taskArchive := runCommand(t, []string{"task", "external", "archive", "external-flow", "--caller-id", "caller", "--operation-id", "task-archive", "--expected-revision", "4"})
+	if taskArchive.code != 0 || !strings.Contains(taskArchive.stdout, "archive_state: complete") {
+		t.Fatalf("external task archive = (%d, %q)", taskArchive.code, taskArchive.stdout)
+	}
+	archiveRetry := runCommand(t, []string{"task", "external", "archive", "external-flow", "--caller-id", "caller", "--operation-id", "task-archive", "--expected-revision", "4"})
+	if archiveRetry.code != 0 || !strings.Contains(archiveRetry.stdout, "archive_state: complete") {
+		t.Fatalf("external task archive retry = (%d, %q)", archiveRetry.code, archiveRetry.stdout)
+	}
+}
+
 func TestExternalExecutionObservationAndCompletionCommands(t *testing.T) {
 	setupTaskCommandTest(t)
 	execution := createExternalExecutionForCLI(t, "external-cli")
@@ -121,6 +221,49 @@ func TestExternalExecutionObservationAndCompletionCommands(t *testing.T) {
 	})
 	if lateObservation.code != 1 || !strings.Contains(lateObservation.stdout, "terminal and immutable") {
 		t.Fatalf("late observation command = (%d, %q)", lateObservation.code, lateObservation.stdout)
+	}
+}
+
+func TestExternalRecordCommandsHaveNoHostSubprocessEffects(t *testing.T) {
+	setupTaskCommandTest(t)
+	root := t.TempDir()
+	logPath := filepath.Join(root, "invocations.log")
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git", "tmux", "pi", "provider", "deploy", "credential"} {
+		path := filepath.Join(bin, name)
+		script := "#!/bin/sh\\nprintf '%s\\n' '" + name + "' >> '" + logPath + "'\\nexit 99\\n"
+		if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	commands := [][]string{
+		{"task", "external", "create", "canary-external", "--title", "Canary", "--caller-id", "caller", "--operation-id", "task-create"},
+		{"task", "external", "resource", "create", "canary-external", "--resource-id", "resource", "--repository", "offline", "--branch", "main", "--base", "base", "--head", "head", "--worktree", "/offline/missing", "--caller-id", "caller", "--operation-id", "resource-create"},
+		{"task", "external", "execution", "create", "canary-external", "--execution-id", "execution", "--resource", "resource", "--caller-id", "caller", "--operation-id", "execution-create"},
+	}
+	for _, command := range commands {
+		if result := runCommand(t, command); result.code != 0 {
+			t.Fatalf("Run(%q) = (%d, %q)", command, result.code, result.stdout)
+		}
+	}
+	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, command := range [][]string{
+		{"task", "execution", "observe", "canary-external", "execution", "--caller-id", "caller", "--operation-id", "observe", "--expected-revision", "1", "--source", "worker", "--observed-at", observedAt, "--host-id", "host", "--boot-id", "boot"},
+		{"task", "execution", "finish", "canary-external", "execution", "--caller-id", "caller", "--operation-id", "finish", "--expected-revision", "2", "--contract", "external-v1", "--result", "succeeded"},
+		{"task", "external", "execution", "archive", "canary-external", "execution", "--caller-id", "caller", "--operation-id", "archive", "--expected-revision", "3"},
+	} {
+		if result := runCommand(t, command); result.code != 0 {
+			t.Fatalf("Run(%q) = (%d, %q)", command, result.code, result.stdout)
+		}
+	}
+	if data, err := os.ReadFile(logPath); err == nil {
+		t.Fatalf("external record commands invoked host tools: %q", data)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("read host-tool canary log: %v", err)
 	}
 }
 

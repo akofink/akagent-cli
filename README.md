@@ -23,9 +23,10 @@ akagent
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|checkpoint|resource|execution|disposition|list|inspect|publish|finish|archive|reconcile>
+akagent task <create|external|checkpoint|resource|execution|disposition|list|inspect|publish|finish|archive|reconcile>
+akagent task external <create|finish|resource|execution|archive>
 akagent task resource <create|list|inspect|update|archive>
-akagent task execution <create|list|inspect|session|evidence|publish|archive|reconcile>
+akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -62,7 +63,9 @@ External tools own checkout validation, branches, and worktrees.
 The `--worktree-root` value remains a non-secret reference for callers that use isolated worktrees.
 
 `task create` is state-only task creation: it creates a durable record and records any supplied repository facts without starting tmux, a process, Git, or a worktree.
-`task execution create` records an optional tool-neutral execution without starting tmux or a process.
+`task execution create` records an optional tool-neutral managed execution without starting tmux or a process.
+The explicit `task external` family creates caller-owned external task, resource, and execution records with stable operation IDs.
+External creation does not relabel managed records, and external completion and archive require caller ownership and current revisions.
 `task execution session add` records non-secret provider-neutral tool and session provenance without parsing provider files.
 `task execution evidence list` and `task execution evidence inspect` provide metadata-only views of those references.
 A task can coordinate multiple resources through one execution by selecting a resource during execution creation.
@@ -90,6 +93,7 @@ The reference is non-secret metadata.
 The core never reads the provider file or resolves credentials.
 
 `task archive` captures durable manifests, events, checkpoint references, and caller-submitted facts without terminal capture or host inspection.
+The external archive commands apply the same record-only rule and never inspect processes, Git, worktrees, providers, credentials, deployments, or terminal output.
 Worktree and credential cleanup are removed from the core.
 External tools own cleanup and must preserve durable recovery debt and historical facts.
 

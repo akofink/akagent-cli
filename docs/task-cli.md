@@ -16,6 +16,9 @@ Exit code `2` means the command or its arguments are invalid.
 akagent integration inspect
 akagent repository <register|list|inspect|update|unregister>
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]
+akagent task external create <task-id> --title <title> --caller-id <id> --operation-id <id>
+akagent task external finish <task-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>
+akagent task external archive <task-id> --caller-id <id> --operation-id <id> --expected-revision <revision>
 akagent task checkpoint <write|inspect> <task-id> ...
 akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]
 akagent task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
@@ -25,7 +28,11 @@ akagent task finish <task-id> <succeeded|failed> <result>
 akagent task archive <task-id>
 akagent task reconcile [<task-id>]
 akagent task resource <create|list|inspect|update|archive> ...
+akagent task external resource create <task-id> --resource-id <id> --repository <name> --branch <branch> --base <revision> --head <revision> --worktree <absolute-path> --caller-id <id> --operation-id <id>
+akagent task external resource archive <task-id> <resource-id> --caller-id <id> --operation-id <id> --expected-revision <revision>
 akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile> ...
+akagent task external execution create <task-id> --execution-id <id> --resource <resource-id> --caller-id <id> --operation-id <id> [--predecessor <execution-id>] [--tool <tool> --session-id <id> [--reference-path <absolute-path>]]
+akagent task external execution archive <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -68,6 +75,31 @@ Resource creation records repository identity, branch, base, head, worktree refe
 It does not resolve a repository registration or change the filesystem.
 Resource Git facts are caller-declared or historical.
 A resource archive contains the durable resource and event history without terminal capture or Git inspection.
+
+## Explicit external records
+
+The `task external` family is the public creation boundary for caller-owned records.
+It creates external provenance directly and never relabels a managed task, resource, or execution.
+The task ID, resource ID, execution ID, caller ID, and operation ID are bounded non-secret identifiers.
+Resource creation additionally requires repository, branch, base, head, and an absolute worktree reference.
+The referenced worktree does not need to exist and is never inspected.
+External execution creation requires an external resource belonging to the same caller.
+
+Equivalent create requests are idempotent and return the acknowledged record.
+Reusing an operation ID with different inputs, using another caller, targeting a managed record, or creating beneath a terminal record returns a structured conflict.
+Malformed input is rejected with exit code `2` before durable record creation.
+Successful commands return the normal task, resource, or execution detail view with provenance and revision fields.
+
+The external finish commands require the owning caller, a new operation ID, the current revision, a named completion contract, and a result.
+Equivalent finish retries are idempotent.
+Stale revisions, changed operation inputs, terminal mutations, and managed executions are rejected without changing the record.
+External archive commands require explicit completion for tasks and explicit completion for executions.
+Resource archives require only the owning caller and current resource revision.
+Archive retries preserve the existing archive and never inspect a process, terminal, provider, Git checkout, credential, or deployment.
+
+The normal `task create`, `task resource create`, and `task execution create` commands retain managed provenance semantics.
+In particular, `--target external` on the normal execution command does not create an external execution.
+The removed `task record` family remains a migration error and is not an alias for `task external`.
 
 ## Execution records
 
