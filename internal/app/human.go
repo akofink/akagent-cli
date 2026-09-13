@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 )
@@ -92,6 +93,9 @@ func appendTaskFields(output *strings.Builder, indent string, task taskView) {
 	appendTextField(output, indent, "prompt_reference", task.PromptReference)
 	appendTextField(output, indent, "working_context", task.WorkingContext)
 	appendTextField(output, indent, "execution", task.Execution)
+	if task.ExternalCompletion != nil {
+		appendExternalCompletionFields(output, indent, task.ExternalCompletion)
+	}
 }
 
 func appendResourceFields(output *strings.Builder, indent string, resource resourceListItem) {
@@ -110,8 +114,8 @@ func appendResourceFields(output *strings.Builder, indent string, resource resou
 	appendTextField(output, indent, "worktree_cleanup_state", resource.WorktreeCleanupState)
 	appendTextField(output, indent, "credential_cleanup_state", resource.CredentialCleanupState)
 	appendBoolField(output, indent, "cleanup_debt", resource.CleanupDebt)
-	appendTextField(output, indent, "metadata", resource.Metadata)
-	appendTextField(output, indent, "external_urls", resource.ExternalURLs)
+	appendStringMapFields(output, indent, "metadata", resource.Metadata)
+	appendStringListFields(output, indent, "external_urls", resource.ExternalURLs)
 }
 
 func appendExecutionFields(output *strings.Builder, indent string, execution executionView) {
@@ -149,14 +153,53 @@ func appendExecutionFields(output *strings.Builder, indent string, execution exe
 		}
 	}
 	if execution.ExternalCompletion != nil {
-		appendTextField(output, indent, "external_completion_contract", execution.ExternalCompletion.Contract)
-		appendTextField(output, indent, "external_completion_result", execution.ExternalCompletion.Result)
-		appendTextField(output, indent, "external_completion_caller_id", execution.ExternalCompletion.CallerID)
-		appendTextField(output, indent, "external_completion_declared_at", execution.ExternalCompletion.DeclaredAt.Format(time.RFC3339Nano))
+		appendExternalCompletionFields(output, indent, execution.ExternalCompletion)
 	}
 	appendTextField(output, indent, "recovery_debt", execution.RecoveryDebt)
 	appendTextField(output, indent, "archive_state", execution.ArchiveState)
-	appendTextField(output, indent, "session_references", execution.SessionReferences)
+	if len(execution.SessionReferences) > 0 {
+		fmt.Fprintf(output, "%ssession_references (%d)\n", indent, len(execution.SessionReferences))
+		for index, reference := range execution.SessionReferences {
+			fmt.Fprintf(output, "%sSession %d\n", indent+"  ", index+1)
+			appendTextField(output, indent+"    ", "tool", reference.Tool)
+			appendTextField(output, indent+"    ", "session_id", reference.SessionID)
+			appendTextField(output, indent+"    ", "reference_path", reference.ReferencePath)
+		}
+	}
+}
+
+func appendExternalCompletionFields(output *strings.Builder, indent string, completion *externalCompletionView) {
+	appendTextField(output, indent, "external_completion_contract", completion.Contract)
+	appendTextField(output, indent, "external_completion_result", completion.Result)
+	appendTextField(output, indent, "external_completion_caller_id", completion.CallerID)
+	appendTextField(output, indent, "external_completion_declared_at", completion.DeclaredAt.Format(time.RFC3339Nano))
+}
+
+func appendStringMapFields(output *strings.Builder, indent, name string, values map[string]string) {
+	if len(values) == 0 {
+		appendTextField(output, indent, name, "")
+		return
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	fmt.Fprintf(output, "%s%s\n", indent, name)
+	for _, key := range keys {
+		appendTextField(output, indent+"  ", key, values[key])
+	}
+}
+
+func appendStringListFields(output *strings.Builder, indent, name string, values []string) {
+	if len(values) == 0 {
+		appendTextField(output, indent, name, "")
+		return
+	}
+	fmt.Fprintf(output, "%s%s (%d)\n", indent, name, len(values))
+	for index, value := range values {
+		appendTextField(output, indent+"  ", fmt.Sprintf("%d", index+1), value)
+	}
 }
 
 func appendTextField(output *strings.Builder, indent, name, value string) {

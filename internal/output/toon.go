@@ -331,17 +331,14 @@ func renderArrayLines(b *strings.Builder, indent, key string, hasKey bool, v *va
 		return nil
 	}
 
-	// Uniform objects with only scalar fields use the compact tabular form.
-	// Other arrays use TOON list form so nested typed records are preserved.
+	// Uniform objects, including recursively uniform nested objects, use the
+	// compact tabular form. Arrays remain list form because their shape is not
+	// representable in a tabular row.
 	if allObjects(v.arr) {
 		if _, err := tabularFields(v.arr); err == nil {
 			return renderTabularArray(b, indent, key, hasKey, v, rowDepth)
 		}
-		if hasNestedArrayField(v.arr) {
-			return renderListArray(b, indent, key, hasKey, v, rowDepth)
-		}
-		// Nested object fields remain outside this encoder's tabular subset.
-		return renderTabularArray(b, indent, key, hasKey, v, rowDepth)
+		return renderListArray(b, indent, key, hasKey, v, rowDepth)
 	}
 	return renderListArray(b, indent, key, hasKey, v, rowDepth)
 }
@@ -353,17 +350,6 @@ func allObjects(arr []*value) bool {
 		}
 	}
 	return true
-}
-
-func hasNestedArrayField(arr []*value) bool {
-	for _, item := range arr {
-		for _, field := range item.fields {
-			if field.val.k == kindArray {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func renderListArray(b *strings.Builder, indent, key string, hasKey bool, v *value, rowDepth int) error {
@@ -464,38 +450,87 @@ func allScalar(arr []*value) bool {
 	return true
 }
 
+type tabularColumn struct {
+	name     string
+	children []tabularColumn
+}
+
 func renderTabularArray(b *strings.Builder, indent, key string, hasKey bool, v *value, rowDepth int) error {
-	// Every element must be a non-empty object with scalar leaves. Missing
-	// fields are rendered as null so optional fields can vary between rows
-	// while the tabular schema remains deterministic.
-	names, err := tabularFields(v.arr)
+	columns, err := tabularFields(v.arr)
 	if err != nil {
 		return err
 	}
 	header := fmt.Sprintf("[%d]{", len(v.arr))
-	for i, n := range names {
+	for i, column := range columns {
 		if i > 0 {
 			header += string(delimiter)
 		}
-		header += quoteKey(n)
+		header += tabularColumnHeader(column)
 	}
 	header += "}:\n"
 	if hasKey {
 		header = key + header
 	}
 	b.WriteString(indent + header)
-	for _, e := range v.arr {
-		row := make([]string, 0, len(names))
-		for _, n := range names {
-			tok, err := scalarToken(fieldValue(e, n))
-			if err != nil {
+	for _, row := range v.arr {
+		values := make([]string, 0, len(columns))
+		for _, column := range columns {
+			if err := appendTabularValues(&values, row, column); err != nil {
 				return err
 			}
-			row = append(row, tok)
 		}
-		b.WriteString(strings.Repeat(indentUnit, rowDepth) + strings.Join(row, string(delimiter)) + "\n")
+		b.WriteString(strings.Repeat(indentUnit, rowDepth) + strings.Join(values, string(delimiter)) + "\n")
 	}
 	return nil
+}
+
+func tabularColumnHeader(column tabularColumn) string {
+	if len(column.children) == 0 {
+		return quoteKey(column.name)
+	}
+	parts := make([]string, 0, len(column.children))
+	for _, child := range column.children {
+		parts = append(parts, tabularColumnHeader(child))
+	}
+	return quoteKey(column.name) + "{" + strings.Join(parts, string(delimiter)) + "}"
+}
+
+func appendTabularValues(values *[]string, object *value, column tabularColumn) error {
+	field := fieldValue(object, column.name)
+	if len(column.children) == 0 {
+		token, err := scalarToken(field)
+		if err != nil {
+			return err
+		}
+		*values = append(*values, token)
+		return nil
+	}
+	if field.k == kindScalar && field.sk == scalarNull {
+		for range columnLeafCount(column) {
+			*values = append(*values, "null")
+		}
+		return nil
+	}
+	if field.k != kindObject {
+		return fmt.Errorf("%w: tabular field %q has an incompatible shape", ErrUnsupported, column.name)
+	}
+	for _, child := range column.children {
+		if err := appendTabularValues(values, field, child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func columnLeafCount(column tabularColumn) int {
+	if len(column.children) == 0 {
+		return 1
+	}
+	count := 0
+	for _, child := range column.children {
+		count += columnLeafCount(child)
+	}
+	return count
 }
 
 func fieldValue(obj *value, name string) *value {
@@ -508,58 +543,104 @@ func fieldValue(obj *value, name string) *value {
 }
 
 // tabularFields returns the ordered union of field names if the array is
-// composed of non-empty objects with scalar fields, or an error for any other
-// shape. Struct-based rows use their declaration order, while map-based rows
-// use first appearance.
-func tabularFields(arr []*value) ([]string, error) {
+// composed of non-empty objects with scalar or recursively uniform object
+// fields. Missing fields are represented as null values in their rows.
+func tabularFields(arr []*value) ([]tabularColumn, error) {
 	if len(arr) == 0 {
 		return nil, fmt.Errorf("%w: empty tabular array", ErrUnsupported)
 	}
+	return tabularObjectFields(arr, "tabular")
+}
+
+func tabularObjectFields(objects []*value, path string) ([]tabularColumn, error) {
+	if len(objects) == 0 {
+		return nil, fmt.Errorf("%w: %s has no object values", ErrUnsupported, path)
+	}
+
 	names := make([]string, 0)
 	seenNames := make(map[string]bool)
-	for i, e := range arr {
-		if e.k != kindObject {
-			return nil, fmt.Errorf("%w: tabular row %d is not an object", ErrUnsupported, i)
+	for row, object := range objects {
+		if object.k != kindObject {
+			return nil, fmt.Errorf("%w: %s row %d is not an object", ErrUnsupported, path, row)
 		}
-		if len(e.fields) == 0 {
-			return nil, fmt.Errorf("%w: tabular row %d is an empty object", ErrUnsupported, i)
+		if len(object.fields) == 0 {
+			return nil, fmt.Errorf("%w: %s row %d is an empty object", ErrUnsupported, path, row)
 		}
-		seen := make(map[string]bool, len(e.fields))
-		for _, f := range e.fields {
-			if f.val.k != kindScalar {
-				return nil, fmt.Errorf("%w: tabular field %q is not a primitive at row %d", ErrUnsupported, f.name, i)
+		seen := make(map[string]bool, len(object.fields))
+		for _, field := range object.fields {
+			if seen[field.name] {
+				return nil, fmt.Errorf("%w: duplicate %s field %q at row %d", ErrUnsupported, path, field.name, row)
 			}
-			if seen[f.name] {
-				return nil, fmt.Errorf("%w: duplicate tabular field %q at row %d", ErrUnsupported, f.name, i)
-			}
-			seen[f.name] = true
-			if !seenNames[f.name] {
-				names = append(names, f.name)
-				seenNames[f.name] = true
+			seen[field.name] = true
+			if !seenNames[field.name] {
+				names = append(names, field.name)
+				seenNames[field.name] = true
 			}
 		}
 	}
-	if len(arr) > 0 && len(arr[0].order) > 0 {
-		present := make(map[string]bool, len(names))
-		for _, name := range names {
-			present[name] = true
+
+	columns := make([]tabularColumn, 0, len(names))
+	for _, name := range names {
+		values := make([]*value, 0, len(objects))
+		for _, object := range objects {
+			values = append(values, fieldValue(object, name))
 		}
-		ordered := make([]string, 0, len(names))
-		seen := make(map[string]bool, len(names))
-		for _, name := range arr[0].order {
-			if present[name] && !seen[name] {
-				ordered = append(ordered, name)
+		allScalar, allObject, hasNull := true, true, false
+		for _, value := range values {
+			isNull := value.k == kindScalar && value.sk == scalarNull
+			hasNull = hasNull || isNull
+			allScalar = allScalar && (value.k == kindScalar)
+			allObject = allObject && (value.k == kindObject)
+		}
+		column := tabularColumn{name: name}
+		switch {
+		case allScalar:
+		case allObject:
+			for _, value := range values {
+				if keyedTabularEligible(value) {
+					return nil, fmt.Errorf("%w: %s field %q is a keyed object", ErrUnsupported, path, name)
+				}
+			}
+			firstNames := objectNameSet(values[0])
+			for _, value := range values[1:] {
+				if !sameNameSet(firstNames, value) {
+					return nil, fmt.Errorf("%w: %s field %q has inconsistent nested fields", ErrUnsupported, path, name)
+				}
+			}
+			children, err := tabularObjectFields(values, path+"."+name)
+			if err != nil {
+				return nil, err
+			}
+			column.children = children
+		default:
+			if hasNull && !allScalar {
+				return nil, fmt.Errorf("%w: %s field %q mixes null and nested values", ErrUnsupported, path, name)
+			}
+			return nil, fmt.Errorf("%w: %s field %q changes shape", ErrUnsupported, path, name)
+		}
+		columns = append(columns, column)
+	}
+
+	if len(objects[0].order) == 0 {
+		return columns, nil
+	}
+	ordered := make([]tabularColumn, 0, len(columns))
+	seen := make(map[string]bool, len(columns))
+	for _, name := range objects[0].order {
+		for _, column := range columns {
+			if column.name == name && !seen[name] {
+				ordered = append(ordered, column)
 				seen[name] = true
+				break
 			}
 		}
-		for _, name := range names {
-			if !seen[name] {
-				ordered = append(ordered, name)
-			}
-		}
-		names = ordered
 	}
-	return names, nil
+	for _, column := range columns {
+		if !seen[column.name] {
+			ordered = append(ordered, column)
+		}
+	}
+	return ordered, nil
 }
 
 // keyedTabularEligible reports whether an object, in object-field or root
