@@ -65,6 +65,7 @@ akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task create ...
+akagent task external <create|finish|resource|execution|archive> ...
 akagent task checkpoint <write|inspect> ...
 akagent task disposition ...
 akagent task list ...
@@ -82,6 +83,8 @@ akagent worker inspect
 These commands record durable facts only.
 They never invoke Git, tmux, a provider, a credential resolver, a deployment executable, or a terminal reader.
 Create operations are idempotent for equivalent inputs and return a conflict for different immutable inputs.
+The explicit external creation family validates caller ownership and immutable inputs before mutation.
+Managed creation commands retain managed provenance, including a normal execution created with `--target external`.
 
 The former launch, attach, stop, deploy, clean, credential, provider orchestration, and transitional `task record` commands are removed.
 Recognized removed forms return the structured usage error contract with exit code `2` before opening or mutating the state store.
@@ -121,6 +124,7 @@ The migration preserves historical IDs and Git and session facts without implici
 Missing processes never reactivate or complete work.
 
 Adding optional observation metadata is compatible.
+External records use the existing schema-1 readable envelopes and add no host-side effects.
 Changing lifecycle meanings or removing record fields requires protocol version `2` or a later breaking version.
 
 ## Output and security

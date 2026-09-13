@@ -32,6 +32,42 @@ func TestExternalRecordInputBounds(t *testing.T) {
 	}
 }
 
+func TestExternalCreateFailuresLeaveNoPartialRecords(t *testing.T) {
+	state := openTest(t)
+	taskID := validTaskID(t)
+	state.writeHook = func(path string) error {
+		if strings.Contains(path, string(filepath.Separator)+"events"+string(filepath.Separator)) {
+			return newError(KindPartial, "injected external create event failure", "Retry the same operation")
+		}
+		return nil
+	}
+	if _, err := state.CreateExternalTask(taskID, ExternalTaskRequest{Title: "external", CallerID: "caller", OperationID: "create"}); err == nil {
+		t.Fatal("external task create unexpectedly succeeded during injected event failure")
+	}
+	state.writeHook = nil
+	if _, err := state.ReadManifest(taskID); !IsKind(err, KindNotFound) {
+		t.Fatalf("failed external task create manifest error = %v, want not found", err)
+	}
+
+	resourceTask := validTaskID(t)
+	if err := state.WriteManifest(resourceTask, Manifest{Title: "resource parent", Worker: "local", Lifecycle: "created", Condition: "none"}); err != nil {
+		t.Fatal(err)
+	}
+	state.writeHook = func(path string) error {
+		if strings.Contains(path, string(filepath.Separator)+"resources"+string(filepath.Separator)) && strings.Contains(path, string(filepath.Separator)+"events"+string(filepath.Separator)) {
+			return newError(KindPartial, "injected external resource event failure", "Retry the same operation")
+		}
+		return nil
+	}
+	if _, err := state.AdoptExternalResource(resourceTask, ExternalResourceRequest{ID: "resource", OperationID: "create", CallerID: "caller", Repository: "repo", Branch: "branch", BaseRevision: "base", Head: "head", WorktreePath: "/offline/missing"}); err == nil {
+		t.Fatal("external resource create unexpectedly succeeded during injected event failure")
+	}
+	state.writeHook = nil
+	if _, err := state.ReadResource(resourceTask, "resource"); !IsKind(err, KindNotFound) {
+		t.Fatalf("failed external resource create error = %v, want not found", err)
+	}
+}
+
 func TestExternalRecordsWorkWithoutReferencedHostState(t *testing.T) {
 	state := openTest(t)
 	taskID := validTaskID(t)

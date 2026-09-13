@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -35,8 +36,83 @@ type ExternalExecutionRequest struct {
 }
 
 type ExternalTaskRequest struct {
+	Title       string
 	CallerID    string
 	OperationID string
+}
+
+// CreateExternalTask creates a caller-owned task record without consulting
+// host state or relabeling an existing managed task.
+func (s *Store) CreateExternalTask(taskID string, request ExternalTaskRequest) (Manifest, error) {
+	if err := validateTaskID(taskID); err != nil {
+		return Manifest{}, err
+	}
+	if err := validateExternalTaskRequest(request); err != nil {
+		return Manifest{}, err
+	}
+	var result Manifest
+	fingerprint := operationFingerprint(struct {
+		Title    string
+		CallerID string
+	}{request.Title, request.CallerID})
+	err := s.WithLock(taskID, func() error {
+		manifest, readErr := s.readManifestLocked(taskID)
+		if readErr == nil {
+			if manifest.Provenance != ProvenanceExternal {
+				return externalOwnershipConflict("task", taskID)
+			}
+			if manifest.CallerID != request.CallerID {
+				return externalCallerConflict("task", taskID)
+			}
+			if _, found, receiptErr := findReceipt(manifest.Receipts, request.OperationID, fingerprint); receiptErr != nil {
+				return receiptErr
+			} else if found {
+				result = manifest
+				return nil
+			}
+			if manifest.Title != request.Title {
+				return newError(KindConflict, fmt.Sprintf("external task %s inputs conflict with its existing record", taskID), "Inspect the task and retry with its original immutable inputs")
+			}
+			if externalTaskTerminal(manifest) {
+				return terminalMutationConflict("task", taskID)
+			}
+			manifest.Receipts, readErr = appendReceiptText(manifest.Receipts, request.OperationID, fingerprint, manifest.Revision)
+			if readErr != nil {
+				return readErr
+			}
+			if err := s.writeManifestLocked(taskID, manifest); err != nil {
+				return err
+			}
+			if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_create", Outcome: "replayed", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+				return err
+			}
+			result = manifest
+			return nil
+		}
+		if !IsKind(readErr, KindNotFound) {
+			return readErr
+		}
+		createdManifest := Manifest{
+			Title: request.Title, Provenance: ProvenanceExternal, CallerID: request.CallerID,
+			Revision: 1, Worker: "local", Lifecycle: "created", Condition: "none",
+			Disposition: "in-flight", HeartbeatAt: time.Now().UTC(),
+		}
+		createdManifest.Receipts, readErr = appendReceiptText("", request.OperationID, fingerprint, createdManifest.Revision)
+		if readErr != nil {
+			return readErr
+		}
+		if err := s.writeManifestLocked(taskID, createdManifest); err != nil {
+			_ = os.RemoveAll(s.taskDir(taskID))
+			return err
+		}
+		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_create", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: createdManifest.Revision}); err != nil {
+			_ = os.RemoveAll(s.taskDir(taskID))
+			return err
+		}
+		result = createdManifest
+		return nil
+	})
+	return result, err
 }
 
 func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceRequest) (Resource, error) {
@@ -56,6 +132,7 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		if err != nil {
 			return err
 		}
+		originalManifest := manifest
 		if manifest.Provenance == ProvenanceExternal && manifest.CallerID != request.CallerID {
 			return externalCallerConflict("task", taskID)
 		}
@@ -145,9 +222,11 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 			Metadata: cloneStringMap(request.Metadata, nil), Git: GitFacts{Path: request.WorktreePath, Head: request.Head, Branch: request.Branch},
 		}
 		if err := s.writeResourceLocked(taskID, resource); err != nil {
+			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
 			return err
 		}
 		if err := s.appendResourceEventLocked(taskID, request.ID, Event{Operation: "adopt", Outcome: "recorded", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: resource.Revision}); err != nil {
+			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
 			return err
 		}
 		manifest.ResourceIDs = appendCSV(manifest.ResourceIDs, request.ID)
@@ -162,12 +241,16 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		}
 		manifest.Receipts, err = appendReceiptText(manifest.Receipts, request.OperationID, fingerprint, manifest.Revision)
 		if err != nil {
+			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
 			return err
 		}
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
+			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
 			return err
 		}
 		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+			_ = s.writeManifestLocked(taskID, originalManifest)
+			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
 			return err
 		}
 		result = resource
@@ -271,6 +354,7 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		if err != nil {
 			return err
 		}
+		originalManifest := manifest
 		if manifest.Provenance != ProvenanceExternal {
 			return externalOwnershipConflict("task", taskID)
 		}
@@ -355,9 +439,11 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 			Receipts: []RecordReceipt{{OperationID: request.OperationID, Fingerprint: fingerprint, Revision: 1}},
 		}
 		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
+			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
 			return err
 		}
 		if err := s.appendExecutionEventLocked(taskID, request.ID, Event{Operation: "record", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
+			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
 			return err
 		}
 		manifest.ExecutionIDs = appendCSV(manifest.ExecutionIDs, request.ID)
@@ -372,12 +458,16 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		}
 		manifest.Receipts, err = appendReceiptText(manifest.Receipts, request.OperationID, fingerprint, manifest.Revision)
 		if err != nil {
+			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
 			return err
 		}
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
+			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
 			return err
 		}
 		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
+			_ = s.writeManifestLocked(taskID, originalManifest)
+			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
 			return err
 		}
 		result = execution
@@ -845,6 +935,19 @@ func (s *Store) readManifestLocked(taskID string) (Manifest, error) {
 		return Manifest{}, err
 	}
 	return envelope.DecodeManifest()
+}
+
+func validateExternalTaskRequest(request ExternalTaskRequest) error {
+	if err := validateCallerID(request.CallerID); err != nil {
+		return err
+	}
+	if err := validateOperationID(request.OperationID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(request.Title) == "" || strings.ContainsAny(request.Title, "\r\n\x00") || len(request.Title) > 4096 {
+		return newError(KindUsage, "external task title must be a bounded single line", "Provide a non-secret task title")
+	}
+	return nil
 }
 
 func validateExternalResourceRequest(request ExternalResourceRequest) error {

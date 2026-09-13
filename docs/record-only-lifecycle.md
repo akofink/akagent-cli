@@ -3,6 +3,30 @@
 The normal task, repository, resource, and execution commands are the record-only boundary.
 The transitional `akagent task record` command family is removed.
 
+## Explicit external record contract
+
+Use the explicit `task external` family when an external owner needs caller-owned provenance.
+
+```text
+akagent task external create <task-id> \
+  --title <title> --caller-id <id> --operation-id <id>
+akagent task external resource create <task-id> \
+  --resource-id <resource-id> --repository <identity> \
+  --branch <branch> --base <revision> --head <revision> \
+  --worktree <absolute-reference> --caller-id <id> --operation-id <id>
+akagent task external execution create <task-id> \
+  --execution-id <execution-id> --resource <resource-id> \
+  --caller-id <id> --operation-id <id>
+```
+
+These commands create external records directly and never relabel managed records.
+The task, resource, and execution IDs are explicit so operation retries address one stable record.
+The caller and operation IDs are required for ownership and idempotency.
+Resource and execution creation validate all inputs before writing a record.
+An equivalent retry returns the acknowledged record, while a changed retry, wrong caller, terminal parent, missing external resource, or managed record returns a conflict.
+Malformed input returns exit code `2` and does not create a partial task, resource, or execution.
+Output uses the normal task, resource, and execution detail views with `provenance` and `revision` fields.
+
 ## Contract
 
 Create durable task intent:
@@ -59,6 +83,14 @@ akagent task execution observe <task-id> <execution-id> \
   [--process-state <state>] [--result <result>] [--detail <text>]
 ```
 
+Complete an external task with its owning caller, current revision, operation ID, and named completion contract:
+
+```text
+akagent task external finish <task-id> \
+  --caller-id <id> --operation-id <id> --expected-revision <revision> \
+  --contract <name> --result <result>
+```
+
 Finish an external execution only with its owning caller, current revision, operation ID, and named completion contract:
 
 ```text
@@ -72,13 +104,23 @@ Stale revisions, changed operation inputs, wrong callers, and terminal mutations
 
 ## Completion and archive
 
-Completion is explicit and is checked against the caller's contract outside the core:
+Completion is explicit and is checked against the caller's contract outside the core.
 
 ```text
-akagent task finish <task-id> <succeeded|failed> <result>
-akagent task archive <task-id>
+akagent task external resource archive <task-id> <resource-id> \
+  --caller-id <id> --operation-id <id> --expected-revision <revision>
+akagent task external execution archive <task-id> <execution-id> \
+  --caller-id <id> --operation-id <id> --expected-revision <revision>
+akagent task external archive <task-id> \
+  --caller-id <id> --operation-id <id> --expected-revision <revision>
 ```
 
+External task archives require external task completion.
+External execution archives require external execution completion.
+Resource archives require caller ownership and the current resource revision.
+Equivalent archive retries are idempotent.
+Stale revisions, wrong callers, changed operation inputs, and terminal mutations are conflicts.
+The normal `task finish` and `task archive` commands retain managed and legacy compatibility semantics.
 A missing process, checkout, stale observation, provider session, or credential never proves completion.
 Archives contain durable manifests, references, checkpoints, and append-only events without terminal capture or host inspection.
 
