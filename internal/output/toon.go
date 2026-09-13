@@ -331,8 +331,128 @@ func renderArrayLines(b *strings.Builder, indent, key string, hasKey bool, v *va
 		return nil
 	}
 
-	// Tabular array of uniform scalar objects.
-	return renderTabularArray(b, indent, key, hasKey, v, rowDepth)
+	// Uniform objects with only scalar fields use the compact tabular form.
+	// Other arrays use TOON list form so nested typed records are preserved.
+	if allObjects(v.arr) {
+		if _, err := tabularFields(v.arr); err == nil {
+			return renderTabularArray(b, indent, key, hasKey, v, rowDepth)
+		}
+		if hasNestedArrayField(v.arr) {
+			return renderListArray(b, indent, key, hasKey, v, rowDepth)
+		}
+		// Nested object fields remain outside this encoder's tabular subset.
+		return renderTabularArray(b, indent, key, hasKey, v, rowDepth)
+	}
+	return renderListArray(b, indent, key, hasKey, v, rowDepth)
+}
+
+func allObjects(arr []*value) bool {
+	for _, e := range arr {
+		if e.k != kindObject {
+			return false
+		}
+	}
+	return true
+}
+
+func hasNestedArrayField(arr []*value) bool {
+	for _, item := range arr {
+		for _, field := range item.fields {
+			if field.val.k == kindArray {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func renderListArray(b *strings.Builder, indent, key string, hasKey bool, v *value, rowDepth int) error {
+	header := fmt.Sprintf("[%d]:", len(v.arr))
+	if hasKey {
+		header = key + header
+	}
+	b.WriteString(indent + header + "\n")
+	for _, item := range v.arr {
+		if err := renderListItem(b, item, rowDepth); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderListItem(b *strings.Builder, item *value, depth int) error {
+	itemIndent := strings.Repeat(indentUnit, depth)
+	switch item.k {
+	case kindScalar:
+		tok, err := scalarToken(item)
+		if err != nil {
+			return err
+		}
+		b.WriteString(itemIndent + "- " + tok + "\n")
+	case kindObject:
+		if len(item.fields) == 0 {
+			return fmt.Errorf("%w: empty object list item", ErrUnsupported)
+		}
+		if err := renderListObjectItem(b, item, depth); err != nil {
+			return err
+		}
+	case kindArray:
+		if len(item.arr) == 0 {
+			b.WriteString(itemIndent + "- []\n")
+			return nil
+		}
+		if err := renderArrayLines(b, itemIndent, "- ", true, item, depth+1); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("%w: unknown list item shape", ErrUnsupported)
+	}
+	return nil
+}
+
+func renderListObjectItem(b *strings.Builder, item *value, depth int) error {
+	first := item.fields[0]
+	if err := renderListFirstField(b, first, depth); err != nil {
+		return err
+	}
+	for _, field := range item.fields[1:] {
+		if err := renderField(b, field, depth+1); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderListFirstField(b *strings.Builder, field field, depth int) error {
+	indent := strings.Repeat(indentUnit, depth)
+	key := quoteKey(field.name)
+	switch field.val.k {
+	case kindScalar:
+		tok, err := scalarToken(field.val)
+		if err != nil {
+			return err
+		}
+		b.WriteString(indent + "- " + key + ": " + tok + "\n")
+	case kindObject:
+		if keyedTabularEligible(field.val) {
+			return fmt.Errorf("%w: keyed tabular objects are not supported", ErrUnsupported)
+		}
+		b.WriteString(indent + "- " + key + ":\n")
+		if err := renderObject(b, field.val, depth+2); err != nil {
+			return err
+		}
+	case kindArray:
+		if len(field.val.arr) == 0 {
+			b.WriteString(indent + "- " + key + ": []\n")
+			return nil
+		}
+		if err := renderArrayLines(b, indent, "- "+key, true, field.val, depth+2); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("%w: unknown list field shape", ErrUnsupported)
+	}
+	return nil
 }
 
 func allScalar(arr []*value) bool {

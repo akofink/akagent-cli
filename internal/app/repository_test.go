@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/akofink/akagent-cli/internal/store"
 )
 
 func TestRepositoryManagementCommandContract(t *testing.T) {
@@ -109,6 +112,61 @@ func TestRepositoryUnregisterReferencedTaskIsSafe(t *testing.T) {
 	}
 	if inspect := runCommand(t, []string{"repository", "inspect", "demo"}); inspect.code != 0 {
 		t.Fatalf("registration was removed after conflict: (%d, %q)", inspect.code, inspect.stdout)
+	}
+}
+
+func TestRepositoryUnregisterReferencedExternalAndArchivedResourcesIsSafe(t *testing.T) {
+	setupTaskCommandTest(t)
+	repositoryPath := filepath.Join(t.TempDir(), "repository")
+	if err := os.Mkdir(repositoryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "register", "demo", repositoryPath, "--policy", "direct"}); result.code != 0 {
+		t.Fatalf("register = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "external", "create", "external-ref", "--title", "External reference", "--caller-id", "caller", "--operation-id", "task-create"}); result.code != 0 {
+		t.Fatalf("external task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "external", "resource", "create", "external-ref", "--resource-id", "external-resource", "--repository", "demo", "--branch", "main", "--base", "base", "--head", "head", "--worktree", "/offline/missing", "--caller-id", "caller", "--operation-id", "resource-create"}); result.code != 0 {
+		t.Fatalf("external resource create = (%d, %q)", result.code, result.stdout)
+	}
+	before := runCommand(t, []string{"repository", "inspect", "demo"})
+	if before.code != 0 {
+		t.Fatalf("repository inspect before unregister = (%d, %q)", before.code, before.stdout)
+	}
+	if result := runCommand(t, []string{"repository", "unregister", "demo"}); result.code != 1 || !containsAll(result.stdout, "category: conflict", "external-ref", "record") {
+		t.Fatalf("active external unregister = (%d, %q), want structured conflict", result.code, result.stdout)
+	}
+	afterActive := runCommand(t, []string{"repository", "inspect", "demo"})
+	if afterActive.code != before.code || afterActive.stdout != before.stdout {
+		t.Fatalf("active refusal changed registration: before=%q after=%q", before.stdout, afterActive.stdout)
+	}
+	if result := runCommand(t, []string{"task", "external", "resource", "archive", "external-ref", "external-resource", "--caller-id", "caller", "--operation-id", "resource-archive", "--expected-revision", "1"}); result.code != 0 {
+		t.Fatalf("archive external resource = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"repository", "unregister", "demo"}); result.code != 1 || !strings.Contains(result.stdout, "external-ref") {
+		t.Fatalf("archived external unregister = (%d, %q), want structured conflict", result.code, result.stdout)
+	}
+
+	state, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyTaskID := "legacy-archive"
+	legacyManifest := store.Manifest{Title: "Legacy archived task", Worker: "local", Lifecycle: "finished", Condition: "succeeded"}
+	if err := state.WriteManifest(legacyTaskID, legacyManifest); err != nil {
+		t.Fatal(err)
+	}
+	legacyResource := store.Resource{ID: "legacy-resource", TaskID: legacyTaskID, Repository: "demo"}
+	if err := state.WriteArchive(legacyTaskID, store.TaskArchive{TaskID: legacyTaskID, CapturedAt: time.Now().UTC(), Manifest: legacyManifest, Resources: []store.Resource{legacyResource}}); err != nil {
+		t.Fatal(err)
+	}
+	if result := runCommand(t, []string{"repository", "unregister", "demo"}); result.code != 1 || !containsAll(result.stdout, "external-ref", legacyTaskID) {
+		t.Fatalf("legacy archived unregister = (%d, %q), want all references", result.code, result.stdout)
+	}
+	afterLegacy := runCommand(t, []string{"repository", "inspect", "demo"})
+	if afterLegacy.code != before.code || afterLegacy.stdout != before.stdout {
+		t.Fatalf("legacy refusal changed registration: before=%q after=%q", before.stdout, afterLegacy.stdout)
 	}
 }
 

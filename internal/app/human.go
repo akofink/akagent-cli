@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 func writeHumanTaskList(writer io.Writer, view taskListView) int {
@@ -134,6 +135,25 @@ func appendExecutionFields(output *strings.Builder, indent string, execution exe
 		appendTextField(output, indent, "process_pid", fmt.Sprintf("%d", execution.ProcessPID))
 	}
 	appendTextField(output, indent, "observation", execution.Observation)
+	if len(execution.ExternalObservations) > 0 {
+		fmt.Fprintf(output, "%sexternal_observations (%d)\n", indent, len(execution.ExternalObservations))
+		for index, observation := range execution.ExternalObservations {
+			fmt.Fprintf(output, "%sObservation %d\n", indent+"  ", index+1)
+			appendTextField(output, indent+"    ", "source", observation.Source)
+			appendTextField(output, indent+"    ", "observed_at", observation.ObservedAt.Format(time.RFC3339Nano))
+			appendTextField(output, indent+"    ", "host_id", observation.HostID)
+			appendTextField(output, indent+"    ", "boot_id", observation.BootID)
+			appendTextField(output, indent+"    ", "process_state", observation.ProcessState)
+			appendTextField(output, indent+"    ", "result", observation.Result)
+			appendTextField(output, indent+"    ", "detail", observation.Detail)
+		}
+	}
+	if execution.ExternalCompletion != nil {
+		appendTextField(output, indent, "external_completion_contract", execution.ExternalCompletion.Contract)
+		appendTextField(output, indent, "external_completion_result", execution.ExternalCompletion.Result)
+		appendTextField(output, indent, "external_completion_caller_id", execution.ExternalCompletion.CallerID)
+		appendTextField(output, indent, "external_completion_declared_at", execution.ExternalCompletion.DeclaredAt.Format(time.RFC3339Nano))
+	}
 	appendTextField(output, indent, "recovery_debt", execution.RecoveryDebt)
 	appendTextField(output, indent, "archive_state", execution.ArchiveState)
 	appendTextField(output, indent, "session_references", execution.SessionReferences)

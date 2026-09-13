@@ -119,6 +119,14 @@ func TestExternalRecordCreationCompletionAndArchiveCommands(t *testing.T) {
 	if executionArchive.code != 0 || !strings.Contains(executionArchive.stdout, "archive_state: complete") {
 		t.Fatalf("external execution archive = (%d, %q)", executionArchive.code, executionArchive.stdout)
 	}
+	archivedInspect := runCommand(t, []string{"task", "inspect", "external-flow"})
+	if archivedInspect.code != 0 || !strings.Contains(archivedInspect.stdout, "external_observations[1]") || !strings.Contains(archivedInspect.stdout, "external_completion:") {
+		t.Fatalf("archived task inspect = (%d, %q)", archivedInspect.code, archivedInspect.stdout)
+	}
+	archivedList := runCommand(t, []string{"task", "execution", "list", "external-flow"})
+	if archivedList.code != 0 || !strings.Contains(archivedList.stdout, "external_observations[1]") || !strings.Contains(archivedList.stdout, "external_completion:") {
+		t.Fatalf("archived execution list = (%d, %q)", archivedList.code, archivedList.stdout)
+	}
 	resourceArchive := runCommand(t, []string{"task", "external", "resource", "archive", "external-flow", "external-resource", "--caller-id", "caller", "--operation-id", "resource-archive", "--expected-revision", "1"})
 	if resourceArchive.code != 0 || !strings.Contains(resourceArchive.stdout, "archive_state: complete") {
 		t.Fatalf("external resource archive = (%d, %q)", resourceArchive.code, resourceArchive.stdout)
@@ -131,6 +139,14 @@ func TestExternalRecordCreationCompletionAndArchiveCommands(t *testing.T) {
 	if taskArchive.code != 0 || !strings.Contains(taskArchive.stdout, "archive_state: complete") {
 		t.Fatalf("external task archive = (%d, %q)", taskArchive.code, taskArchive.stdout)
 	}
+	fullyArchivedInspect := runCommand(t, []string{"task", "inspect", "external-flow"})
+	if fullyArchivedInspect.code != 0 || !strings.Contains(fullyArchivedInspect.stdout, "external_observations[1]") || !strings.Contains(fullyArchivedInspect.stdout, "external_completion:") {
+		t.Fatalf("fully archived task inspect = (%d, %q)", fullyArchivedInspect.code, fullyArchivedInspect.stdout)
+	}
+	fullyArchivedList := runCommand(t, []string{"task", "execution", "list", "external-flow"})
+	if fullyArchivedList.code != 0 || !strings.Contains(fullyArchivedList.stdout, "external_observations[1]") || !strings.Contains(fullyArchivedList.stdout, "external_completion:") {
+		t.Fatalf("fully archived execution list = (%d, %q)", fullyArchivedList.code, fullyArchivedList.stdout)
+	}
 	archiveRetry := runCommand(t, []string{"task", "external", "archive", "external-flow", "--caller-id", "caller", "--operation-id", "task-archive", "--expected-revision", "4"})
 	if archiveRetry.code != 0 || !strings.Contains(archiveRetry.stdout, "archive_state: complete") {
 		t.Fatalf("external task archive retry = (%d, %q)", archiveRetry.code, archiveRetry.stdout)
@@ -141,6 +157,15 @@ func TestExternalExecutionObservationAndCompletionCommands(t *testing.T) {
 	setupTaskCommandTest(t)
 	execution := createExternalExecutionForCLI(t, "external-cli")
 	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	malformed := runCommand(t, []string{
+		"task", "execution", "observe", "external-cli", execution.ID,
+		"--caller-id", "caller", "--operation-id", "observation-malformed", "--expected-revision", "1",
+		"--source", "worker", "--observed-at", "not-a-timestamp", "--host-id", "host", "--boot-id", "boot",
+	})
+	if malformed.code != 2 {
+		t.Fatalf("malformed observation command = (%d, %q)", malformed.code, malformed.stdout)
+	}
+
 	observed := runCommand(t, []string{
 		"task", "execution", "observe", "external-cli", execution.ID,
 		"--caller-id", "caller", "--operation-id", "observation-1", "--expected-revision", "1",
@@ -149,6 +174,19 @@ func TestExternalExecutionObservationAndCompletionCommands(t *testing.T) {
 	})
 	if observed.code != 0 || !strings.Contains(observed.stdout, "external_observations[1]") || !strings.Contains(observed.stdout, "revision: 2") {
 		t.Fatalf("observation command = (%d, %q)", observed.code, observed.stdout)
+	}
+
+	taskInspect := runCommand(t, []string{"task", "inspect", "external-cli"})
+	if taskInspect.code != 0 || !strings.Contains(taskInspect.stdout, "external_observations[1]") || !strings.Contains(taskInspect.stdout, "historical") {
+		t.Fatalf("observed task inspect = (%d, %q)", taskInspect.code, taskInspect.stdout)
+	}
+	executionList := runCommand(t, []string{"task", "execution", "list", "external-cli"})
+	if executionList.code != 0 || !strings.Contains(executionList.stdout, "external_observations[1]") || !strings.Contains(executionList.stdout, "historical") {
+		t.Fatalf("observed execution list = (%d, %q)", executionList.code, executionList.stdout)
+	}
+	humanInspect := runCommand(t, []string{"task", "inspect", "external-cli", "--format", "human"})
+	if humanInspect.code != 0 || !strings.Contains(humanInspect.stdout, "external_observations (1)") || !strings.Contains(humanInspect.stdout, "detail: historical") {
+		t.Fatalf("observed human task inspect = (%d, %q)", humanInspect.code, humanInspect.stdout)
 	}
 
 	stale := runCommand(t, []string{
@@ -221,6 +259,19 @@ func TestExternalExecutionObservationAndCompletionCommands(t *testing.T) {
 	})
 	if lateObservation.code != 1 || !strings.Contains(lateObservation.stdout, "terminal and immutable") {
 		t.Fatalf("late observation command = (%d, %q)", lateObservation.code, lateObservation.stdout)
+	}
+
+	terminalInspect := runCommand(t, []string{"task", "inspect", "external-cli"})
+	if terminalInspect.code != 0 || !strings.Contains(terminalInspect.stdout, "external_observations[1]") || !strings.Contains(terminalInspect.stdout, "external_completion:") {
+		t.Fatalf("terminal task inspect = (%d, %q)", terminalInspect.code, terminalInspect.stdout)
+	}
+	terminalList := runCommand(t, []string{"task", "execution", "list", "external-cli"})
+	if terminalList.code != 0 || !strings.Contains(terminalList.stdout, "external_observations[1]") || !strings.Contains(terminalList.stdout, "external_completion:") {
+		t.Fatalf("terminal execution list = (%d, %q)", terminalList.code, terminalList.stdout)
+	}
+	terminalHuman := runCommand(t, []string{"task", "inspect", "external-cli", "--format", "human"})
+	if terminalHuman.code != 0 || !strings.Contains(terminalHuman.stdout, "external_completion_contract: external-v1") || !strings.Contains(terminalHuman.stdout, "detail: historical") {
+		t.Fatalf("terminal human task inspect = (%d, %q)", terminalHuman.code, terminalHuman.stdout)
 	}
 }
 
