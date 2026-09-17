@@ -46,6 +46,8 @@ akagent task list --view history
 - `deferred` lists explicitly deferred work.
 - `history` lists explicitly or conservatively inferred terminal work without treating age as completion evidence.
 
+Finished work with `archive_state: complete` is history, even when leftover create-time `in-flight` disposition remains.
+Explicit `deferred` disposition is preserved.
 Terminal cleanup debt is shown by `maintenance` and is not included in the in-flight view or the default inventory.
 The views are read-only sweeps.
 Age, process absence, archive state, cleanup state, and reconciliation never implicitly transition a task to terminal.
