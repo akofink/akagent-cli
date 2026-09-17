@@ -5,7 +5,9 @@ Task, resource, execution, repository, checkpoint, disposition, observation, arc
 The core never invokes Git, tmux, a provider, a credential resolver, a deployment executable, or a terminal reader.
 
 Protocol data and structured errors are written to stdout as TOON by default.
-`task list` and `task inspect` also accept `--format human` for deterministic terminal reading.
+`task list` and `task inspect` also accept `--format json` for compact JSON of the same typed views and `--format human` for deterministic terminal reading.
+JSON is an explicit interchange option and does not change the default protocol.
+Structured errors remain TOON even when JSON is requested.
 Exit code `0` means success or an idempotent no-op.
 Exit code `1` means the requested operation could not be completed.
 Exit code `2` means the command or its arguments are invalid.
@@ -21,8 +23,8 @@ akagent task external finish <task-id> --caller-id <id> --operation-id <id> --ex
 akagent task external archive <task-id> --caller-id <id> --operation-id <id> --expected-revision <revision>
 akagent task checkpoint <write|inspect> <task-id> ...
 akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]
-akagent task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human>]
-akagent task inspect <task-id|keyword> [--format <toon|human>]
+akagent task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human|json>]
+akagent task inspect <task-id|keyword> [--format <toon|human|json>]
 akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
 akagent task finish <task-id> <succeeded|failed> <result>
 akagent task archive <task-id>

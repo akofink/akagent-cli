@@ -35,9 +35,11 @@ Removed orchestration and credential command families return structured usage er
 Worker inspection reports protocol version `2` and declarative registry, checkpoint, and observation capabilities.
 
 Stdout carries TOON protocol data and structured errors by default.
-Use `akagent task list --format human` or `akagent task inspect <task-id> --format human` for deterministic terminal-oriented views.
+Use `akagent task list --format json` or `akagent task inspect <task-id> --format json` for compact JSON of the same typed views.
+Use `--format human` for deterministic terminal-oriented views.
+JSON does not change the default protocol, and structured errors remain TOON.
 The TOON output contract is pinned to specification version 4.1 with a validated encoder and official conformance fixtures.
-See [`docs/task-cli.md`](docs/task-cli.md) for the human output contract and [`docs/toon.md`](docs/toon.md) for the TOON contract.
+See [`docs/task-cli.md`](docs/task-cli.md) for the output-format contract and [`docs/toon.md`](docs/toon.md) for the TOON contract.
 
 ## Quick start
 
@@ -75,7 +77,7 @@ Use `task publish` and `task execution publish` for durable condition and heartb
 `task inspect` is the durable work-state view for resources, executions, activity, results, delivery metadata, and session references.
 It accepts an exact task ID or a case-sensitive title or branch keyword when exactly one task matches.
 `task list [keyword]` applies the same title and branch matching without requiring uniqueness.
-Use `--format human` on `task list` or `task inspect` when reading task state directly in a terminal.
+Use `--format json` on `task list` or `task inspect` for compact JSON interchange, and `--format human` when reading task state directly in a terminal.
 Agents should call these commands directly when work starts, changes, disconnects, or needs recovery.
 They never delete task state, branches, worktrees, windows, or terminal history.
 

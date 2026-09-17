@@ -411,14 +411,18 @@ func taskCommand(args []string, stdout io.Writer) int {
 			items = append(items, view(id, manifest))
 		}
 		result := taskListView{Tasks: items, Total: len(items)}
-		if options.Format == outputFormatHuman {
+		switch options.Format {
+		case outputFormatHuman:
 			return writeHumanTaskList(stdout, result)
+		case outputFormatJSON:
+			return writeJSON(stdout, result)
+		default:
+			return write(stdout, result)
 		}
-		return write(stdout, result)
 	case "inspect":
 		argument, format, ok := parseTaskInspect(args[1:])
 		if !ok {
-			return writeError(stdout, "usage", "Usage: akagent task inspect <task-id|keyword> [--format <toon|human>]", false, "Run `akagent task list [keyword]` or add `--format human` for terminal output")
+			return writeError(stdout, "usage", "Usage: akagent task inspect <task-id|keyword> [--format <toon|human|json>]", false, "Run `akagent task list [keyword]`, add `--format human` for terminal output, or add `--format json` for JSON")
 		}
 		taskID, err := resolveTaskID(state, manager, argument)
 		if err != nil {
@@ -432,10 +436,14 @@ func taskCommand(args []string, stdout io.Writer) int {
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
-		if format == outputFormatHuman {
+		switch format {
+		case outputFormatHuman:
 			return writeHumanTaskDetail(stdout, detail)
+		case outputFormatJSON:
+			return writeJSON(stdout, detail)
+		default:
+			return write(stdout, detail)
 		}
-		return write(stdout, detail)
 	case "publish":
 		if len(args) < 4 {
 			return writeError(stdout, "usage", "Usage: akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]", false, "Publish active, waiting, blocked, failed, or none")
@@ -525,6 +533,7 @@ type outputFormat string
 const (
 	outputFormatTOON  outputFormat = "toon"
 	outputFormatHuman outputFormat = "human"
+	outputFormatJSON  outputFormat = "json"
 )
 
 type taskListOptions struct {
@@ -601,7 +610,7 @@ func parseTaskInspect(args []string) (string, outputFormat, bool) {
 
 func parseOutputFormat(value string) (outputFormat, bool) {
 	switch outputFormat(value) {
-	case outputFormatTOON, outputFormatHuman:
+	case outputFormatTOON, outputFormatHuman, outputFormatJSON:
 		return outputFormat(value), true
 	default:
 		return "", false
@@ -1679,7 +1688,7 @@ func taskUsage(stdout io.Writer) int {
 }
 
 func taskListUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task list [keyword] [--all] [--view <in-flight|attention|maintenance|deferred|history>] [--repository <name>] [--worktree <path>] [--format <toon|human>]", false, "Use a bounded inventory view; `--all` retains the historical compatibility view")
+	return writeError(stdout, "usage", "Usage: akagent task list [keyword] [--all] [--view <in-flight|attention|maintenance|deferred|history>] [--repository <name>] [--worktree <path>] [--format <toon|human|json>]", false, "Use a bounded inventory view; `--all` retains the historical compatibility view")
 }
 
 func validTaskListView(view string) bool {
