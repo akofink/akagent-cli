@@ -58,6 +58,8 @@ akagent task execution create <task-id> \
 ```
 
 Creation records intent without starting a process.
+`--target external` here is managed metadata and does not create a caller-owned external execution.
+Use `task external` when the caller needs owned provenance and revision-checked completion.
 The external tool owns startup and reports observations separately.
 
 ### 3. Publish status

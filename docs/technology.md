@@ -7,7 +7,7 @@ The implementation needs:
 - A fast single executable with straightforward installation.
 - Linux and macOS development, with Linux workers first.
 - Reliable filesystem, permission, locking, and atomic-record behavior.
-- Concurrent status queries and future network transports.
+- Concurrent status queries against worker-local records.
 - Typed protocol records and versioned schemas.
 - Conforming TOON output.
 - Deterministic tests for failure and idempotency.
@@ -19,14 +19,14 @@ Correctness, recovery, and maintainability matter more than initial implementati
 
 Go offers simple cross-compilation, a strong standard library for systems work and networking, goroutines and contexts for bounded concurrency, fast startup, typed protocol records, and straightforward black-box testing.
 
-Risks include careful pseudo-terminal work, potentially repetitive typed errors, and an immature TOON ecosystem that must be checked against the current specification.
+Risks include potentially repetitive typed errors and an immature TOON ecosystem that must be checked against the current specification.
 
 Go is the selected initial language.
 
 ## Rust
 
 Rust offers strong ownership and concurrency guarantees, excellent performance, and precise error modeling.
-Its implementation and review complexity would slow experimentation while command semantics are still changing.
+Its implementation and review complexity would slow experimentation while the protocol remains intentionally narrow.
 It becomes more attractive if a large service, high concurrency, or stronger in-process safety becomes central.
 
 ## TypeScript and Node.js

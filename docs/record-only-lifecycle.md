@@ -2,6 +2,9 @@
 
 The normal task, repository, resource, and execution commands are the record-only boundary.
 The transitional `akagent task record` command family is removed.
+Managed commands record caller-declared facts without caller-owned provenance.
+The explicit `task external` family is required when an external owner needs operation IDs, revisions, and guarded completion.
+`--target external` on `task execution create` does not create an external execution.
 
 ## Explicit external record contract
 

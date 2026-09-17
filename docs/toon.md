@@ -55,7 +55,7 @@ Nested typed lifecycle records therefore remain structured instead of being flat
 | Form | Example |
 | --- | --- |
 | Primitive scalar field | `id: 019fe968-cebf-7d21-ade7-946d1d6c979c` |
-| Boolean and numeric fields | `retryable: false`, `protocol_version: 1` |
+| Boolean and numeric fields | `retryable: false`, `protocol_version: 2` |
 | Nested object | `worker:` followed by indented fields |
 | Non-empty primitive array (inline) | `tags[3]: admin,ops,dev` |
 | Empty array | `tasks: []` |

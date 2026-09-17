@@ -1,5 +1,5 @@
 site_name: akagent
-site_description: Local-first orchestration protocol and CLI for coding agents.
+site_description: Local-first durable registry protocol and CLI for coding agents.
 site_url: https://akofink.github.io/akagent-cli/
 repo_name: akofink/akagent-cli
 repo_url: https://github.com/akofink/akagent-cli
@@ -11,13 +11,15 @@ nav:
   - Home: README.md
   - Getting started:
       - Quick start: quick-start.md
+      - Record-only lifecycle: record-only-lifecycle.md
       - Agent integration: agent-integration.md
       - AGENTS template: AGENTS.md
       - Lifecycle skill: skills/akagent-lifecycle/SKILL.md
   - Concepts:
       - Architecture: architecture.md
-      - Charter proposal: charter.md
+      - Charter: charter.md
       - Protocol: protocol.md
+      - Work inventory: work-inventory.md
       - Credentials: credentials.md
       - Storage: storage.md
       - Recovery checkpoints: recovery-checkpoints.md
