@@ -1695,7 +1695,7 @@ func includeTaskInView(manifest store.Manifest, resources []store.Resource, requ
 	if requested == "" {
 		requested = "in-flight"
 	}
-	disposition := lifecycle.WorkDispositionOf(manifest)
+	disposition := inventoryDisposition(manifest)
 	switch requested {
 	case "in-flight":
 		return acceptedInFlight(disposition)
@@ -1710,6 +1710,21 @@ func includeTaskInView(manifest store.Manifest, resources []store.Resource, requ
 	default:
 		return false
 	}
+}
+
+func inventoryDisposition(manifest store.Manifest) lifecycle.WorkDisposition {
+	disposition := lifecycle.WorkDispositionOf(manifest)
+	if archiveCompleteFinished(manifest) && disposition != lifecycle.DispositionDeferred {
+		return lifecycle.DispositionTerminal
+	}
+	return disposition
+}
+
+func archiveCompleteFinished(manifest store.Manifest) bool {
+	if manifest.ArchiveState != "complete" {
+		return false
+	}
+	return manifest.Lifecycle == "finished" || manifest.ExternalCompletion != nil
 }
 
 func acceptedInFlight(disposition lifecycle.WorkDisposition) bool {
