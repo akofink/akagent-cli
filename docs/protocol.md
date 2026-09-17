@@ -44,6 +44,9 @@ Lifecycle phases remain readable as:
 created | starting | running | stopped | finished
 ```
 
+New record-only work is created in `created` and completed as `finished`.
+`starting`, `running`, and `stopped` remain readable historical values from legacy orchestration records.
+
 Agent conditions are:
 
 ```text
@@ -125,7 +128,7 @@ Missing processes never reactivate or complete work.
 
 Adding optional observation metadata is compatible.
 External records use the existing schema-1 readable envelopes and add no host-side effects.
-Changing lifecycle meanings or removing record fields requires protocol version `2` or a later breaking version.
+Changing lifecycle meanings or removing record fields requires a later breaking protocol version.
 
 ## Output and security
 

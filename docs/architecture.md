@@ -3,7 +3,7 @@
 ## Thesis
 
 Standardize task identity, durable records, typed observations, and recovery behavior without making unlike execution environments appear identical.
-Issue #140 ships a local-first, record-only task boundary with a stable CLI protocol.
+Issue [#140](https://github.com/akofink/akagent-cli/issues/140) shipped a local-first, record-only task boundary with a stable CLI protocol.
 External tools and skills own side effects that remain necessary.
 
 ## Public surfaces
@@ -13,7 +13,7 @@ akagent
 akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
-akagent task <create|checkpoint|disposition|list|inspect|publish|finish|archive|reconcile|resource|execution>
+akagent task <create|external|checkpoint|disposition|list|inspect|publish|finish|archive|reconcile|resource|execution>
 akagent update [--source <path>]
 akagent worker inspect
 ```

@@ -57,6 +57,9 @@ akagent task execution create review-build \
 
 The command and target are metadata only.
 No process, provider, credential, Git, or tmux operation is implied.
+`--target external` on this managed command does not create a caller-owned external execution.
+Use the `task external` family when the caller needs owned provenance, operation IDs, and revision-checked completion.
+See [record-only-lifecycle.md](record-only-lifecycle.md).
 
 ## Inspect and publish
 
@@ -74,6 +77,7 @@ They preserve unavailable, stale, missing, and contradictory observations rather
 
 The default `task list` view is `in-flight`.
 Use `--view attention`, `--view maintenance`, `--view deferred`, `--view history`, or `--all` for other deterministic views.
+TOON is the machine-readable protocol on stdout.
 Use `--format human` only for direct terminal presentation.
 
 ## Record external observations and sessions

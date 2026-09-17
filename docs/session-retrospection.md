@@ -2,9 +2,11 @@
 
 ## Status and decision
 
-This proposal addresses issue [#121](https://github.com/akofink/akagent-cli/issues/121).
+This design addresses issue [#121](https://github.com/akofink/akagent-cli/issues/121).
+Phase 0 metadata-only evidence views are shipped.
+Later adapter, summary, shell, and terminal phases remain optional follow-ups.
 
-The recommended design is local-first, opt-in capture built around provider-native session references and small, redacted derived records.
+The design is local-first, opt-in capture built around provider-native session references and small, redacted derived records.
 
 `akagent` owns the relationship between a task, resource, execution, and evidence record, but it does not own or parse provider transcript formats.
 
@@ -42,7 +44,7 @@ The CLI must show the class next to summaries and must not turn an inference int
 The minimum retrospective timeline combines these independent streams:
 
 1. `akagent` task, resource, and execution events.
-2. Process, tmux, and Git observations already used by reconciliation.
+2. Caller-submitted process, tmux, and Git observations stored as historical evidence.
 3. Provider-native session metadata and transcript indexes when an adapter is enabled.
 4. Optional shell or terminal observations when the operator explicitly enabled them.
 
@@ -200,11 +202,15 @@ Any future synchronization must be a separate, visible, authenticated feature wi
 
 ## Disconnect and recovery semantics
 
-The adapter records `pending` before launching a provider when possible, then changes it to `active` after discovering the provider session ID.
+These rules apply to a future capture adapter.
+The core remains record-only and never launches a provider, inspects tmux, or infers completion from a missing process.
+
+The adapter records `pending` before an external tool launches a provider when possible, then changes it to `active` after discovering the provider session ID.
 
 If the provider exposes the ID only after startup, the initial execution remains useful without a session reference and the adapter records the reference at the first safe opportunity.
 
-A tmux or provider disconnect triggers normal `akagent` process and window reconciliation first.
+A tmux or provider disconnect is observed by the external owner, which then submits redaction-safe facts through `akagent`.
+Core reconciliation repairs durable store artifacts only.
 
 If the process is gone but the native artifact has a final readable checkpoint, the capture becomes `complete` or `disconnected` according to the provider's evidence.
 
@@ -250,11 +256,9 @@ All output remains deterministic TOON on stdout, with optional human-readable di
 
 ### Phase 0: contract and evidence views
 
-Document the capture schema, evidence classes, redaction policy, retention classes, and migration rules.
-
-Add synthetic fixtures and conformance tests for multiple sessions, gaps, stale references, forks, and missing artifacts without committing real transcripts.
-
-Add read-only inspection of existing session references and explicit unavailable or unknown states.
+Shipped.
+The capture schema, evidence classes, redaction policy, retention classes, and migration rules are documented.
+Read-only inspection of existing session references reports available, unknown, and unavailable states without reading provider content.
 
 ### Phase 1: native reference adapters
 

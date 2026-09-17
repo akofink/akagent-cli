@@ -27,6 +27,7 @@ akagent task resource create work-description --resource-id source \
 
 Use returned IDs for subsequent commands.
 Do not recreate a task, resource, execution, branch, or worktree when an adopted record exists.
+Use `task external` only when the caller needs owned provenance and revision-checked completion.
 
 ## During work
 

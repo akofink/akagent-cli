@@ -58,9 +58,10 @@ Unregister removes only the registration record and refuses while durable tasks 
 
 ## Task and resource records
 
-`task create` records task intent without credentials, Git, filesystem, process, or tmux access.
+`task create` records task intent without Git, filesystem, process, or tmux access.
 The optional repository, branch, base, and worktree values are recorded as declared facts.
 A repository value also creates a durable `legacy` resource snapshot without inspecting the path.
+`--require` and `--optional` store opaque historical credential IDs and never resolve, validate, or print credential values.
 
 ```text
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--branch <branch>] [--base <revision>] [--worktree <path>]
@@ -118,6 +119,7 @@ akagent task execution reconcile <task-id>
 
 Execution creation records an optional tool-neutral attempt without starting a process.
 The command and target are durable metadata, not instructions to execute a program.
+`--target external` on this managed command does not create an external execution.
 An execution can select one resource while coordinating other resources through the task ID.
 External callers can append typed provenance with `task execution observe`.
 Observation writes require `--caller-id`, `--operation-id`, and the current `--expected-revision`, plus source, timestamp, host, and boot provenance.

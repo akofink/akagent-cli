@@ -1,6 +1,6 @@
 # Durable registry charter
 
-**Status:** Shipped record-only boundary for issue [#140](https://github.com/akofink/akagent-cli/issues/140).
+**Status:** Shipped record-only protocol-v2 boundary after issue [#140](https://github.com/akofink/akagent-cli/issues/140).
 
 ## Recommendation
 
@@ -56,4 +56,5 @@ Optional observation metadata may be added compatibly, while lifecycle meaning o
 
 The boundary is verified by offline core tests, subprocess canaries for Git, tmux, providers, Pi, and deployment tools, concurrency and race tests, protocol output tests, legacy readability tests, and structured refusal tests.
 
+The core-boundary exit criteria are met.
 Before installed-binary changes, verify the integrated CLI, lifecycle skill, repository instructions, and active-agent workflow against `main`.

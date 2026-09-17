@@ -12,10 +12,12 @@ External tools and skills own process, tmux, Git, worktree, credential, provider
 - Worker protocol version `2` with declarative `registry`, `checkpoint`, and `observation` capabilities.
 - Storage schema version `1` compatibility and secure local manifests, events, checkpoints, archives, and locks.
 - Record-only repository, task, resource, and execution operations.
+- Caller-owned `task external` create, finish, and archive commands that never relabel managed records.
 - Caller-declared branch, revision, head, worktree, observation, session, and delivery metadata.
-- Provider-neutral session references and metadata-only evidence views.
+- Provider-neutral session references and metadata-only Phase 0 evidence views.
 - Record-only conditions, finish results, archives, reconciliation, revision-scoped dispositions, and bounded checkpoints.
 - Deterministic in-flight, attention, maintenance, deferred, and history inventory views.
+- Human terminal presentation for `task list` and `task inspect`.
 - Pre-store structured refusal for removed orchestration, deployment, cleanup, credential, and transitional record commands.
 - Subprocess canaries proving retained commands do not invoke Git, tmux, Pi, providers, or deployment tools.
 - Read-only `AKAGENT_ENABLED` integration inspection.
@@ -26,6 +28,8 @@ External tools and skills own process, tmux, Git, worktree, credential, provider
 Adopt an existing task with `AKAGENT_TASK_ID` and inspect it before editing.
 Otherwise create task intent and caller-declared resources directly through the CLI.
 Create an execution only when an external tool needs explicit identity.
+Use `task external` when the caller needs owned provenance, operation IDs, and revision-checked completion.
+A managed `task execution create --target external` records metadata only and does not create an external execution.
 Publish conditions and activity as durable records.
 Record provider session references and delivery URLs without provider content.
 After an uncertain failure, inspect and reconcile before retrying.
@@ -48,6 +52,14 @@ Manifest replacement and audit append remain separate writes, so durability is b
 Launch, attach, stop, deployment, cleanup, credential, provider orchestration, and `task record` commands return structured usage errors with exit code `2` before store access or mutation.
 Migration guidance names the command family and points callers to durable record operations and external tools or skills.
 It never echoes sensitive input.
+
+## Next public work
+
+1. Verify integrated CLI, lifecycle skill, repository instructions, and active-agent compatibility against `main` before installing or replacing the binary.
+2. Keep documentation and skills aligned with managed versus caller-owned external provenance.
+3. Add later session-evidence adapter phases only when a workflow needs native discovery beyond metadata-only views.
+4. Add archive and checkpoint backup procedures without a daemon or central store.
+5. Treat additional machine-readable presentation formats as optional follow-ups that must not replace TOON protocol output.
 
 ## Verification and compatibility gate
 

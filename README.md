@@ -163,12 +163,14 @@ Direct tools and skills remain valid replacements, and optional adapters are not
 
 - [`docs/quick-start.md`](docs/quick-start.md) provides the public agent-safe setup and recovery path.
 - [`docs/README.md`](docs/README.md) indexes the design and current decisions.
+- [`docs/record-only-lifecycle.md`](docs/record-only-lifecycle.md) defines managed and caller-owned external record contracts.
 - [`docs/storage.md`](docs/storage.md) defines the worker-local state store layout, schema, permissions, locking, archive, and recovery.
 - [`docs/architecture.md`](docs/architecture.md) defines system boundaries and failure assumptions.
 - [`docs/protocol.md`](docs/protocol.md) defines resources, state, lifecycle operations, output, and compatibility.
 - [`docs/task-cli.md`](docs/task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
+- [`docs/work-inventory.md`](docs/work-inventory.md) defines disposition and inventory views.
 - [`docs/credentials.md`](docs/credentials.md) defines the historical credential metadata and external ownership boundary.
 - [`docs/integration-gate.md`](docs/integration-gate.md) defines the integration signal and immediate disable path.
 - [`docs/technology.md`](docs/technology.md) records the implementation-stack evaluation.
-- [`docs/roadmap.md`](docs/roadmap.md) stages shipped local work and tracked follow-ups.
-- [`docs/handoff.md`](docs/handoff.md) records current implementation status and limitations.
+- [`docs/roadmap.md`](docs/roadmap.md) stages shipped local work and prioritized follow-ups.
+- [`docs/handoff.md`](docs/handoff.md) records current implementation status and the next public work.

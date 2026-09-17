@@ -15,5 +15,5 @@
 - Before optional automation, run `akagent integration inspect`; `AKAGENT_ENABLED=0` disables only that automation signal and never blocks direct record commands.
 - If a command may have mutated durable state and fails, inspect the affected task and reconcile before retrying; never launch a replacement or infer completion from a missing process.
 - For explicitly requested issue delivery, this repository authorizes issue creation, branch pushes, pull-request creation, and merge after required CI passes without another approval step. Higher-level safety rules still apply.
-- Use one signed Conventional Commit and include `Fixes #140` for this assigned implementation issue.
+- Use one signed Conventional Commit and include `Fixes #<issue>` when delivering a GitHub issue.
 - Do not install the binary until integrated CLI, lifecycle skill, and active-agent compatibility are verified on `main`.

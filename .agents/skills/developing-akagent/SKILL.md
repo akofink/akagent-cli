@@ -1,6 +1,6 @@
 ---
 name: developing-akagent
-description: Implements and reviews akagent-cli GitHub issues. Use when changing the Go CLI, TOON protocol output, local state, credentials, tmux or worktree lifecycle, integrations, or worker behavior in this repository.
+description: Implements and reviews akagent-cli GitHub issues. Use when changing the Go CLI, TOON protocol output, local state, record-only lifecycle, integrations, or worker behavior in this repository.
 ---
 
 # Developing akagent
