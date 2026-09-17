@@ -133,6 +133,9 @@ Changing lifecycle meanings or removing record fields requires a later breaking 
 ## Output and security
 
 Protocol data and errors are TOON on stdout.
+`task list` and `task inspect` also accept `--format json` for compact JSON of the same typed views and `--format human` for terminal presentation.
+JSON is an explicit interchange option and does not change the default protocol.
+Structured errors remain TOON even when JSON is requested.
 Human task views are an explicitly selected presentation and are not a parsing interface.
 Diagnostics are not mixed into protocol output.
 

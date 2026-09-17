@@ -70,8 +70,10 @@ func assertProjectionMatrix(t *testing.T, taskID, resourceID, executionID, phase
 		{"task", "list"},
 		{"task", "list", "--all"},
 		{"task", "list", "--all", "--format", "human"},
+		{"task", "list", "--all", "--format", "json"},
 		{"task", "inspect", taskID},
 		{"task", "inspect", taskID, "--format", "human"},
+		{"task", "inspect", taskID, "--format", "json"},
 		{"task", "checkpoint", "inspect", taskID},
 	}
 	if resourceID != "" {

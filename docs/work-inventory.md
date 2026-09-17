@@ -53,4 +53,5 @@ The views are read-only sweeps.
 Age, process absence, archive state, cleanup state, and reconciliation never implicitly transition a task to terminal.
 
 All list output remains deterministic TOON by default.
+`--format json` emits compact JSON of the same typed views.
 `--format human` remains available for direct terminal presentation.

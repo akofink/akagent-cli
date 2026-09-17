@@ -78,6 +78,7 @@ They preserve unavailable, stale, missing, and contradictory observations rather
 The default `task list` view is `in-flight`.
 Use `--view attention`, `--view maintenance`, `--view deferred`, `--view history`, or `--all` for other deterministic views.
 TOON is the machine-readable protocol on stdout.
+Use `--format json` for compact JSON interchange of the same typed views.
 Use `--format human` only for direct terminal presentation.
 
 ## Record external observations and sessions
