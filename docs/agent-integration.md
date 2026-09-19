@@ -120,10 +120,8 @@ Use TOON stdout as the protocol boundary.
 Treat structured errors as recovery guidance.
 Prefer idempotent commands and stable IDs.
 
-The `akagent integration inspect` signal is a read-only `AKAGENT_ENABLED` compatibility check for optional automation.
-It is not a prerequisite for direct record operations.
 Worker protocol version `2` reports declarative capabilities.
 Storage schema version `1` and legacy records remain readable.
 
-Launch, attach, stop, deployment, cleanup, credential, provider orchestration, and transitional `task record` commands are removed.
+Launch, attach, stop, deployment, cleanup, credential, integration, provider orchestration, and transitional `task record` commands are removed.
 They return structured usage errors with exit code `2` before store access.

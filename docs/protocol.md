@@ -64,7 +64,6 @@ Repeated equivalent operations are idempotent, while stale revisions, changed op
 ## Record-only commands
 
 ```text
-akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task create ...
@@ -89,7 +88,7 @@ Create operations are idempotent for equivalent inputs and return a conflict for
 The explicit external creation family validates caller ownership and immutable inputs before mutation.
 Managed creation commands retain managed provenance, including a normal execution created with `--target external`.
 
-The former launch, attach, stop, deploy, clean, credential, provider orchestration, and transitional `task record` commands are removed.
+The former launch, attach, stop, deploy, clean, credential, integration, provider orchestration, and transitional `task record` commands are removed.
 Recognized removed forms return the structured usage error contract with exit code `2` before opening or mutating the state store.
 Migration guidance names only the command family and never echoes sensitive input.
 

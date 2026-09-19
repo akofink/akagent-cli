@@ -38,6 +38,7 @@ func TestRemovedCommandsRefuseBeforeStoreAccess(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "/dev/null/akagent-invalid-state")
 	for _, args := range [][]string{
 		{"credential", "list"},
+		{"integration", "inspect"},
 		{"integration", "launch", "task"},
 		{"worker", "launch", "task"},
 		{"worker", "launch-pi", "task", "execution"},

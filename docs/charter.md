@@ -19,8 +19,7 @@ Capabilities may be intentionally retired instead of receiving a feature-parity 
 | Provider-neutral session references and metadata-only evidence | Retained in the core; provider interpretation stays external |
 | Inspection, list, publication, finish, archive, reconciliation, and migration | Record-only and offline-safe |
 | Git, worktree, process, tmux, provider, credential, deployment, cleanup, and forge side effects | External tools and skills |
-| Launch, attach, stop, deploy, clean, credential, provider orchestration, and `task record` command families | Removed; structured usage refusal before store access |
-| `integration inspect` | Retained read-only `AKAGENT_ENABLED` compatibility signal |
+| Launch, attach, stop, deploy, clean, credential, integration, provider orchestration, and `task record` command families | Removed; structured usage refusal before store access |
 | Worker inspection | Retained declarative protocol version `2` and capabilities |
 
 The CLI never treats a missing process, terminal, checkout, provider session, credential, or network as proof of completion.

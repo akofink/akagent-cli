@@ -20,7 +20,6 @@ Current commands:
 
 ```text
 akagent
-akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|external|checkpoint|resource|execution|disposition|list|inspect|publish|finish|archive|reconcile>
@@ -31,7 +30,7 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
-Removed orchestration and credential command families return structured usage errors with exit code `2` before store access.
+Removed orchestration, credential, and integration command families return structured usage errors with exit code `2` before store access.
 Worker inspection reports protocol version `2` and declarative registry, checkpoint, and observation capabilities.
 
 Stdout carries TOON protocol data and structured errors by default.
@@ -172,7 +171,6 @@ Direct tools and skills remain valid replacements, and optional adapters are not
 - [`docs/task-cli.md`](docs/task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
 - [`docs/work-inventory.md`](docs/work-inventory.md) defines disposition and inventory views.
 - [`docs/credentials.md`](docs/credentials.md) defines the historical credential metadata and external ownership boundary.
-- [`docs/integration-gate.md`](docs/integration-gate.md) defines the integration signal and immediate disable path.
 - [`docs/technology.md`](docs/technology.md) records the implementation-stack evaluation.
 - [`docs/roadmap.md`](docs/roadmap.md) stages shipped local work and prioritized follow-ups.
 - [`docs/handoff.md`](docs/handoff.md) records current implementation status and the next public work.

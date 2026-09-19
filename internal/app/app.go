@@ -54,7 +54,6 @@ func Run(args []string, stdout io.Writer) int {
 		return write(stdout, helpView{
 			Usage: "akagent <command>",
 			Commands: []string{
-				"integration inspect",
 				"id generate",
 				"repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
@@ -84,7 +83,7 @@ func Run(args []string, stdout io.Writer) int {
 	case "credential":
 		return removedCommandError(stdout, "credential", "Record credential references as historical metadata; external tools own credential readiness and cleanup")
 	case "integration":
-		return integrationCommand(args[1:], stdout)
+		return removedCommandError(stdout, "integration", "Use record-only task commands directly")
 	case "id":
 		if len(args) == 2 && args[1] == "generate" {
 			id, err := uuid.NewV7()
@@ -166,7 +165,6 @@ func home() homeView {
 		Tasks:       []string{},
 		Help: []string{
 			"Use `akagent task ...` directly for self-service task lifecycle management",
-			"Run `akagent integration inspect` only to inspect the optional automation signal",
 			"Run `akagent id generate` to create a task ID",
 			"Run `akagent update` to update from the local source checkout",
 			"Run `akagent worker inspect` to inspect the local worker",

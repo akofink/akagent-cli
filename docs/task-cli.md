@@ -15,7 +15,6 @@ Exit code `2` means the command or its arguments are invalid.
 ## Public commands
 
 ```text
-akagent integration inspect
 akagent repository <register|list|inspect|update|unregister>
 akagent task create --title <title> [--task-id <id>] [--repository <name>] [--branch <branch>] [--base <revision>] [--worktree <path>] [--require <credential>] [--optional <credential>]
 akagent task external create <task-id> --title <title> --caller-id <id> --operation-id <id>
@@ -39,7 +38,7 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
-The former launch, attach, stop, deploy, clean, credential, and `task record` command families are removed.
+The former launch, attach, stop, deploy, clean, credential, integration, and `task record` command families are removed.
 Recognized removed commands return a structured usage error with exit code `2` before opening or mutating the state store.
 The error names only the removed command family and provides safe migration guidance.
 
