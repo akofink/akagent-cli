@@ -46,7 +46,6 @@ Tmux may make active work visible, but it is not durable state and the core does
 - [`task-cli.md`](task-cli.md) defines the supported repository and task command syntax, output schemas, errors, and exit codes.
 - [`work-inventory.md`](work-inventory.md) defines disposition and the in-flight, attention, maintenance, deferred, and history views.
 - [`credentials.md`](credentials.md) defines historical credential metadata and the external ownership boundary.
-- [`integration-gate.md`](integration-gate.md) defines the optional automation signal and immediate disable path.
 - [`technology.md`](technology.md) compares the implementation options.
 - [`roadmap.md`](roadmap.md) separates shipped local work from prioritized follow-ups.
 - [`implementation-plan.md`](implementation-plan.md) records the shipped delivery map and remaining work.
@@ -113,7 +112,7 @@ External tools and skills own those side effects when a workflow still needs the
 Provider session references and evidence views are metadata-only.
 
 The default inventory is the in-flight view, with explicit attention, maintenance, deferred, and history views.
-Removed orchestration and credential commands return structured usage errors before store access.
+Removed orchestration, credential, and integration commands return structured usage errors before store access.
 Worker protocol version `2` reports declarative capabilities, while storage schema version `1` remains readable.
 
 ## Rejected prerequisites and target boundary

@@ -18,9 +18,8 @@ External tools and skills own process, tmux, Git, worktree, credential, provider
 - Record-only conditions, finish results, archives, reconciliation, revision-scoped dispositions, and bounded checkpoints.
 - Deterministic in-flight, attention, maintenance, deferred, and history inventory views.
 - Human terminal presentation for `task list` and `task inspect`.
-- Pre-store structured refusal for removed orchestration, deployment, cleanup, credential, and transitional record commands.
+- Pre-store structured refusal for removed orchestration, deployment, cleanup, credential, integration, and transitional record commands.
 - Subprocess canaries proving retained commands do not invoke Git, tmux, Pi, providers, or deployment tools.
-- Read-only `AKAGENT_ENABLED` integration inspection.
 - Public quick-start, protocol, architecture, migration, agent guidance, and lifecycle skill documentation.
 
 ## Current workflow
@@ -49,7 +48,7 @@ Manifest replacement and audit append remain separate writes, so durability is b
 
 ## Removed commands
 
-Launch, attach, stop, deployment, cleanup, credential, provider orchestration, and `task record` commands return structured usage errors with exit code `2` before store access or mutation.
+Launch, attach, stop, deployment, cleanup, credential, integration, provider orchestration, and `task record` commands return structured usage errors with exit code `2` before store access or mutation.
 Migration guidance names the command family and points callers to durable record operations and external tools or skills.
 It never echoes sensitive input.
 

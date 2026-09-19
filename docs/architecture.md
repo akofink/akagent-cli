@@ -10,7 +10,6 @@ External tools and skills own side effects that remain necessary.
 
 ```text
 akagent
-akagent integration inspect
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|external|checkpoint|disposition|list|inspect|publish|finish|archive|reconcile|resource|execution>
@@ -18,7 +17,7 @@ akagent update [--source <path>]
 akagent worker inspect
 ```
 
-The removed launch, attach, stop, deployment, cleanup, credential, provider, and transitional record commands fail with structured usage errors before store access.
+The removed launch, attach, stop, deployment, cleanup, credential, integration, provider, and transitional record commands fail with structured usage errors before store access.
 
 ## Components
 
@@ -26,7 +25,7 @@ The removed launch, attach, stop, deployment, cleanup, credential, provider, and
 
 The CLI records repository, task, resource, execution, observation, checkpoint, disposition, archive, recovery, and delivery facts.
 It emits concise TOON data and structured errors.
-It provides only the read-only `AKAGENT_ENABLED` integration inspection signal and worker capability inspection.
+It provides worker capability inspection.
 
 ### Record-only lifecycle
 

@@ -28,7 +28,6 @@ nav:
   - Reference:
       - Task CLI contract: task-cli.md
       - TOON output contract: toon.md
-      - Integration gate: integration-gate.md
   - Project status:
       - Roadmap: roadmap.md
       - Implementation plan: implementation-plan.md

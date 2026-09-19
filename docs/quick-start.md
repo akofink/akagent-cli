@@ -120,9 +120,8 @@ Storage schema version `1`, legacy manifests, archives, events, credential metad
 
 ## Removed command families
 
-Launch, attach, stop, deployment, cleanup, credential, provider orchestration, and the transitional `task record` family are removed.
+Launch, attach, stop, deployment, cleanup, credential, integration, provider orchestration, and the transitional `task record` family are removed.
 Recognized public and hidden forms return structured usage errors with exit code `2` before opening or mutating the state store.
 The error names only the command family and gives safe migration guidance.
 
-`akagent integration inspect` remains a read-only `AKAGENT_ENABLED` compatibility signal for optional automation.
 `akagent worker inspect` reports protocol version `2` and declarative `registry`, `checkpoint`, and `observation` capabilities.

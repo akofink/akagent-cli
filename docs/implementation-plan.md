@@ -29,9 +29,9 @@ Legacy records and storage schema version `1` remain readable.
 
 ## Command boundary
 
-Retain repository registration, task/resource/execution records, inspection, publication, finish, archive, reconciliation, checkpoints, dispositions, inventory, integration inspection, update, ID generation, and worker inspection.
+Retain repository registration, task/resource/execution records, inspection, publication, finish, archive, reconciliation, checkpoints, dispositions, inventory, update, ID generation, and worker inspection.
 
-Remove launch, attach, stop, deployment, cleanup, credential, provider orchestration, and transitional `task record` commands.
+Remove launch, attach, stop, deployment, cleanup, credential, integration, provider orchestration, and transitional `task record` commands.
 Removed commands return the existing structured usage error contract with exit code `2` before store access or mutation.
 Guidance names only the command family and never echoes sensitive arguments.
 

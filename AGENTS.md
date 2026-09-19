@@ -12,7 +12,6 @@
 - Do not add remote execution, containers, a daemon, or a central store without a demonstrated requirement.
 - Run `go test ./...`, `go test -race ./...`, and `go vet ./...` before committing.
 - Use the record-only `akagent` lifecycle directly for durable task, resource, execution, checkpoint, disposition, publication, completion, archive, and recovery facts.
-- Before optional automation, run `akagent integration inspect`; `AKAGENT_ENABLED=0` disables only that automation signal and never blocks direct record commands.
 - If a command may have mutated durable state and fails, inspect the affected task and reconcile before retrying; never launch a replacement or infer completion from a missing process.
 - For explicitly requested issue delivery, this repository authorizes issue creation, branch pushes, pull-request creation, and merge after required CI passes without another approval step. Higher-level safety rules still apply.
 - Use one signed Conventional Commit and include `Fixes #<issue>` when delivering a GitHub issue.
