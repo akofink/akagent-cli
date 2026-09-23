@@ -120,6 +120,8 @@ akagent task execution reconcile <task-id>
 
 Execution creation records an optional tool-neutral attempt without starting a process.
 The command and target are durable metadata, not instructions to execute a program.
+Use `task inspect`, `task execution inspect`, or `task execution list` to read an execution's current `revision` before guarded observation or completion.
+Human `task inspect` output includes the same revision.
 `--target external` on this managed command does not create an external execution.
 An execution can select one resource while coordinating other resources through the task ID.
 External callers can append typed provenance with `task execution observe`.

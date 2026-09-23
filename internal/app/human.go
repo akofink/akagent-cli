@@ -120,6 +120,7 @@ func appendResourceFields(output *strings.Builder, indent string, resource resou
 
 func appendExecutionFields(output *strings.Builder, indent string, execution executionView) {
 	appendTextField(output, indent, "id", execution.ID)
+	appendTextField(output, indent, "revision", fmt.Sprintf("%d", execution.Revision))
 	appendTextField(output, indent, "task_id", execution.TaskID)
 	appendTextField(output, indent, "label", execution.Label)
 	appendTextField(output, indent, "target", execution.Target)
