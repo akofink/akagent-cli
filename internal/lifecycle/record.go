@@ -57,6 +57,12 @@ func (m *Manager) CompleteExternalExecution(taskID, executionID, callerID, opera
 	return m.Store.CompleteExternalExecution(taskID, executionID, callerID, operationID, contract, result, expectedRevision)
 }
 
+// DisposeManagedExecutionHandoff records the successor's verified takeover of
+// a managed predecessor without relabeling the predecessor as caller-owned.
+func (m *Manager) DisposeManagedExecutionHandoff(taskID, executionID string, request store.HandoffDispositionRequest) (store.Execution, error) {
+	return m.Store.DisposeManagedExecutionHandoff(taskID, executionID, request)
+}
+
 // CompleteExternalTask records task completion for an externally adopted task.
 func (m *Manager) CompleteExternalTask(taskID, callerID, operationID, contract, result string, expectedRevision uint64) (store.Manifest, error) {
 	return m.Store.CompleteExternalTask(taskID, callerID, operationID, contract, result, expectedRevision)

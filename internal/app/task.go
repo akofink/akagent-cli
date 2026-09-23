@@ -134,6 +134,7 @@ type executionView struct {
 	PredecessorID        string                    `json:"predecessor_id,omitempty"`
 	ExternalObservations []externalObservationView `json:"external_observations,omitempty"`
 	ExternalCompletion   *externalCompletionView   `json:"external_completion,omitempty"`
+	HandoffDisposition   *store.HandoffDisposition `json:"handoff_disposition,omitempty"`
 	TaskID               string                    `json:"task_id"`
 	Label                string                    `json:"label"`
 	Target               string                    `json:"target"`
@@ -969,7 +970,7 @@ func externalTaskUsage(stdout io.Writer) int {
 
 func taskExecutionCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|observe|finish|handoff|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
 	}
 	if args[0] == "launch" || args[0] == "attach" || args[0] == "stop" {
 		return removedCommandError(stdout, "task execution "+args[0], "Use the normal execution record commands; external tools own process and terminal side effects")
@@ -989,6 +990,22 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 			return writeError(stdout, "usage", "Usage: akagent task execution observe <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --source <source> --observed-at <RFC3339> --host-id <id> --boot-id <id> [--process-state <state>] [--result <result>] [--detail <text>]", false, "Provide complete observation provenance and the current execution revision")
 		}
 		execution, err := manager.RecordObservation(args[1], args[2], callerID, operationID, expectedRevision, observation)
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		return write(stdout, executionDetail(execution, manager))
+	case "handoff":
+		if len(args) < 4 {
+			return executionHandoffUsage(stdout, "Provide a task, predecessor execution, successor execution, operation ID, current revision, and takeover confirmations")
+		}
+		request, verified, predecessorClosed, ok := parseExecutionHandoff(args[3:])
+		if !ok {
+			return executionHandoffUsage(stdout, "Require --takeover-verified and --predecessor-closed after independent verification")
+		}
+		if !verified || !predecessorClosed {
+			return executionHandoffUsage(stdout, "Confirm independently verified successor takeover and predecessor closure")
+		}
+		execution, err := manager.DisposeManagedExecutionHandoff(args[1], args[2], request)
 		if err != nil {
 			return lifecycleError(stdout, err)
 		}
@@ -1124,13 +1141,58 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 		}
 		return write(stdout, executionListView{Executions: items, Total: len(items)})
 	default:
-		return writeError(stdout, "usage", "Usage: akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
+		return writeError(stdout, "usage", "Usage: akagent task execution <create|observe|finish|handoff|list|inspect|session|evidence|publish|archive|reconcile>", false, "Run `akagent task execution list <task-id>`")
 	}
 }
 
 type lifecycleExecutionResult struct {
 	Execution store.Execution
 	Err       error
+}
+
+func executionHandoffUsage(stdout io.Writer, guidance string) int {
+	return writeError(stdout, "usage", "Usage: akagent task execution handoff <task-id> <predecessor-id> --successor-execution <id> --operation-id <id> --expected-revision <revision> --takeover-verified --predecessor-closed", false, guidance)
+}
+
+func parseExecutionHandoff(args []string) (request store.HandoffDispositionRequest, verified, predecessorClosed, ok bool) {
+	seen := map[string]bool{}
+	revisionProvided := false
+	for len(args) > 0 {
+		flag := args[0]
+		args = args[1:]
+		if seen[flag] {
+			return store.HandoffDispositionRequest{}, false, false, false
+		}
+		seen[flag] = true
+		switch flag {
+		case "--takeover-verified":
+			verified = true
+		case "--predecessor-closed":
+			predecessorClosed = true
+		case "--successor-execution", "--operation-id", "--expected-revision":
+			if len(args) == 0 {
+				return store.HandoffDispositionRequest{}, false, false, false
+			}
+			value := args[0]
+			args = args[1:]
+			switch flag {
+			case "--successor-execution":
+				request.SuccessorExecutionID = value
+			case "--operation-id":
+				request.OperationID = value
+			case "--expected-revision":
+				var parsed bool
+				request.ExpectedRevision, parsed = parseRevision(value)
+				revisionProvided = parsed
+				if !parsed {
+					return store.HandoffDispositionRequest{}, false, false, false
+				}
+			}
+		default:
+			return store.HandoffDispositionRequest{}, false, false, false
+		}
+	}
+	return request, verified, predecessorClosed, request.SuccessorExecutionID != "" && request.OperationID != "" && revisionProvided
 }
 
 func parseExternalCompletion(args []string) (callerID, operationID, contract, resultValue string, expectedRevision uint64, ok bool) {
@@ -1785,7 +1847,7 @@ func viewExecution(execution store.Execution, manager *lifecycle.Manager) execut
 	for _, reference := range execution.SessionReferences {
 		sessionReferences = append(sessionReferences, sessionReferenceView{Tool: reference.Tool, SessionID: reference.SessionID, ReferencePath: reference.ReferencePath})
 	}
-	return executionView{ID: execution.ID, Provenance: execution.Provenance, CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: viewExternalObservations(execution.ExternalObservations), ExternalCompletion: viewExternalCompletion(execution.ExternalCompletion), TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: sessionReferences}
+	return executionView{ID: execution.ID, Provenance: execution.Provenance, CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: viewExternalObservations(execution.ExternalObservations), ExternalCompletion: viewExternalCompletion(execution.ExternalCompletion), HandoffDisposition: execution.HandoffDisposition, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: sessionReferences}
 }
 
 func executionDetail(execution store.Execution, manager *lifecycle.Manager) executionDetailView {

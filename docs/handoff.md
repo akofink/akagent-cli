@@ -9,7 +9,7 @@ External tools and skills own process, tmux, Git, worktree, credential, provider
 ## Shipped behavior
 
 - UUIDv7 task IDs and structured TOON protocol output.
-- Worker protocol version `2` with declarative `registry`, `checkpoint`, and `observation` capabilities.
+- Worker protocol version `2` with declarative `registry`, `checkpoint`, `observation`, and `handoff` capabilities.
 - Storage schema version `1` compatibility and secure local manifests, events, checkpoints, archives, and locks.
 - Record-only repository, task, resource, and execution operations.
 - Caller-owned `task external` create, finish, and archive commands that never relabel managed records.

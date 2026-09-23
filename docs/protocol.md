@@ -14,7 +14,7 @@ worker:
   protocol_version: 2
   architecture: arm64
   operating_system: linux
-  features[3]: registry,checkpoint,observation
+  features[4]: registry,checkpoint,observation,handoff
 ```
 
 Worker inspection is declarative.
@@ -61,6 +61,10 @@ Unknown, stale, unavailable, and contradictory observations remain visible.
 A caller must explicitly record a finish result.
 External execution observations are historical and require the owning caller and current execution revision.
 External execution completion requires the owning caller, a unique operation ID, a named completion contract, and the current execution revision.
+A separate successor-authorized handoff disposition applies only to managed executions published `waiting` / `handed off`.
+It requires a distinct active managed successor on the same nonterminal task, the current predecessor revision, a unique operation ID, and caller attestations of independently verified takeover and predecessor closure.
+The core records the successor ID and `handed_off` result without changing provenance or claiming process success.
+The core cannot verify the external attestations or inspect tmux.
 Repeated equivalent operations are idempotent, while stale revisions, changed operation inputs, and terminal mutations are conflicts.
 
 ## Record-only commands
@@ -79,7 +83,7 @@ akagent task finish ...
 akagent task archive ...
 akagent task reconcile ...
 akagent task resource <create|list|inspect|update|archive> ...
-akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile> ...
+akagent task execution <create|observe|finish|handoff|list|inspect|session|evidence|publish|archive|reconcile> ...
 akagent update [--source <path>]
 akagent worker inspect
 ```

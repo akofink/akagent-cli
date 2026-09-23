@@ -41,6 +41,12 @@ type ExternalTaskRequest struct {
 	OperationID string
 }
 
+type HandoffDispositionRequest struct {
+	SuccessorExecutionID string
+	OperationID          string
+	ExpectedRevision     uint64
+}
+
 // CreateExternalTask creates a caller-owned task record without consulting
 // host state or relabeling an existing managed task.
 func (s *Store) CreateExternalTask(taskID string, request ExternalTaskRequest) (Manifest, error) {
@@ -604,6 +610,84 @@ func (s *Store) CompleteExternalExecution(taskID, executionID, callerID, operati
 			return err
 		}
 		result = execution
+		return nil
+	})
+	return result, err
+}
+
+// DisposeManagedExecutionHandoff terminalizes a managed predecessor record only
+// when its published handoff state and an active managed successor agree.
+// Independent host verification remains the successor's responsibility.
+func (s *Store) DisposeManagedExecutionHandoff(taskID, executionID string, request HandoffDispositionRequest) (Execution, error) {
+	if err := validateExecutionID(request.SuccessorExecutionID); err != nil {
+		return Execution{}, err
+	}
+	if err := validateOperationID(request.OperationID); err != nil {
+		return Execution{}, err
+	}
+	if executionID == request.SuccessorExecutionID {
+		return Execution{}, newError(KindConflict, "A managed execution cannot hand off to itself", "Name a distinct active successor execution")
+	}
+	var result Execution
+	fingerprint := operationFingerprint(struct{ SuccessorExecutionID string }{request.SuccessorExecutionID})
+	err := s.WithLock(taskID, func() error {
+		manifest, err := s.readManifestLocked(taskID)
+		if err != nil {
+			return err
+		}
+		if manifest.Lifecycle == "finished" || manifest.ArchiveState == "complete" {
+			return terminalMutationConflict("task", taskID)
+		}
+		predecessor, err := s.ReadExecution(taskID, executionID)
+		if err != nil {
+			return err
+		}
+		if predecessor.Provenance == ProvenanceExternal {
+			return externalOwnershipConflict("execution", executionID)
+		}
+		if _, found, receiptErr := findReceipt(predecessor.Receipts, request.OperationID, fingerprint); receiptErr != nil {
+			return receiptErr
+		} else if found {
+			if err := s.ensureExecutionRecordEventLocked(taskID, executionID, request.OperationID, fingerprint, predecessor.Revision); err != nil {
+				return err
+			}
+			result = predecessor
+			return nil
+		}
+		if err := s.ensureExecutionReceiptHistoryLocked(taskID, executionID, predecessor.Receipts); err != nil {
+			return err
+		}
+		successor, err := s.ReadExecution(taskID, request.SuccessorExecutionID)
+		if err != nil {
+			return err
+		}
+		if successor.Provenance == ProvenanceExternal || successor.Lifecycle == "finished" || successor.Condition != "active" {
+			return newError(KindConflict, "Successor execution is not an active managed execution", "Verify the successor takeover and inspect its active execution record")
+		}
+		if predecessor.HandoffDisposition != nil || predecessor.ExternalCompletion != nil || predecessor.Lifecycle == "finished" || predecessor.ArchiveState == "complete" {
+			return terminalMutationConflict("execution", executionID)
+		}
+		if predecessor.Condition != "waiting" || predecessor.Activity != "handed off" {
+			return newError(KindConflict, "Predecessor execution is not published as handed off", "Require the predecessor condition waiting and activity handed off")
+		}
+		if err := expectedRevisionCheck(request.ExpectedRevision, predecessor.Revision, "execution", executionID); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		predecessor.HandoffDisposition = &HandoffDisposition{SuccessorExecutionID: request.SuccessorExecutionID, VerifiedAt: now}
+		predecessor.Lifecycle, predecessor.Condition = "finished", "none"
+		predecessor.Result = "handed_off"
+		predecessor.Activity = "handed off to successor " + request.SuccessorExecutionID
+		predecessor.HeartbeatAt = now
+		predecessor.Revision++
+		predecessor.Receipts = appendReceipt(predecessor.Receipts, request.OperationID, fingerprint, predecessor.Revision)
+		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, predecessor); err != nil {
+			return err
+		}
+		if err := s.appendExecutionEventLocked(taskID, executionID, Event{Operation: "handoff_disposition", Outcome: "declared", Detail: request.SuccessorExecutionID, OperationID: request.OperationID, Fingerprint: fingerprint, Revision: predecessor.Revision}); err != nil {
+			return err
+		}
+		result = predecessor
 		return nil
 	})
 	return result, err
