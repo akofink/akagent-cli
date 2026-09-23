@@ -55,8 +55,28 @@ func TestRunUpdatesSourceAndReplacesBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	runner := successfulUpdateRunner(t)
+
+	result, updateErr := run(sourceDir, executable, runner)
+	if updateErr != nil {
+		t.Fatalf("run() error = %#v", updateErr)
+	}
+	if !result.SourceChanged || result.SourceBefore != "before" || result.SourceAfter != "after" || !result.Reinstalled {
+		t.Fatalf("run() result = %#v", result)
+	}
+	installed, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(installed) != "new" {
+		t.Fatalf("installed binary = %q, want new", installed)
+	}
+}
+
+func successfulUpdateRunner(t *testing.T) commandRunner {
+	t.Helper()
 	revisions := []string{"before\n", "after\n"}
-	runner := func(_ string, env []string, name string, args ...string) ([]byte, error) {
+	return func(_ string, env []string, name string, args ...string) ([]byte, error) {
 		command := append([]string{name}, args...)
 		switch {
 		case reflect.DeepEqual(command, []string{"git", "status", "--porcelain"}):
@@ -84,15 +104,39 @@ func TestRunUpdatesSourceAndReplacesBinary(t *testing.T) {
 			return nil, errors.New("unexpected command")
 		}
 	}
+}
 
-	result, updateErr := run(sourceDir, executable, runner)
+func TestRunReplacesSymlinkTargetAndKeepsAlias(t *testing.T) {
+	sourceDir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(sourceDir, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	installDir := t.TempDir()
+	target := filepath.Join(installDir, "akagent")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(installDir, "aka")
+	if err := os.Symlink("akagent", alias); err != nil {
+		t.Fatal(err)
+	}
+
+	result, updateErr := run(sourceDir, alias, successfulUpdateRunner(t))
 	if updateErr != nil {
 		t.Fatalf("run() error = %#v", updateErr)
 	}
-	if !result.SourceChanged || result.SourceBefore != "before" || result.SourceAfter != "after" || !result.Reinstalled {
-		t.Fatalf("run() result = %#v", result)
+	resolvedTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
 	}
-	installed, err := os.ReadFile(executable)
+	if result.Installed != resolvedTarget {
+		t.Fatalf("installed = %q, want %q", result.Installed, resolvedTarget)
+	}
+	link, err := os.Readlink(alias)
+	if err != nil || link != "akagent" {
+		t.Fatalf("alias link = %q, %v; want akagent", link, err)
+	}
+	installed, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatal(err)
 	}

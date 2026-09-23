@@ -57,6 +57,13 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 	if err != nil {
 		return Result{}, internalError("Resolve the installed binary", "Reinstall akagent through machine setup")
 	}
+	// Replace the link target, not an alias such as `aka` that invoked the binary.
+	if info, err := os.Lstat(executable); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		executable, err = filepath.EvalSymlinks(executable)
+		if err != nil {
+			return Result{}, internalError("Resolve the installed binary", "Reinstall akagent through machine setup")
+		}
+	}
 	updateLock := flock.New(executable + ".update.lock")
 	locked, err := updateLock.TryLock()
 	if err != nil {
