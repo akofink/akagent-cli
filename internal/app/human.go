@@ -78,9 +78,12 @@ func appendTaskFields(output *strings.Builder, indent string, task taskView) {
 		appendTextField(output, indent, "disposition_reason", task.DispositionReason)
 		appendTextField(output, indent, "disposition_revision", fmt.Sprintf("%d", task.DispositionRevision))
 	}
-	appendBoolField(output, indent, "committed", task.Committed)
-	appendBoolField(output, indent, "dirty", task.Dirty)
-	appendBoolField(output, indent, "untracked", task.Untracked)
+	// Task-level Git flags are legacy facts with no v2 setter; show them only when set.
+	if task.Committed || task.Dirty || task.Untracked {
+		appendBoolField(output, indent, "committed", task.Committed)
+		appendBoolField(output, indent, "dirty", task.Dirty)
+		appendBoolField(output, indent, "untracked", task.Untracked)
+	}
 	appendTextField(output, indent, "recovery_debt", task.RecoveryDebt)
 	appendTextField(output, indent, "warnings", task.Warnings)
 	appendTextField(output, indent, "archive_state", task.ArchiveState)
