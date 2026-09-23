@@ -37,6 +37,30 @@ func createExternalExecutionForCLI(t *testing.T, taskID string) store.Execution 
 	return execution
 }
 
+func TestExecutionRevisionIsDiscoverableFromReadCommands(t *testing.T) {
+	setupTaskCommandTest(t)
+	execution := createExternalExecutionForCLI(t, "revision-reads")
+	if execution.Revision != 1 {
+		t.Fatalf("created execution revision = %d, want 1", execution.Revision)
+	}
+
+	for _, command := range [][]string{
+		{"task", "inspect", "revision-reads"},
+		{"task", "execution", "inspect", "revision-reads", "execution"},
+		{"task", "execution", "list", "revision-reads"},
+	} {
+		result := runCommand(t, command)
+		if result.code != 0 || !strings.Contains(result.stdout, "revision: 1") {
+			t.Errorf("read command %q = (%d, %q), want current execution revision", command, result.code, result.stdout)
+		}
+	}
+
+	human := runCommand(t, []string{"task", "inspect", "revision-reads", "--format", "human"})
+	if human.code != 0 || !strings.Contains(human.stdout, "revision: 1") {
+		t.Fatalf("human task inspect = (%d, %q), want current execution revision", human.code, human.stdout)
+	}
+}
+
 func TestExternalRecordCreationCompletionAndArchiveCommands(t *testing.T) {
 	setupTaskCommandTest(t)
 	malformed := runCommand(t, []string{"task", "external", "create", "malformed", "--caller-id", "caller", "--operation-id", "create"})
