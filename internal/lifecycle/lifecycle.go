@@ -325,6 +325,10 @@ func Status(manifest store.Manifest, now time.Time, timeout time.Duration) strin
 		return manifest.Condition
 	}
 	if manifest.Lifecycle == "created" {
+		// Record-only work never launches; a caller-published active condition is the live status.
+		if manifest.Condition == "active" {
+			return "active"
+		}
 		return "created"
 	}
 	if manifest.Lifecycle == "starting" {
@@ -353,6 +357,9 @@ func ExecutionStatus(execution store.Execution, now time.Time, timeout time.Dura
 		return execution.Condition
 	}
 	if execution.Lifecycle == "created" {
+		if execution.Condition == "active" {
+			return "active"
+		}
 		return "created"
 	}
 	if execution.Lifecycle == "starting" {

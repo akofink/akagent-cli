@@ -55,7 +55,7 @@ func TestTaskJSONFormatContract(t *testing.T) {
 	if list.code != 0 {
 		t.Fatalf("json list = (%d, %q)", list.code, list.stdout)
 	}
-	wantList := "{\"tasks\":[{\"id\":\"json-output\",\"title\":\"JSON <output> & \\\"test\\\"\",\"status\":\"created\",\"worker\":\"local\",\"condition\":\"none\",\"committed\":false,\"dirty\":false,\"untracked\":false}],\"total\":1}\n"
+	wantList := "{\"tasks\":[{\"id\":\"json-output\",\"title\":\"JSON <output> & \\\"test\\\"\",\"status\":\"created\",\"worker\":\"local\",\"condition\":\"none\"}],\"total\":1}\n"
 	if list.stdout != wantList {
 		t.Fatalf("json list = %q, want %q", list.stdout, wantList)
 	}

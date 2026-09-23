@@ -46,6 +46,8 @@ created | starting | running | stopped | finished
 
 New record-only work is created in `created` and completed as `finished`.
 `starting`, `running`, and `stopped` remain readable historical values from legacy orchestration records.
+Derived `status` reports `active` for record-only work whose lifecycle is `created` and whose published condition is `active`.
+Task-level `committed`, `dirty`, and `untracked` are legacy facts with no v2 setter and are omitted from task views unless set; resource views keep their Git facts.
 
 Agent conditions are:
 

@@ -252,9 +252,9 @@ type taskView struct {
 	Disposition            string                  `json:"disposition,omitempty"`
 	DispositionReason      string                  `json:"disposition_reason,omitempty"`
 	DispositionRevision    uint64                  `json:"disposition_revision,omitempty"`
-	Committed              bool                    `json:"committed"`
-	Dirty                  bool                    `json:"dirty"`
-	Untracked              bool                    `json:"untracked"`
+	Committed              bool                    `json:"committed,omitempty"`
+	Dirty                  bool                    `json:"dirty,omitempty"`
+	Untracked              bool                    `json:"untracked,omitempty"`
 	RecoveryDebt           string                  `json:"recovery_debt,omitempty"`
 	Warnings               string                  `json:"warnings,omitempty"`
 	ArchiveState           string                  `json:"archive_state,omitempty"`
