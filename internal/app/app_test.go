@@ -27,7 +27,7 @@ func TestWorkerInspect(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"worker:", "id: local", "protocol_version: 2", "features[3]: registry,checkpoint,observation", "operating_system:"} {
+	for _, expected := range []string{"worker:", "id: local", "protocol_version: 2", "features[4]: registry,checkpoint,observation,handoff", "operating_system:"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
@@ -36,7 +36,7 @@ func TestWorkerInspect(t *testing.T) {
 
 func TestInspectWorkerReportsDeclarativeRecordCapabilities(t *testing.T) {
 	worker := inspectWorker()
-	if len(worker.Features) != 3 || worker.Features[0] != "registry" || worker.Features[1] != "checkpoint" || worker.Features[2] != "observation" {
+	if len(worker.Features) != 4 || worker.Features[0] != "registry" || worker.Features[1] != "checkpoint" || worker.Features[2] != "observation" || worker.Features[3] != "handoff" {
 		t.Fatalf("inspectWorker() features = %v, want declarative record capabilities", worker.Features)
 	}
 }

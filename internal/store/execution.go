@@ -37,6 +37,7 @@ type Execution struct {
 	PredecessorID        string                `json:"predecessor_id,omitempty"`
 	ExternalObservations []ExternalObservation `json:"external_observations,omitempty"`
 	ExternalCompletion   *ExternalCompletion   `json:"external_completion,omitempty"`
+	HandoffDisposition   *HandoffDisposition   `json:"handoff_disposition,omitempty"`
 	Receipts             []RecordReceipt       `json:"receipts,omitempty"`
 	Label                string                `json:"label"`
 	Target               string                `json:"target"`

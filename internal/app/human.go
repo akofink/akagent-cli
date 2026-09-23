@@ -159,6 +159,10 @@ func appendExecutionFields(output *strings.Builder, indent string, execution exe
 	if execution.ExternalCompletion != nil {
 		appendExternalCompletionFields(output, indent, execution.ExternalCompletion)
 	}
+	if execution.HandoffDisposition != nil {
+		appendTextField(output, indent, "handoff_successor_execution_id", execution.HandoffDisposition.SuccessorExecutionID)
+		appendTextField(output, indent, "handoff_verified_at", execution.HandoffDisposition.VerifiedAt.Format(time.RFC3339Nano))
+	}
 	appendTextField(output, indent, "recovery_debt", execution.RecoveryDebt)
 	appendTextField(output, indent, "archive_state", execution.ArchiveState)
 	if len(execution.SessionReferences) > 0 {

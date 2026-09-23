@@ -136,6 +136,13 @@ type ExternalCompletion struct {
 	DeclaredAt time.Time `json:"declared_at"`
 }
 
+// HandoffDisposition records a successor-authorized transition after the
+// successor independently verifies takeover outside the record-only core.
+type HandoffDisposition struct {
+	SuccessorExecutionID string    `json:"successor_execution_id"`
+	VerifiedAt           time.Time `json:"verified_at"`
+}
+
 type Event struct {
 	Operation   string `json:"operation"`
 	Outcome     string `json:"outcome,omitempty"`

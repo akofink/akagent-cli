@@ -31,7 +31,7 @@ akagent worker inspect
 ```
 
 Removed orchestration, credential, and integration command families return structured usage errors with exit code `2` before store access.
-Worker inspection reports protocol version `2` and declarative registry, checkpoint, and observation capabilities.
+Worker inspection reports protocol version `2` and declarative registry, checkpoint, observation, and handoff capabilities.
 
 Stdout carries TOON protocol data and structured errors by default.
 Use `akagent task list --format json` or `akagent task inspect <task-id> --format json` for compact JSON of the same typed views.

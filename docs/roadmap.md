@@ -11,7 +11,7 @@ The core prioritizes records that survive an agent, terminal, provider, or netwo
 - Store-only reconciliation and explicit legacy migration.
 - Provider-neutral session references and metadata-only Phase 0 evidence views.
 - Human terminal presentation for `task list` and `task inspect`.
-- Worker protocol version `2` with declarative `registry`, `checkpoint`, and `observation` capabilities.
+- Worker protocol version `2` with declarative `registry`, `checkpoint`, `observation`, and `handoff` capabilities.
 - Structured pre-store refusal for removed orchestration and credential command families.
 - Offline subprocess canaries for retained command paths.
 

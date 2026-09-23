@@ -124,4 +124,4 @@ Launch, attach, stop, deployment, cleanup, credential, integration, provider orc
 Recognized public and hidden forms return structured usage errors with exit code `2` before opening or mutating the state store.
 The error names only the command family and gives safe migration guidance.
 
-`akagent worker inspect` reports protocol version `2` and declarative `registry`, `checkpoint`, and `observation` capabilities.
+`akagent worker inspect` reports protocol version `2` and declarative `registry`, `checkpoint`, `observation`, and `handoff` capabilities.

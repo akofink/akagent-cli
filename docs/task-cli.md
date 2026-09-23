@@ -31,7 +31,7 @@ akagent task reconcile [<task-id>]
 akagent task resource <create|list|inspect|update|archive> ...
 akagent task external resource create <task-id> --resource-id <id> --repository <name> --branch <branch> --base <revision> --head <revision> --worktree <absolute-path> --caller-id <id> --operation-id <id>
 akagent task external resource archive <task-id> <resource-id> --caller-id <id> --operation-id <id> --expected-revision <revision>
-akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile> ...
+akagent task execution <create|observe|finish|handoff|list|inspect|session|evidence|publish|archive|reconcile> ...
 akagent task external execution create <task-id> --execution-id <id> --resource <resource-id> --caller-id <id> --operation-id <id> [--predecessor <execution-id>] [--tool <tool> --session-id <id> [--reference-path <absolute-path>]]
 akagent task external execution archive <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision>
 akagent update [--source <path>]
@@ -109,6 +109,7 @@ The removed `task record` family remains a migration error and is not an alias f
 akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--resource <resource-id>] [--worktree <path>]
 akagent task execution observe <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --source <source> --observed-at <RFC3339> --host-id <id> --boot-id <id> [--process-state <state>] [--result <result>] [--detail <text>]
 akagent task execution finish <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>
+akagent task execution handoff <task-id> <predecessor-id> --successor-execution <id> --operation-id <id> --expected-revision <revision> --takeover-verified --predecessor-closed
 akagent task execution list <task-id>
 akagent task execution inspect <task-id> [<execution-id>]
 akagent task execution session add <task-id> <execution-id> --tool <tool> --session-id <id> [--reference-path <path>]
@@ -131,6 +132,16 @@ External callers can finish an attempt with `task execution finish` by naming th
 Equivalent operation retries return the existing record without changing its revision.
 A reused operation ID with different inputs, a stale revision, a different caller, or a terminal mutation returns a structured conflict.
 Execution archive contains the durable execution and event history without terminal capture or process inspection.
+
+`task execution handoff` is a separate successor-authorized disposition for managed executions.
+The predecessor must remain managed, be published with condition `waiting` and activity `handed off`, and match the supplied revision.
+The named successor must be a distinct active managed execution on the same nonterminal task.
+The caller must explicitly affirm both independently verified takeover and predecessor closure.
+The record-only core does not inspect tmux or prove those external facts, so do not use the flags without an independently verified receipt.
+The operation preserves managed provenance, records the successor execution ID, increments the predecessor revision, and terminalizes its record with result `handed_off`.
+It does not claim that the predecessor process exited successfully.
+Operation IDs provide idempotent retries, and stale revisions, inactive successors, incomplete attestations, external executions, and changed terminal mutations are rejected.
+Managed executions may have revision `0`; supply the current value returned by inspection.
 
 A provider or external tool may record non-secret session provenance.
 The core validates only the reference shape and never opens or parses the provider file.
@@ -187,7 +198,7 @@ The core does not call GitHub, Bitbucket, or another forge.
 
 ## Worker and compatibility protocol
 
-`worker inspect` reports worker protocol version `2` and declarative capabilities for `registry`, `checkpoint`, and `observation`.
+`worker inspect` reports worker protocol version `2` and declarative capabilities for `registry`, `checkpoint`, `observation`, and `handoff`.
 It does not scan for Git, tmux, providers, credentials, or worktrees as prerequisites.
 Storage schema version `1` remains readable.
 Removing command families and changing lifecycle meanings is a protocol-breaking change documented by version `2`.
