@@ -23,11 +23,13 @@ There is no separately versioned binary release channel.
 - Focused files separate task command handlers and external-record store operations along existing boundaries.
 - External-record rollback failures are reported as partial outcomes, and lifecycle errors use typed categories instead of message matching.
 - `akagent update` subprocesses have a five-minute timeout, and `worker inspect` reports the build revision.
+- A read-only `task check` command with Git and GitHub adapters and offline record-consistency rules reports current, stale, missing, and unknown state per task or across the store, as designed in [Derived state](derived-state.md).
 
 ## Current boundary
 
 `akagent` records intent and caller-submitted facts.
 It does not launch or stop processes, inspect tmux or PIDs, run Git, create or remove worktrees, resolve credentials, parse provider sessions, capture terminal output, or call a forge.
+The opt-in `task check` command is the one exception: it reads Git and GitHub through their own CLIs and never writes to the store, a checkout, or the forge.
 External tools and skills own those side effects when they remain needed.
 Deployment and credential command families stay retired.
 
@@ -42,7 +44,7 @@ Human output is an explicit terminal presentation, not a parsing interface.
 
 Prioritized from the current direct coding-agent workflow:
 
-1. Roll out derived resource state in the phases defined by [Derived state](derived-state.md), so agents stop hand-recording Git, forge, terminal, and provider facts.
+1. Continue the derived-state rollout in [Derived state](derived-state.md): safe trims, then terminal, host identity, provider session, and notes-backed import phases.
 2. Verify integrated CLI, skills, and active-agent compatibility on `main` before changing the installed binary.
 3. Keep managed versus caller-owned external provenance distinct in agent workflows so `--target external` on a managed execution is not treated as `task external`.
 4. Add later session-evidence adapter phases only where a real workflow needs native discovery beyond metadata-only references.

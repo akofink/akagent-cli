@@ -82,6 +82,19 @@ akagent task resource update <task-id> <resource-id> \
   --external-url https://forge.example/pull/123
 ```
 
+## Check live state
+
+Ask akagent what is true instead of re-recording Git or forge facts:
+
+```bash
+akagent task check <task-id>
+akagent task check --all
+```
+
+`task check` is read-only.
+It reports each worktree, branch, pull request, check, and execution as `current`, `stale`, `missing`, or `unknown`, with a next action.
+Act on `stale` and `missing` findings, treat `unknown` as unverified, and never treat a `current` finding as completion.
+
 ## Recover safely
 
 After a possibly mutating failure, inspect and reconcile before retrying or creating anything new:

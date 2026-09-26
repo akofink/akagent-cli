@@ -2,7 +2,8 @@
 
 The task CLI is a local-first durable registry boundary.
 Task, resource, execution, repository, checkpoint, disposition, observation, archive, and delivery operations are record-only.
-The core never invokes Git, tmux, a provider, a credential resolver, a deployment executable, or a terminal reader.
+The record lifecycle never invokes Git, tmux, a provider, a credential resolver, a deployment executable, or a terminal reader.
+The opt-in `task check` command invokes read-only Git and GitHub adapters outside the record lifecycle and never writes to the store.
 
 Protocol data and structured errors are written to stdout as TOON by default.
 `task list` and `task inspect` also accept `--format json` for compact JSON of the same typed views and `--format human` for deterministic terminal reading.
@@ -24,6 +25,7 @@ akagent task checkpoint <write|inspect> <task-id> ...
 akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]
 akagent task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human|json>]
 akagent task inspect <task-id|keyword> [--format <toon|human|json>]
+akagent task check <task-id|keyword|--all> [--offline] [--format <toon|json>]
 akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
 akagent task finish <task-id> <succeeded|failed> <result>
 akagent task archive <task-id>
@@ -41,6 +43,26 @@ akagent worker inspect
 The former launch, attach, stop, deploy, clean, credential, integration, and `task record` command families are removed.
 Recognized removed commands return a structured usage error with exit code `2` before opening or mutating the state store.
 The error names only the removed command family and provides safe migration guidance.
+
+## Derived checks
+
+```text
+akagent task check <task-id|keyword> [--offline] [--format <toon|json>]
+akagent task check --all [--offline] [--format <toon|json>]
+```
+
+`task check` compares cached records with live Git and GitHub state and reports findings; it never writes to the store, a checkout, or the forge.
+Each finding has a `surface`, a `state` of `current`, `stale`, `missing`, or `unknown`, a stable `code`, an optional redaction-safe `detail`, and a deterministic `action`.
+Single-task output has `task_id`, a `summary` with counts per state and `needs_action`, then `task`, `resources`, and `executions` findings.
+Resource findings cover `worktree`, `branch`, `pull_request`, and `checks` in that order; resources and executions are sorted by ID.
+Record-consistency findings, such as an open execution under a terminal task, need only the store.
+`--offline` skips Git and GitHub and reports those surfaces as `unknown` `offline`.
+`--all` checks every task, including archived tasks, runs live adapters only for tasks that are not terminal, and lists only tasks and findings that need action under `checked`, `summary`, and `tasks`.
+A finding needs action when its state is `stale` or `missing`.
+Exit code `0` means the check ran even when findings need action; gate on `summary.needs_action`.
+A missing task returns exit code `1`, and invalid arguments return exit code `2`.
+A `current` finding is not a delivery verdict, and explicit completion remains required.
+See [Derived state](derived-state.md) for every code and the adapter contract.
 
 ## Repository records
 

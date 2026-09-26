@@ -3,6 +3,7 @@
 This guide uses only public commands and generic local paths.
 `akagent` is a local-first durable registry CLI for task, resource, execution, observation, checkpoint, and recovery records.
 The core does not launch processes, inspect tmux, run Git, mutate worktrees, resolve credentials, parse provider sessions, or capture terminal output.
+The opt-in `task check` command is the one exception: it reads Git and GitHub through their own CLIs and never writes to the store, a checkout, or the forge.
 External tools and skills own those side effects when they remain needed.
 
 ## Install or update
