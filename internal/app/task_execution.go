@@ -187,11 +187,6 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 	}
 }
 
-type lifecycleExecutionResult struct {
-	Execution store.Execution
-	Err       error
-}
-
 func executionHandoffUsage(stdout io.Writer, guidance string) int {
 	return writeError(stdout, "usage", "Usage: akagent task execution handoff <task-id> <predecessor-id> --successor-execution <id> --operation-id <id> --expected-revision <revision> --takeover-verified --predecessor-closed", false, guidance)
 }

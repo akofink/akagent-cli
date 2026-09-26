@@ -156,7 +156,7 @@ func TestRecoverSkipsLockedTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Lock() error = %v", err)
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	withShortLockWait(t, func() {
 		result, err := store.Recover()

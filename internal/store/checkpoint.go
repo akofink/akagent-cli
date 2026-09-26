@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 )
@@ -380,16 +379,6 @@ func validateBoundedText(value, name string, required bool) error {
 
 func validateSingleLine(value, name string) error {
 	return validateBoundedText(value, name, true)
-}
-
-func sameCheckpointPayload(a, b Checkpoint) bool {
-	a.TaskID, b.TaskID = "", ""
-	a.Revision, b.Revision = 0, 0
-	a.IdempotencyKey, b.IdempotencyKey = "", ""
-	a.IdempotencyHistory, b.IdempotencyHistory = nil, nil
-	a.AuditDebt, b.AuditDebt = nil, nil
-	a.AcknowledgedAt, b.AcknowledgedAt = time.Time{}, time.Time{}
-	return reflect.DeepEqual(a, b)
 }
 
 func (e Envelope) DecodeCheckpoint() (Checkpoint, error) {

@@ -515,7 +515,7 @@ func (s *Store) removeStaleTemps(taskID string, result *RecoveryResult) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	return removeStaleTempsFromDir(root, taskDir, result)
 }
 
@@ -706,7 +706,7 @@ func (s *Store) checkTaskDir(taskID string) error {
 		}
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil {
 		return internalError(fmt.Sprintf("inspect the task directory for %s", taskID), fmt.Sprintf("Check %s and retry", taskDir))
@@ -725,7 +725,7 @@ func (s *Store) eventsDirStatus(taskID string) (bool, error) {
 		}
 		return false, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil {
 		return false, internalError(fmt.Sprintf("inspect the events directory for task %s", taskID), fmt.Sprintf("Check %s and retry", dir))
@@ -863,7 +863,7 @@ func (s *Store) readOwnedFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil {
 		return nil, internalError(fmt.Sprintf("inspect %s", path), fmt.Sprintf("Check %s and retry", path))
@@ -1021,7 +1021,7 @@ func (s *Store) listEventSequences(taskID string) ([]int, map[int]string, error)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	entries, err := file.ReadDir(-1)
 	if err != nil {
 		return nil, nil, internalError(fmt.Sprintf("list events for task %s", taskID), fmt.Sprintf("Check %s and retry", dir))
@@ -1119,7 +1119,7 @@ func (s *Store) atomicallyWrite(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer parent.Close()
+	defer func() { _ = parent.Close() }()
 
 	var temporaryName string
 	var temporary *os.File

@@ -290,7 +290,7 @@ func (s *Store) ExecutionIDs(taskID string) ([]string, error) {
 		}
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	entries, err := file.ReadDir(-1)
 	if err != nil {
 		return nil, internalError(fmt.Sprintf("list executions for task %s", taskID), "Check the task state and retry")
@@ -356,7 +356,7 @@ func (s *Store) ReadExecutionEvents(taskID, executionID string) ([]EventRecord, 
 		}
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	entries, err := file.ReadDir(-1)
 	if err != nil {
 		return nil, internalError("list execution events", "Check the execution state and retry")

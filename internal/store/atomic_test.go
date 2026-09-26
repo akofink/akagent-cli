@@ -26,7 +26,7 @@ func TestAtomicWritePreservesPreviousManifest(t *testing.T) {
 	if err := os.Chmod(taskDir, 0o500); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chmod(taskDir, 0o700)
+	defer func() { _ = os.Chmod(taskDir, 0o700) }()
 
 	if err := store.WriteManifest(taskID, Manifest{Title: "should-not-land", Lifecycle: "failed"}); err == nil {
 		t.Fatal("WriteManifest() unexpectedly succeeded against a read-only task directory")
@@ -70,7 +70,7 @@ func TestRenameFailureLeavesNoTemporaryFile(t *testing.T) {
 	if err := os.Mkdir(manifestPath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(manifestPath)
+	defer func() { _ = os.RemoveAll(manifestPath) }()
 
 	if err := store.WriteManifest(taskID, Manifest{Title: "replacement"}); err == nil {
 		t.Fatal("WriteManifest() unexpectedly succeeded onto a directory target")
