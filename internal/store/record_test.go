@@ -1,11 +1,57 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestRollbackRecordReportsCleanupFailures(t *testing.T) {
+	original := errors.New("original write failure")
+	cleanup := errors.New("failed to remove record")
+	second := errors.New("failed to restore manifest")
+	var called int
+	result := rollbackRecord(original, func() error { called++; return cleanup }, func() error { called++; return second })
+	if called != 2 || !IsKind(result, KindPartial) || !errors.Is(result, original) || !errors.Is(result, cleanup) || !errors.Is(result, second) {
+		t.Fatalf("rollback = %v (called %d), want partial wrapping all failures", result, called)
+	}
+	var storeErr *Error
+	if !errors.As(result, &storeErr) || storeErr.Recovery == "" {
+		t.Fatalf("rollback error = %v, want recovery guidance", result)
+	}
+	if result := rollbackRecord(original, func() error { return nil }); result != original {
+		t.Fatalf("successful rollback = %v, want original error", result)
+	}
+}
+
+func TestExternalResourceManifestRollbackFailureIsPartial(t *testing.T) {
+	state := openTest(t)
+	taskID := validTaskID(t)
+	if err := state.WriteManifest(taskID, Manifest{Title: "parent", Lifecycle: "created"}); err != nil {
+		t.Fatal(err)
+	}
+	eventFailure := errors.New("injected task event failure")
+	restoreFailure := errors.New("injected manifest restore failure")
+	manifestWrites := 0
+	state.writeHook = func(path string) error {
+		if path == state.manifestPath(taskID) {
+			manifestWrites++
+			if manifestWrites == 2 {
+				return restoreFailure
+			}
+		}
+		if strings.HasPrefix(path, state.eventsDir(taskID)+string(filepath.Separator)) {
+			return eventFailure
+		}
+		return nil
+	}
+	_, err := state.AdoptExternalResource(taskID, ExternalResourceRequest{ID: "resource", OperationID: "adopt", CallerID: "caller", Repository: "repo", Branch: "branch", BaseRevision: "base", Head: "head", WorktreePath: "/offline"})
+	if !IsKind(err, KindPartial) || !errors.Is(err, eventFailure) || !errors.Is(err, restoreFailure) || manifestWrites != 2 {
+		t.Fatalf("adopt error = %v, manifest writes = %d; want partial wrapping both errors", err, manifestWrites)
+	}
+}
 
 func TestExternalRecordInputBounds(t *testing.T) {
 	state := openTest(t)

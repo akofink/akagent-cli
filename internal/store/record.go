@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,25 @@ import (
 )
 
 const externalHistoryLimit = 1024
+
+// rollbackRecord retains the original failure unless cleanup also fails.
+// In that case the persisted state is uncertain and callers must reconcile it.
+func rollbackRecord(cause error, cleanups ...func() error) error {
+	var failures []error
+	for _, cleanup := range cleanups {
+		if err := cleanup(); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	if len(failures) == 0 {
+		return cause
+	}
+	return &Error{
+		Kind: KindPartial, Message: "record rollback failed",
+		Recovery: "Inspect and reconcile the task before retrying the operation",
+		Err:      errors.Join(append([]error{cause}, failures...)...),
+	}
+}
 
 type ExternalResourceRequest struct {
 	ID               string
@@ -108,12 +128,10 @@ func (s *Store) CreateExternalTask(taskID string, request ExternalTaskRequest) (
 			return readErr
 		}
 		if err := s.writeManifestLocked(taskID, createdManifest); err != nil {
-			_ = os.RemoveAll(s.taskDir(taskID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.taskDir(taskID)) })
 		}
 		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_create", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: createdManifest.Revision}); err != nil {
-			_ = os.RemoveAll(s.taskDir(taskID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.taskDir(taskID)) })
 		}
 		result = createdManifest
 		return nil
@@ -228,12 +246,10 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 			Metadata: cloneStringMap(request.Metadata, nil), Git: GitFacts{Path: request.WorktreePath, Head: request.Head, Branch: request.Branch},
 		}
 		if err := s.writeResourceLocked(taskID, resource); err != nil {
-			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.resourceDir(taskID, request.ID)) })
 		}
 		if err := s.appendResourceEventLocked(taskID, request.ID, Event{Operation: "adopt", Outcome: "recorded", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: resource.Revision}); err != nil {
-			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.resourceDir(taskID, request.ID)) })
 		}
 		manifest.ResourceIDs = appendCSV(manifest.ResourceIDs, request.ID)
 		manifest.Provenance = ProvenanceExternal
@@ -247,17 +263,16 @@ func (s *Store) AdoptExternalResource(taskID string, request ExternalResourceReq
 		}
 		manifest.Receipts, err = appendReceiptText(manifest.Receipts, request.OperationID, fingerprint, manifest.Revision)
 		if err != nil {
-			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.resourceDir(taskID, request.ID)) })
 		}
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
-			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.resourceDir(taskID, request.ID)) })
 		}
 		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_adopt", Outcome: "resource", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
-			_ = s.writeManifestLocked(taskID, originalManifest)
-			_ = os.RemoveAll(s.resourceDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err,
+				func() error { return s.writeManifestLocked(taskID, originalManifest) },
+				func() error { return os.RemoveAll(s.resourceDir(taskID, request.ID)) },
+			)
 		}
 		result = resource
 		return nil
@@ -445,12 +460,10 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 			Receipts: []RecordReceipt{{OperationID: request.OperationID, Fingerprint: fingerprint, Revision: 1}},
 		}
 		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
-			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.executionDir(taskID, request.ID)) })
 		}
 		if err := s.appendExecutionEventLocked(taskID, request.ID, Event{Operation: "record", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
-			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.executionDir(taskID, request.ID)) })
 		}
 		manifest.ExecutionIDs = appendCSV(manifest.ExecutionIDs, request.ID)
 		manifest.Provenance = ProvenanceExternal
@@ -464,17 +477,16 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		}
 		manifest.Receipts, err = appendReceiptText(manifest.Receipts, request.OperationID, fingerprint, manifest.Revision)
 		if err != nil {
-			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.executionDir(taskID, request.ID)) })
 		}
 		if err := s.writeManifestLocked(taskID, manifest); err != nil {
-			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err, func() error { return os.RemoveAll(s.executionDir(taskID, request.ID)) })
 		}
 		if err := s.appendRecordEventLocked(taskID, Event{Operation: "record_execution", Outcome: "created", OperationID: request.OperationID, Fingerprint: fingerprint, Revision: manifest.Revision}); err != nil {
-			_ = s.writeManifestLocked(taskID, originalManifest)
-			_ = os.RemoveAll(s.executionDir(taskID, request.ID))
-			return err
+			return rollbackRecord(err,
+				func() error { return s.writeManifestLocked(taskID, originalManifest) },
+				func() error { return os.RemoveAll(s.executionDir(taskID, request.ID)) },
+			)
 		}
 		result = execution
 		return nil
