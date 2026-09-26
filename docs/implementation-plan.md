@@ -11,21 +11,9 @@ External tools and skills own side effects that remain needed.
 Capabilities such as deployment and credential injection stay retired rather than recreated.
 Legacy records and storage schema version `1` remain readable.
 
-## Shipped implementation
+## Shipped status
 
-- Record-only task, repository, resource, and execution creation and updates.
-- Caller-owned `task external` create, finish, and archive commands that never relabel managed records.
-- Caller-declared Git, branch, base, head, and worktree facts.
-- Durable conditions, heartbeats, finish results, events, archives, recovery debt, and delivery metadata.
-- Provider-neutral session references and metadata-only evidence views.
-- Revision-scoped dispositions and bounded recovery checkpoints.
-- Store-only reconciliation and explicit legacy migration.
-- Deterministic in-flight, attention, maintenance, deferred, and history inventory views.
-- Human presentation for `task list` and `task inspect`.
-- Declarative worker capabilities and protocol version `2`.
-- Pre-store structured refusal for removed orchestration, deployment, credential, and record command families.
-- Subprocess canaries proving retained commands do not invoke Git, tmux, Pi, providers, or deployment tools.
-- Migration documentation and updated agent lifecycle guidance.
+See [Roadmap](roadmap.md) for the authoritative shipped-capabilities list and prioritized follow-up work.
 
 ## Command boundary
 
@@ -48,14 +36,8 @@ The implementation makes no crash-atomicity claim across both files.
 
 ## Remaining work
 
+See [Roadmap](roadmap.md) for the authoritative prioritized follow-up work.
 The expected near-future work is compatibility and workflow clarity, not a return of core orchestration.
-
-1. Complete the integrated CLI, skill, and active-agent compatibility gate before any installed-binary change.
-2. Keep agent guidance aligned with managed versus external provenance so callers use `task external` only when they need caller-owned records.
-3. Add later session-evidence adapter phases only when a workflow needs native discovery beyond Phase 0 metadata views.
-4. Add archive and checkpoint backup procedures without a daemon or central store.
-5. Keep additional machine-readable presentation formats as optional follow-ups.
-   TOON remains the protocol output and human remains the explicit terminal view.
 
 ## Verification
 

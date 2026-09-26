@@ -1,7 +1,10 @@
 # Roadmap
 
-This roadmap describes the shipped protocol-v2 record-only registry and the next credible work.
+This document is the single source of truth for shipped capabilities and prioritized follow-up work.
 The core prioritizes records that survive an agent, terminal, provider, or network failure.
+
+The project follows a source-tracking release policy: users build from a checkout, and `akagent update` fast-forwards that checkout to `origin/main`.
+There is no separately versioned binary release channel.
 
 ## Shipped
 
@@ -10,7 +13,7 @@ The core prioritizes records that survive an agent, terminal, provider, or netwo
 - Deterministic in-flight, attention, maintenance, deferred, and history views.
 - Store-only reconciliation and explicit legacy migration.
 - Provider-neutral session references and metadata-only Phase 0 evidence views.
-- Human terminal presentation for `task list` and `task inspect`.
+- Human terminal presentation for `task list` and `task inspect`, plus JSON list and inspect output.
 - Worker protocol version `2` with declarative `registry`, `checkpoint`, `observation`, and `handoff` capabilities.
 - Structured pre-store refusal for removed orchestration and credential command families.
 - Offline subprocess canaries for retained command paths.
