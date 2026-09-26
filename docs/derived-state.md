@@ -254,6 +254,77 @@ Deferred to a versioned protocol migration, after active clients prove compatibl
 Never removed: explicit task finish, guarded execution finish, external completion, and archive.
 Archival is retention, not cleanup authorization.
 
+## Future phase: managed notes worktrees
+
+This phase is design only.
+It is not part of the current implementation, and nothing in this section ships until the operator decides to adopt it.
+
+### Context
+
+The operator's durable work record is a private notes repository with a `direct` repository policy.
+Agents commit straight to `main` and run `syncdots`, which takes a shared lock, runs `git pull --rebase --autostash` and `git push` for the dots and notes checkouts, and then reapplies agent skill links from the notes checkout.
+That flow stays unchanged for now.
+Its known costs are shared-checkout conflicts between concurrent agents, autostash surprises, and no isolation for half-finished edits.
+Agents should not take on manual worktree steps to avoid them.
+
+The goal of this phase is isolation with no extra agent steps: akagent creates, lands, and removes a per-task worktree deterministically, so an agent only edits and commits.
+
+### Boundary change
+
+Every other part of this design is read-only.
+This phase would be the first akagent command family that mutates Git, so it must be a separate, explicit decision rather than a side effect of `task check`.
+It is limited to repositories registered with a new opt-in policy, called `managed` here, and it never touches a forge, a PR, or any repository with the `worktree` or `direct` policy.
+
+### Commands
+
+```text
+akagent task worktree open <task-id> --repository <name>
+akagent task worktree land <task-id> --repository <name>
+akagent task worktree close <task-id> --repository <name>
+```
+
+`open` fetches `origin`, then creates a worktree at `<worktree-root>/<task-id>` on the local branch `akagent/<task-id>` from `origin/main`, and records the binding as a task resource.
+Rerunning it returns the existing worktree when the binding and branch match, and refuses when they do not.
+
+`land` requires a clean worktree and only signed commits.
+It takes the same lock file as `syncdots`, fetches `origin`, rebases the task branch onto `origin/main`, and pushes `HEAD:main` without force.
+Rebasing is safe because the task branch is local and never pushed as a branch; shared `main` is never rewritten.
+A non-fast-forward rejection means another writer landed first: `land` re-fetches and retries a bounded number of times.
+A rebase conflict aborts the rebase, leaves the worktree and branch intact, and reports the conflict for the agent to resolve.
+After a successful push, `land` runs the repository's configured sync command, such as `syncdots`, so the primary checkout fast-forwards and skill links are reapplied by the tool that already owns them.
+
+`close` removes the worktree and deletes the local branch only when the worktree is clean and the branch tip is an ancestor of `origin/main`.
+It refuses otherwise, and it never deletes unlanded commits.
+
+Each command is idempotent by task ID, holds no state beyond the task resource, and can be rerun after a crash.
+
+### Fit with the direct flow
+
+Direct agents and worktree agents can coexist, because both converge on `origin/main` under the same lock.
+A direct agent keeps committing on the primary checkout and running `syncdots`.
+A worktree agent's edits reach the primary checkout only after `land` and the sync command, so an agent editing its own skills must land before relying on them.
+Gitignored scratch space stays in the primary checkout, because a task worktree and everything in it is removed on `close`.
+Adopting it means updating the notes repository's registration from `direct` to `managed`.
+The repository's own instructions currently forbid worktrees and branches, so adoption also requires changing those instructions.
+
+### Checks
+
+`task check` would report a `managed_worktree` surface for the binding:
+
+| Condition | State and code |
+| --- | --- |
+| Clean and fully landed | `current` `landed` |
+| Commits not yet on `origin/main` | `stale` `unlanded` |
+| Uncommitted changes | `stale` `dirty` |
+| Task terminal and the worktree removed | `current` `removed_after_finish` |
+| Task terminal with unlanded commits or changes | `stale` `unlanded_after_finish`, never deleted automatically |
+
+### Open questions
+
+- Whether `land` should call the sync command or only fast-forward the primary checkout and leave skill links to the next `syncdots` run.
+- Whether the lock should move from the sync script into a small shared helper so akagent does not depend on its path.
+- Whether a merge commit is preferable to a rebase when a task branch carries many commits.
+
 ## Rollout
 
 1. This design, the Git and GitHub adapters, the record-consistency rules, and `task check`.
@@ -262,12 +333,14 @@ Archival is retention, not cleanup authorization.
 4. Execution host identity and a read-only remote transport.
 5. The provider session adapter.
 6. The notes-backed importer, then the versioned migration that removes legacy fields.
+7. Managed notes worktrees, only after an explicit operator decision; design only today.
 
-Each phase is opt-in and read-only, so no feature flag is needed; existing commands and storage keep working.
+Phases 1 through 6 are opt-in and read-only, so no feature flag is needed; existing commands and storage keep working.
+Phase 7 mutates Git and is gated by the opt-in `managed` repository policy.
 
 ## Non-goals
 
 - Writing derived facts back into records, or auto-finishing work from a green check, merged PR, or missing pane.
 - A daemon, poller, or background cache refresher.
 - Reading provider transcripts or terminal scrollback.
-- Adapters that mutate Git, the forge, a terminal, or a provider.
+- Adapters that mutate Git, the forge, a terminal, or a provider; the only planned Git mutation is the separately gated phase 7.
