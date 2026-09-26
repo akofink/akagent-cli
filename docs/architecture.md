@@ -32,6 +32,7 @@ It provides worker capability inspection.
 The lifecycle owns durable records, append-only events, revision checks, idempotency, locks, archives, recovery debt, and protocol views.
 It accepts caller-declared observations and provider-neutral references.
 It never launches or stops processes, inspects tmux or PIDs, runs Git, creates or removes worktrees, resolves credential values, parses provider sessions, captures terminal output, or calls a forge.
+The opt-in `task check` command is the one exception: it reads Git and GitHub through their own CLIs and never writes to the store, a checkout, or the forge.
 
 Repository registration stores an absolute path, policy, and optional worktree-root reference without checking or mutating the checkout.
 Resource creation stores repository identity, branch, revisions, worktree references, and delivery metadata without host inspection.

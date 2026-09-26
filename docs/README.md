@@ -109,6 +109,7 @@ Execution creation records a tool-neutral attempt without starting a process.
 The explicit `task external` family creates caller-owned records with stable operation IDs and never relabels managed records.
 
 The core does not launch or stop processes, inspect tmux or PIDs, run Git, create or remove worktrees, resolve credentials, parse provider sessions, capture terminal output, or call a forge.
+The opt-in `task check` command is the one exception: it reads Git and GitHub through their own CLIs and never writes to the store, a checkout, or the forge.
 External tools and skills own those side effects when a workflow still needs them.
 Provider session references and evidence views are metadata-only.
 

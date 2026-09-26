@@ -21,10 +21,12 @@ A managed `task execution create --target external` records metadata only and do
 Reconcile does not infer that completion.
 Publish conditions and activity as durable records.
 Record provider session references and delivery URLs without provider content.
+Run `task check` to compare cached records with live Git and GitHub state instead of re-recording those facts.
 After an uncertain failure, inspect and reconcile before retrying.
 Finish explicitly against the caller's completion contract, then archive.
 
 The core never launches or stops a process, inspects tmux or PIDs, runs Git, mutates a worktree, resolves credential values, reads a provider file, captures terminal output, or calls a forge.
+The opt-in `task check` command is the one exception: it reads Git and GitHub through their own CLIs and never writes to the store, a checkout, or the forge.
 A missing process, checkout, provider session, credential, or network never proves completion.
 
 ## Recovery and migration

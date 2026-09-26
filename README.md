@@ -14,6 +14,7 @@ Task, resource, and execution manifests and append-only events are durable state
 Coding agents create, inspect, update, reconcile, and archive that state themselves through the CLI.
 The core is a record-only boundary that accepts typed observations while external tools and skills own side effects that remain needed.
 The core does not launch or stop processes, inspect tmux or PIDs, run Git, mutate worktrees, resolve credentials, deploy commands, parse provider sessions, or capture terminal output.
+The opt-in `task check` command is the one exception: it reads Git and GitHub through their own CLIs and never writes to the store, a checkout, or the forge.
 Optional local or provider adapters are convenience integrations, not required dependencies or feature-parity replacements.
 
 Current commands:
