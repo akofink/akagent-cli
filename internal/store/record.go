@@ -564,7 +564,7 @@ func (s *Store) CompleteExternalExecution(taskID, executionID, callerID, operati
 			return err
 		}
 		if execution.Provenance != ProvenanceExternal {
-			return externalOwnershipConflict("execution", executionID)
+			return s.finishManagedExecutionOnTerminalTaskLocked(taskID, execution, callerID, operationID, contract, resultValue, expectedRevision, fingerprint, &result)
 		}
 		if err := validateExternalExecutionCaller(execution, callerID); err != nil {
 			return err
@@ -613,6 +613,61 @@ func (s *Store) CompleteExternalExecution(taskID, executionID, callerID, operati
 		return nil
 	})
 	return result, err
+}
+
+// finishManagedExecutionOnTerminalTaskLocked closes a managed execution only
+// after its parent task is finished or archived. It preserves managed
+// provenance and does not infer completion from host state.
+func (s *Store) finishManagedExecutionOnTerminalTaskLocked(taskID string, execution Execution, callerID, operationID, contract, resultValue string, expectedRevision uint64, fingerprint string, result *Execution) error {
+	manifest, err := s.readManifestLocked(taskID)
+	if err != nil {
+		return err
+	}
+	if manifest.Lifecycle != "finished" && manifest.ArchiveState != "complete" {
+		return externalOwnershipConflict("execution", execution.ID)
+	}
+	if _, found, receiptErr := findReceipt(execution.Receipts, operationID, fingerprint); receiptErr != nil {
+		return receiptErr
+	} else if found {
+		if err := s.ensureExecutionRecordEventLocked(taskID, execution.ID, operationID, fingerprint, execution.Revision); err != nil {
+			return err
+		}
+		*result = execution
+		return nil
+	}
+	if execution.ExternalCompletion != nil && completionMatches(execution.ExternalCompletion, contract, resultValue, callerID) {
+		execution.Receipts = appendReceipt(execution.Receipts, operationID, fingerprint, execution.Revision)
+		if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
+			return err
+		}
+		if err := s.appendExecutionEventLocked(taskID, execution.ID, Event{Operation: "complete", Outcome: "duplicate", OperationID: operationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
+			return err
+		}
+		*result = execution
+		return nil
+	}
+	if err := s.ensureExecutionReceiptHistoryLocked(taskID, execution.ID, execution.Receipts); err != nil {
+		return err
+	}
+	if execution.ExternalCompletion != nil || execution.Lifecycle == "finished" || execution.ArchiveState == "complete" {
+		return terminalMutationConflict("execution", execution.ID)
+	}
+	if err := expectedRevisionCheck(expectedRevision, execution.Revision, "execution", execution.ID); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	execution.ExternalCompletion = &ExternalCompletion{Contract: contract, Result: resultValue, CallerID: callerID, DeclaredAt: now}
+	execution.Lifecycle, execution.Condition, execution.Result = "finished", "none", resultValue
+	execution.Revision++
+	execution.Receipts = appendReceipt(execution.Receipts, operationID, fingerprint, execution.Revision)
+	if err := s.writeExecutionLockedUnvalidatedPaths(taskID, execution); err != nil {
+		return err
+	}
+	if err := s.appendExecutionEventLocked(taskID, execution.ID, Event{Operation: "complete", Outcome: "declared", OperationID: operationID, Fingerprint: fingerprint, Revision: execution.Revision}); err != nil {
+		return err
+	}
+	*result = execution
+	return nil
 }
 
 // DisposeManagedExecutionHandoff terminalizes a managed predecessor record only

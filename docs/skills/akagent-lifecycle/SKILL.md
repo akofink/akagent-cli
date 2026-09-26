@@ -99,6 +99,10 @@ It never launches a replacement process, touches Git or worktrees, deletes state
 
 ## Finish and archive
 
+Read the execution revision from `task execution inspect`, including `0`, before a guarded finish.
+`task execution finish` closes a managed execution only after its task is finished or archived, and it preserves managed provenance.
+Reconcile does not close an execution.
+
 Record explicit completion only when the caller's completion contract is satisfied:
 
 ```bash
