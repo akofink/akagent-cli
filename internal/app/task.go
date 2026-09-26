@@ -544,10 +544,6 @@ func lifecycleError(stdout io.Writer, err error) int {
 		category, retryable = "partial", true
 	case store.IsKind(err, store.KindPreservation):
 		category = "preservation_required"
-	case strings.Contains(message, "conflict"):
-		category = "conflict"
-	case strings.Contains(message, "credential"):
-		category = "capability"
 	}
 	return writeError(stdout, category, message, retryable, recovery)
 }

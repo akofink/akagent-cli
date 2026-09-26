@@ -43,11 +43,11 @@ func WorkDispositionOf(manifest store.Manifest) WorkDisposition {
 
 func (m *Manager) SetDisposition(id string, disposition WorkDisposition, reason string, expectedRevision *uint64) (store.Manifest, error) {
 	if !disposition.valid() {
-		return store.Manifest{}, fmt.Errorf("disposition must be in-flight, deferred, or terminal")
+		return store.Manifest{}, validationError("disposition must be in-flight, deferred, or terminal")
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return store.Manifest{}, fmt.Errorf("disposition reason is required")
+		return store.Manifest{}, validationError("disposition reason is required")
 	}
 
 	changed := false

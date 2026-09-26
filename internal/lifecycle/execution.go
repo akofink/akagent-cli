@@ -11,7 +11,7 @@ import (
 
 func (m *Manager) CreateExecution(taskID string, request ExecutionRequest) (store.Execution, bool, error) {
 	if taskID == "" || request.Target == "" {
-		return store.Execution{}, false, fmt.Errorf("task ID and execution target are required")
+		return store.Execution{}, false, validationError("task ID and execution target are required")
 	}
 	manifest, err := m.Inspect(taskID)
 	if err != nil {
@@ -31,7 +31,7 @@ func (m *Manager) CreateExecution(taskID string, request ExecutionRequest) (stor
 		request.Label = request.Target
 	}
 	if strings.ContainsAny(request.Label, "\r\n") || strings.TrimSpace(request.Label) == "" {
-		return store.Execution{}, false, fmt.Errorf("execution label must be a non-empty single line")
+		return store.Execution{}, false, validationError("execution label must be a non-empty single line")
 	}
 	execution := store.Execution{
 		ID: request.ID, TaskID: taskID, Label: request.Label, Target: request.Target,
@@ -84,7 +84,7 @@ func (m *Manager) InspectExecution(taskID, executionID string) (store.Execution,
 	}
 	if executionID == "" {
 		if len(executions) != 1 {
-			return store.Execution{}, fmt.Errorf("execution ID is required when a task has multiple executions")
+			return store.Execution{}, validationError("execution ID is required when a task has multiple executions")
 		}
 		return executions[0], nil
 	}
@@ -98,7 +98,7 @@ func (m *Manager) InspectExecution(taskID, executionID string) (store.Execution,
 
 func (m *Manager) AddExecutionSessionReference(taskID, executionID string, reference store.SessionReference) (store.Execution, error) {
 	if reference.Tool == "" || reference.SessionID == "" {
-		return store.Execution{}, fmt.Errorf("session tool and ID are required")
+		return store.Execution{}, validationError("session tool and ID are required")
 	}
 	changed := false
 	execution, err := m.Store.UpdateExecution(taskID, executionID, func(execution *store.Execution) error {
