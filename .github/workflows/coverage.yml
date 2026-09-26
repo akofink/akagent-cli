@@ -1,0 +1,63 @@
+name: Coverage
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run tests with merged coverage
+        run: |
+          packages=$(go list ./... | grep -v '/cmd/akagent$')
+          go test -coverpkg=./... -coverprofile=coverage.out $packages
+      - name: Add coverage report to job summary
+        run: |
+          python3 - <<'PY'
+          import os
+          from collections import defaultdict
+          from pathlib import Path
+
+          blocks = {}
+          with Path("coverage.out").open() as profile:
+              next(profile)
+              for line in profile:
+                  location, count, hits = line.rstrip().rsplit(" ", 2)
+                  filename = location.split(":", 1)[0]
+                  if filename.endswith("/cmd/akagent/main.go"):
+                      continue
+                  blocks[location] = (int(count), blocks.get(location, (0, False))[1] or int(hits) > 0)
+
+          covered = defaultdict(int)
+          statements = defaultdict(int)
+          for location, (count, hit) in blocks.items():
+              package = location.split(":", 1)[0].rsplit("/", 1)[0]
+              statements[package] += count
+              if hit:
+                  covered[package] += count
+
+          total_covered = sum(covered.values())
+          total_statements = sum(statements.values())
+          summary = ["## Merged Go coverage", "", "| Package | Coverage |", "| --- | ---: |"]
+          for package in sorted(statements):
+              percent = 100 * covered[package] / statements[package]
+              summary.append(f"| `{package}` | {percent:.1f}% |")
+          total_percent = 100 * total_covered / total_statements if total_statements else 0
+          summary.extend([
+              f"| **Total** | **{total_percent:.1f}% ({total_covered}/{total_statements})** |",
+              "",
+              "Coverage is reported for all test packages together; no threshold is enforced.",
+          ])
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:
+              output.write("\n".join(summary) + "\n")
+          PY
