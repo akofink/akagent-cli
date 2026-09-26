@@ -62,9 +62,9 @@ A caller must explicitly record a finish result.
 External execution observations are historical and require the owning caller and current execution revision.
 External execution completion requires the owning caller, a unique operation ID, a named completion contract, and the current execution revision.
 Inspection always includes that revision, including `0`.
-A managed execution can use the same finish command only after its parent task is finished or archived.
+A managed execution created with `task execution create` can use the same finish command before or after its parent task is terminal.
 That close preserves managed provenance, records the named contract, and does not infer completion from process absence.
-The command still rejects a managed execution while its task is nonterminal.
+Observation remains limited to externally declared records.
 A separate successor-authorized handoff disposition applies only to managed executions published `waiting` / `handed off`.
 It requires a distinct active managed successor on the same nonterminal task, the current predecessor revision, a unique operation ID, and caller attestations of independently verified takeover and predecessor closure.
 The core records the successor ID and `handed_off` result without changing provenance or claiming process success.

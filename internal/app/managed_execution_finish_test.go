@@ -14,16 +14,17 @@ func TestManagedExecutionFinishAfterArchivedTask(t *testing.T) {
 	if created.code != 0 || !strings.Contains(created.stdout, "revision: 0") || strings.Contains(created.stdout, "provenance: external") {
 		t.Fatalf("execution create = (%d, %q)", created.code, created.stdout)
 	}
-	blocked := runCommand(t, []string{"task", "execution", "finish", "stuck-task", "stuck-1", "--caller-id", "caller", "--operation-id", "too-soon", "--expected-revision", "0", "--contract", "delivery", "--result", "succeeded"})
-	if blocked.code != 1 || !strings.Contains(blocked.stdout, "not an externally declared record") {
-		t.Fatalf("nonterminal finish = (%d, %q)", blocked.code, blocked.stdout)
+	finished := runCommand(t, []string{"task", "execution", "finish", "stuck-task", "stuck-1", "--caller-id", "caller", "--operation-id", "close-inflight", "--expected-revision", "0", "--contract", "delivery", "--result", "succeeded"})
+	if finished.code != 0 || !strings.Contains(finished.stdout, "status: finished") || !strings.Contains(finished.stdout, "revision: 1") || strings.Contains(finished.stdout, "provenance: external") {
+		t.Fatalf("in-flight finish = (%d, %q)", finished.code, finished.stdout)
+	}
+	observedAt := "2026-09-26T00:00:00Z"
+	observed := runCommand(t, []string{"task", "execution", "observe", "stuck-task", "stuck-1", "--caller-id", "caller", "--operation-id", "observe", "--expected-revision", "1", "--source", "worker", "--observed-at", observedAt, "--host-id", "host", "--boot-id", "boot"})
+	if observed.code != 1 || !strings.Contains(observed.stdout, "not an externally declared record") {
+		t.Fatalf("managed observation = (%d, %q)", observed.code, observed.stdout)
 	}
 	if result := runCommand(t, []string{"task", "finish", "stuck-task", "succeeded", "parent closed"}); result.code != 0 {
 		t.Fatalf("task finish = (%d, %q)", result.code, result.stdout)
-	}
-	finishedOnly := runCommand(t, []string{"task", "execution", "finish", "stuck-task", "stuck-1", "--caller-id", "caller", "--operation-id", "after-finish", "--expected-revision", "0", "--contract", "delivery", "--result", "succeeded"})
-	if finishedOnly.code != 0 || !strings.Contains(finishedOnly.stdout, "status: finished") || !strings.Contains(finishedOnly.stdout, "revision: 1") || strings.Contains(finishedOnly.stdout, "provenance: external") {
-		t.Fatalf("finish after task finish = (%d, %q)", finishedOnly.code, finishedOnly.stdout)
 	}
 }
 

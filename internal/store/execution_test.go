@@ -127,16 +127,6 @@ func TestManagedExecutionFinishRequiresTerminalTaskAndPreservesProvenance(t *tes
 	if _, _, err := state.CreateExecution(taskID, execution); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "before-terminal", "delivery", "succeeded", 0); err == nil || !IsKind(err, KindConflict) || !strings.Contains(err.Error(), "not an externally declared record") {
-		t.Fatalf("nonterminal finish = %v", err)
-	}
-	if _, err := state.UpdateManifest(taskID, func(manifest *Manifest) error {
-		manifest.Lifecycle = "finished"
-		manifest.ArchiveState = "complete"
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "stale", "delivery", "succeeded", 1); err == nil || !strings.Contains(err.Error(), "revision conflict") {
 		t.Fatalf("stale finish = %v", err)
 	}

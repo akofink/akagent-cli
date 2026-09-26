@@ -29,7 +29,7 @@ Otherwise create task intent and caller-declared resources directly through the 
 Create an execution only when an external tool needs explicit identity.
 Use `task external` when the caller needs owned provenance, operation IDs, and revision-checked completion.
 A managed `task execution create --target external` records metadata only and does not create an external execution.
-After the parent task is finished or archived, `task execution finish` can close that managed execution with its displayed revision, including `0`, without relabeling it.
+`task execution finish` can close that managed execution with its displayed revision, including `0`, before or after the parent task is terminal, without relabeling it.
 Reconcile does not infer that completion.
 Publish conditions and activity as durable records.
 Record provider session references and delivery URLs without provider content.
