@@ -205,7 +205,11 @@ The core does not call GitHub, Bitbucket, or another forge.
 
 ## Worker and compatibility protocol
 
-`worker inspect` reports worker protocol version `2` and declarative capabilities for `registry`, `checkpoint`, `observation`, and `handoff`.
+`worker inspect` reports worker protocol version `2`, the binary's `build_revision`, and declarative capabilities for `registry`, `checkpoint`, `observation`, and `handoff`.
+The revision is the full Git commit used to build the binary, or `unknown` for builds without revision metadata.
+Build with `go build -ldflags "-X=github.com/akofink/akagent-cli/internal/app.buildRevision=$(git rev-parse HEAD)" -o akagent ./cmd/akagent` to embed the current commit.
+`akagent update` applies the same build flag automatically and bounds Git and Go build commands to five minutes.
+A fetch timeout is reported as retryable.
 It does not scan for Git, tmux, providers, credentials, or worktrees as prerequisites.
 Storage schema version `1` remains readable.
 Removing command families and changing lifecycle meanings is a protocol-breaking change documented by version `2`.

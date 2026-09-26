@@ -14,6 +14,8 @@ import (
 
 const description = "Manage local coding-agent tasks with durable state and explicit recovery records"
 
+var buildRevision = "unknown"
+
 type homeView struct {
 	Bin         string   `json:"bin"`
 	Description string   `json:"description"`
@@ -43,6 +45,7 @@ type worker struct {
 	ProtocolVersion int      `json:"protocol_version"`
 	Architecture    string   `json:"architecture"`
 	OperatingSystem string   `json:"operating_system"`
+	BuildRevision   string   `json:"build_revision"`
 	Features        []string `json:"features"`
 }
 
@@ -146,6 +149,7 @@ func inspectWorker() worker {
 		ProtocolVersion: 2,
 		Architecture:    runtime.GOARCH,
 		OperatingSystem: runtime.GOOS,
+		BuildRevision:   buildRevision,
 		Features:        []string{"registry", "checkpoint", "observation", "handoff"},
 	}
 }
