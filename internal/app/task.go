@@ -130,7 +130,7 @@ type executionView struct {
 	ID                   string                    `json:"id"`
 	Provenance           string                    `json:"provenance,omitempty"`
 	CallerID             string                    `json:"caller_id,omitempty"`
-	Revision             uint64                    `json:"revision,omitempty"`
+	Revision             uint64                    `json:"revision"`
 	PredecessorID        string                    `json:"predecessor_id,omitempty"`
 	ExternalObservations []externalObservationView `json:"external_observations,omitempty"`
 	ExternalCompletion   *externalCompletionView   `json:"external_completion,omitempty"`
@@ -1197,6 +1197,7 @@ func parseExecutionHandoff(args []string) (request store.HandoffDispositionReque
 
 func parseExternalCompletion(args []string) (callerID, operationID, contract, resultValue string, expectedRevision uint64, ok bool) {
 	seen := map[string]bool{}
+	revisionProvided := false
 	ok = true
 	for len(args) > 0 {
 		if len(args) < 2 {
@@ -1219,6 +1220,7 @@ func parseExternalCompletion(args []string) (callerID, operationID, contract, re
 			resultValue = value
 		case "--expected-revision":
 			expectedRevision, ok = parseRevision(value)
+			revisionProvided = ok
 			if !ok {
 				return "", "", "", "", 0, false
 			}
@@ -1226,7 +1228,7 @@ func parseExternalCompletion(args []string) (callerID, operationID, contract, re
 			return "", "", "", "", 0, false
 		}
 	}
-	return callerID, operationID, contract, resultValue, expectedRevision, ok && callerID != "" && operationID != "" && contract != "" && resultValue != "" && expectedRevision > 0
+	return callerID, operationID, contract, resultValue, expectedRevision, ok && callerID != "" && operationID != "" && contract != "" && resultValue != "" && revisionProvided
 }
 
 func parseExternalObservation(args []string) (string, string, uint64, store.ExternalObservation, bool) {

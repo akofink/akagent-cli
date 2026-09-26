@@ -61,6 +61,10 @@ Unknown, stale, unavailable, and contradictory observations remain visible.
 A caller must explicitly record a finish result.
 External execution observations are historical and require the owning caller and current execution revision.
 External execution completion requires the owning caller, a unique operation ID, a named completion contract, and the current execution revision.
+Inspection always includes that revision, including `0`.
+A managed execution can use the same finish command only after its parent task is finished or archived.
+That close preserves managed provenance, records the named contract, and does not infer completion from process absence.
+The command still rejects a managed execution while its task is nonterminal.
 A separate successor-authorized handoff disposition applies only to managed executions published `waiting` / `handed off`.
 It requires a distinct active managed successor on the same nonterminal task, the current predecessor revision, a unique operation ID, and caller attestations of independently verified takeover and predecessor closure.
 The core records the successor ID and `handed_off` result without changing provenance or claiming process success.
@@ -93,6 +97,7 @@ They never invoke Git, tmux, a provider, a credential resolver, a deployment exe
 Create operations are idempotent for equivalent inputs and return a conflict for different immutable inputs.
 The explicit external creation family validates caller ownership and immutable inputs before mutation.
 Managed creation commands retain managed provenance, including a normal execution created with `--target external`.
+Finishing that execution after the parent task is terminal does not relabel it.
 
 The former launch, attach, stop, deploy, clean, credential, integration, provider orchestration, and transitional `task record` commands are removed.
 Recognized removed forms return the structured usage error contract with exit code `2` before opening or mutating the state store.

@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -113,5 +114,87 @@ func TestExecutionEventsStayContiguousUnderConcurrency(t *testing.T) {
 		if event.Sequence != i+1 {
 			t.Fatalf("event %d has sequence %d", i, event.Sequence)
 		}
+	}
+}
+
+func TestManagedExecutionFinishRequiresTerminalTaskAndPreservesProvenance(t *testing.T) {
+	state := openTest(t)
+	taskID := validTaskID(t)
+	if err := state.WriteManifest(taskID, Manifest{Title: "stuck", Lifecycle: "created"}); err != nil {
+		t.Fatal(err)
+	}
+	execution := Execution{ID: "stuck-1", TaskID: taskID, Label: "external", Target: "external", Command: "pi", Lifecycle: "created", Condition: "active"}
+	if _, _, err := state.CreateExecution(taskID, execution); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "before-terminal", "delivery", "succeeded", 0); err == nil || !IsKind(err, KindConflict) || !strings.Contains(err.Error(), "not an externally declared record") {
+		t.Fatalf("nonterminal finish = %v", err)
+	}
+	if _, err := state.UpdateManifest(taskID, func(manifest *Manifest) error {
+		manifest.Lifecycle = "finished"
+		manifest.ArchiveState = "complete"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "stale", "delivery", "succeeded", 1); err == nil || !strings.Contains(err.Error(), "revision conflict") {
+		t.Fatalf("stale finish = %v", err)
+	}
+	finished, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "close-1", "delivery", "succeeded", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finished.Provenance != "" || finished.CallerID != "" || finished.Lifecycle != "finished" || finished.Condition != "none" || finished.Revision != 1 || finished.Result != "succeeded" || finished.ExternalCompletion == nil {
+		t.Fatalf("finished managed execution = %#v", finished)
+	}
+	retry, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "close-1", "delivery", "succeeded", 0)
+	if err != nil || retry.Revision != 1 {
+		t.Fatalf("retry = %#v, %v", retry, err)
+	}
+	if _, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "close-1", "delivery", "failed", 1); err == nil || !strings.Contains(err.Error(), "different inputs") {
+		t.Fatalf("changed retry = %v", err)
+	}
+	if _, err := state.CompleteExternalExecution(taskID, execution.ID, "caller", "close-2", "delivery", "failed", 1); err == nil || !IsKind(err, KindConflict) {
+		t.Fatalf("second close = %v", err)
+	}
+}
+
+func TestManagedExecutionFinishIsRevisionCheckedUnderConcurrency(t *testing.T) {
+	state := openTest(t)
+	taskID := "019fe8f2-ac67-7406-a6e6-2717b2cd31c7"
+	if err := state.WriteManifest(taskID, Manifest{Title: "race", Lifecycle: "finished", ArchiveState: "complete"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := state.CreateExecution(taskID, Execution{ID: "race-1", TaskID: taskID, Label: "external", Target: "external", Lifecycle: "created", Condition: "active"}); err != nil {
+		t.Fatal(err)
+	}
+	errors := make(chan error, 2)
+	var group sync.WaitGroup
+	for _, attempt := range []struct{ operationID, result string }{{"race-a", "succeeded"}, {"race-b", "failed"}} {
+		group.Add(1)
+		go func(operationID, result string) {
+			defer group.Done()
+			_, err := state.CompleteExternalExecution(taskID, "race-1", "caller", operationID, "delivery", result, 0)
+			errors <- err
+		}(attempt.operationID, attempt.result)
+	}
+	group.Wait()
+	close(errors)
+	successes := 0
+	for err := range errors {
+		if err == nil {
+			successes++
+			continue
+		}
+		if !IsKind(err, KindConflict) {
+			t.Fatalf("concurrent finish = %v", err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful finishes = %d, want 1", successes)
+	}
+	got, err := state.ReadExecution(taskID, "race-1")
+	if err != nil || got.Revision != 1 || got.Lifecycle != "finished" || got.Provenance != "" {
+		t.Fatalf("raced execution = %#v, %v", got, err)
 	}
 }
