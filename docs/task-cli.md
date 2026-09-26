@@ -96,7 +96,7 @@ The external finish commands require the owning caller, a new operation ID, the 
 Equivalent finish retries are idempotent.
 Stale revisions, changed operation inputs, terminal mutations, and managed executions are rejected without changing the record.
 That rejection applies to the `task external` finish and archive commands.
-`task execution finish` is the separate close path for a managed execution whose parent task is already finished or archived.
+`task execution finish` is the separate close path for a managed execution created by `task execution create`, including `--target external`.
 External archive commands require explicit completion for tasks and explicit completion for executions.
 Resource archives require only the owning caller and current resource revision.
 Archive retries preserve the existing archive and never inspect a process, terminal, provider, Git checkout, credential, or deployment.
@@ -132,9 +132,9 @@ External callers can append typed provenance with `task execution observe`.
 Observation writes require `--caller-id`, `--operation-id`, and the current `--expected-revision`, plus source, timestamp, host, and boot provenance.
 Observations remain historical and do not change execution lifecycle state.
 External callers can finish an attempt with `task execution finish` by naming the completion contract and supplying the current revision.
-The same command closes a managed execution, including one whose revision is `0`, only after its parent task is finished or archived.
+The same command closes a managed execution, including one whose revision is `0`, before or after the parent task is terminal.
 That close preserves managed provenance and does not infer completion.
-While the parent task is nonterminal, a managed execution is still rejected so handoff remains the in-flight close path.
+Handoff remains the successor-takeover path and is not required before finish.
 `task execution reconcile` does not close executions.
 Equivalent operation retries return the existing record without changing its revision.
 A reused operation ID with different inputs, a stale revision, a different caller, or a terminal mutation returns a structured conflict.

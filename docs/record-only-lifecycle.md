@@ -95,7 +95,7 @@ akagent task external finish <task-id> \
 ```
 
 Finish an external execution only with its owning caller, current revision, operation ID, and named completion contract.
-The same command also closes a managed execution after its parent task is finished or archived, using the revision shown by inspection, including `0`, without relabeling managed provenance:
+The same command also closes a managed execution created by `task execution create`, before or after the parent task is terminal, using the revision shown by inspection, including `0`, without relabeling managed provenance:
 
 ```text
 akagent task execution finish <task-id> <execution-id> \

@@ -564,7 +564,7 @@ func (s *Store) CompleteExternalExecution(taskID, executionID, callerID, operati
 			return err
 		}
 		if execution.Provenance != ProvenanceExternal {
-			return s.finishManagedExecutionOnTerminalTaskLocked(taskID, execution, callerID, operationID, contract, resultValue, expectedRevision, fingerprint, &result)
+			return s.finishManagedExecutionLocked(taskID, execution, callerID, operationID, contract, resultValue, expectedRevision, fingerprint, &result)
 		}
 		if err := validateExternalExecutionCaller(execution, callerID); err != nil {
 			return err
@@ -615,17 +615,10 @@ func (s *Store) CompleteExternalExecution(taskID, executionID, callerID, operati
 	return result, err
 }
 
-// finishManagedExecutionOnTerminalTaskLocked closes a managed execution only
-// after its parent task is finished or archived. It preserves managed
-// provenance and does not infer completion from host state.
-func (s *Store) finishManagedExecutionOnTerminalTaskLocked(taskID string, execution Execution, callerID, operationID, contract, resultValue string, expectedRevision uint64, fingerprint string, result *Execution) error {
-	manifest, err := s.readManifestLocked(taskID)
-	if err != nil {
-		return err
-	}
-	if manifest.Lifecycle != "finished" && manifest.ArchiveState != "complete" {
-		return externalOwnershipConflict("execution", execution.ID)
-	}
+// finishManagedExecutionLocked closes a managed execution without relabeling
+// it as caller-owned. The parent task may still be in flight. Completion is
+// explicit and is not inferred from host state.
+func (s *Store) finishManagedExecutionLocked(taskID string, execution Execution, callerID, operationID, contract, resultValue string, expectedRevision uint64, fingerprint string, result *Execution) error {
 	if _, found, receiptErr := findReceipt(execution.Receipts, operationID, fingerprint); receiptErr != nil {
 		return receiptErr
 	} else if found {
