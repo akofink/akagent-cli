@@ -137,6 +137,8 @@ func TestCheckWorktree(t *testing.T) {
 	missing.Resources = []store.Resource{snapshot.Resources[0]}
 	missing.Resources[0].WorktreePath = filepath.Join(runner.path, "missing")
 	expect(t, resourceFindings(t, missing, runner)[0], StateMissing, "not_registered")
+	missing.Task.Lifecycle = "finished"
+	expect(t, resourceFindings(t, missing, runner)[0], StateCurrent, "removed_after_finish")
 
 	unbound := snapshot
 	unbound.Resources = []store.Resource{snapshot.Resources[0]}
@@ -160,6 +162,8 @@ func TestCheckBranchAndRepository(t *testing.T) {
 	runner.branch = "renamed"
 	got := resourceFindings(t, snapshot, runner)
 	expect(t, got[1], StateMissing, "local_ref_missing")
+	snapshot.Task.Lifecycle = "finished"
+	expect(t, resourceFindings(t, snapshot, runner)[1], StateCurrent, "removed_after_finish")
 
 	snapshot, runner = fixture(t)
 	snapshot.RepositoryPath = func(string) string { return "" }

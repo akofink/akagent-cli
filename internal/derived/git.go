@@ -44,7 +44,11 @@ func checkGit(ctx context.Context, runner Runner, resource store.Resource, regis
 	// refs/heads is an exact local ref; a branch name cannot be interpreted as an option.
 	head, err := runner.Run(ctx, "git", "-C", path, "rev-parse", "--verify", "--quiet", "refs/heads/"+resource.Branch+"^{commit}")
 	if err != nil {
-		result.Branch = finding("branch", StateMissing, "local_ref_missing", "Inspect local and remote branches before recreating one")
+		if taskTerminal {
+			result.Branch = finding("branch", StateCurrent, "removed_after_finish", "No branch action needed")
+		} else {
+			result.Branch = finding("branch", StateMissing, "local_ref_missing", "Inspect local and remote branches before recreating one")
+		}
 		return result
 	}
 	result.Head = trimmed(head)
@@ -62,6 +66,9 @@ func checkWorktree(ctx context.Context, runner Runner, resource store.Resource, 
 		return finding("worktree", StateUnknown, "git_unavailable", "Retry the worktree check")
 	}
 	if !listedWorktree(string(listed), resource.WorktreePath) {
+		if taskTerminal {
+			return finding("worktree", StateCurrent, "removed_after_finish", "No worktree action needed")
+		}
 		return finding("worktree", StateMissing, "not_registered", "Inspect Git worktrees before creating or removing one")
 	}
 	if _, err := os.Stat(resource.WorktreePath); err != nil {

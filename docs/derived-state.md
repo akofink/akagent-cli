@@ -132,9 +132,11 @@ A task is terminal when it is finished or stopped, externally completed, or arch
 | `worktree` | Registered but has tracked or untracked changes | `stale` `dirty` |
 | `worktree` | Registered but on another branch | `stale` `branch_mismatch` |
 | `worktree` | Still registered after the task is terminal | `stale` `retained_after_finish` |
-| `worktree` | Not in `git worktree list` or absent from disk | `missing` `not_registered` or `path_missing` |
+| `worktree` | Not in `git worktree list` or absent from disk while the task is open | `missing` `not_registered` or `path_missing` |
+| `worktree` | Not in `git worktree list` after the task is terminal | `current` `removed_after_finish` |
 | `branch` | Local ref exists | `current` `local_ref`, detail is the live head |
-| `branch` | Local ref is gone | `missing` `local_ref_missing` |
+| `branch` | Local ref is gone while the task is open | `missing` `local_ref_missing` |
+| `branch` | Local ref is gone after the task is terminal | `current` `removed_after_finish` |
 | `pull_request` | Exactly one PR on the bound repository and head branch | `current` `open` or `merged`, detail is the PR URL |
 | `pull_request` | That PR is closed without merge | `stale` `closed` |
 | `pull_request` | No PR | `missing` `not_found` |
