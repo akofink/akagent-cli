@@ -8,19 +8,7 @@ External tools and skills own process, tmux, Git, worktree, credential, provider
 
 ## Shipped behavior
 
-- UUIDv7 task IDs and structured TOON protocol output.
-- Worker protocol version `2` with declarative `registry`, `checkpoint`, `observation`, and `handoff` capabilities.
-- Storage schema version `1` compatibility and secure local manifests, events, checkpoints, archives, and locks.
-- Record-only repository, task, resource, and execution operations.
-- Caller-owned `task external` create, finish, and archive commands that never relabel managed records.
-- Caller-declared branch, revision, head, worktree, observation, session, and delivery metadata.
-- Provider-neutral session references and metadata-only Phase 0 evidence views.
-- Record-only conditions, finish results, archives, reconciliation, revision-scoped dispositions, and bounded checkpoints.
-- Deterministic in-flight, attention, maintenance, deferred, and history inventory views.
-- Human terminal presentation for `task list` and `task inspect`.
-- Pre-store structured refusal for removed orchestration, deployment, cleanup, credential, integration, and transitional record commands.
-- Subprocess canaries proving retained commands do not invoke Git, tmux, Pi, providers, or deployment tools.
-- Public quick-start, protocol, architecture, migration, agent guidance, and lifecycle skill documentation.
+See [Roadmap](roadmap.md) for the authoritative shipped-capabilities list and prioritized follow-up work.
 
 ## Current workflow
 
@@ -56,22 +44,16 @@ It never echoes sensitive input.
 
 ## Next public work
 
-1. Verify integrated CLI, lifecycle skill, repository instructions, and active-agent compatibility against `main` before installing or replacing the binary.
-2. Keep documentation and skills aligned with managed versus caller-owned external provenance.
-3. Add later session-evidence adapter phases only when a workflow needs native discovery beyond metadata-only views.
-4. Add archive and checkpoint backup procedures without a daemon or central store.
-5. Treat additional machine-readable presentation formats as optional follow-ups that must not replace TOON protocol output.
+See [Roadmap](roadmap.md) for the authoritative prioritized follow-up work.
 
 ## Verification and compatibility gate
 
 Run:
 
 ```bash
-env GOROOT=/usr/local/go go test ./...
-env GOROOT=/usr/local/go go test -race ./...
-env GOROOT=/usr/local/go go vet ./...
+go test ./...
+go test -race ./...
+go vet ./...
 git diff --check
 ```
-
-The local Go installation may require `GOROOT=/usr/local/go` when the selected tool reports a standard-library version mismatch.
 Do not install the binary until the integrated CLI, lifecycle skill, repository instructions, and active-agent workflow are verified against `main`.

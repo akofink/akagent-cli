@@ -17,7 +17,7 @@ Correctness, recovery, and maintainability matter more than initial implementati
 
 ## Go
 
-Go offers simple cross-compilation, a strong standard library for systems work and networking, goroutines and contexts for bounded concurrency, fast startup, typed protocol records, and straightforward black-box testing.
+Go offers simple cross-compilation, a strong standard library for systems work and networking, goroutines for concurrency, fast startup, typed protocol records, and straightforward black-box testing.
 
 Risks include potentially repetitive typed errors and an immature TOON ecosystem that must be checked against the current specification.
 
