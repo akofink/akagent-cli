@@ -20,11 +20,12 @@ jobs:
       - name: Run tests with merged coverage
         run: |
           packages=$(go list ./... | grep -v '/cmd/akagent$')
-          go test -coverpkg=./... -coverprofile=coverage.out $packages
-      - name: Add coverage report to job summary
+          go test -count=1 -coverpkg=./... -coverprofile=coverage.out $packages
+      - name: Report coverage and enforce durability ratchet
         run: |
           python3 - <<'PY'
           import os
+          import sys
           from collections import defaultdict
           from pathlib import Path
 
@@ -53,11 +54,27 @@ jobs:
               percent = 100 * covered[package] / statements[package]
               summary.append(f"| `{package}` | {percent:.1f}% |")
           total_percent = 100 * total_covered / total_statements if total_statements else 0
-          summary.extend([
-              f"| **Total** | **{total_percent:.1f}% ({total_covered}/{total_statements})** |",
-              "",
-              "Coverage is reported for all test packages together; no threshold is enforced.",
-          ])
+          summary.append(f"| **Total** | **{total_percent:.1f}% ({total_covered}/{total_statements})** |")
+
+          # Thresholds are tenths of a percent, measured after the durability tests.
+          floors = {"Total": (total_covered, total_statements, 738)}
+          store_package = next((name for name in statements if name.endswith("/internal/store")), None)
+          if store_package is not None:
+              floors["internal/store"] = (covered[store_package], statements[store_package], 722)
+          failures = []
+          for name in ("Total", "internal/store"):
+              if name not in floors:
+                  failures.append(f"{name}: coverage data missing")
+                  continue
+              hit, count, floor = floors[name]
+              if not count or hit * 1000 < floor * count:
+                  failures.append(f"{name}: {hit}/{count} is below {floor / 10:.1f}%")
+          summary.extend(["", "Coverage floors: total 73.8%, internal/store 72.2%."])
+          if failures:
+              summary.extend(["", "Coverage ratchet failed: " + "; ".join(failures)])
           with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a") as output:
               output.write("\n".join(summary) + "\n")
+          if failures:
+              print("\n".join(failures), file=sys.stderr)
+              sys.exit(1)
           PY
