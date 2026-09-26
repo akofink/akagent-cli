@@ -18,7 +18,7 @@ type CheckpointRequest struct {
 // Repeating the same idempotency key and payload is an acknowledged no-op.
 func (m *Manager) WriteCheckpoint(taskID string, request CheckpointRequest) (store.Checkpoint, error) {
 	if taskID == "" {
-		return store.Checkpoint{}, fmt.Errorf("task ID is required")
+		return store.Checkpoint{}, validationError("task ID is required")
 	}
 	request.Checkpoint.TaskID = ""
 	return m.Store.WriteCheckpoint(taskID, store.CheckpointWrite{

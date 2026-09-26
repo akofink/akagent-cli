@@ -97,7 +97,7 @@ func (m *Manager) ArchiveExternal(taskID, resourceID, executionID, callerID, ope
 // facts without checking credentials, Git, or the filesystem.
 func (m *Manager) CreateRecord(request CreateRequest) (StartResult, error) {
 	if request.ID == "" || request.Title == "" {
-		return StartResult{}, fmt.Errorf("task ID and title are required")
+		return StartResult{}, validationError("task ID and title are required")
 	}
 	request.Requirements = unique(request.Requirements)
 	manifest := store.Manifest{
@@ -112,7 +112,7 @@ func (m *Manager) CreateRecord(request CreateRequest) (StartResult, error) {
 	}
 	if !created {
 		if existing.Title != manifest.Title || existing.Worker != manifest.Worker || existing.Repository != manifest.Repository || existing.Branch != manifest.Branch || existing.BaseRevision != manifest.BaseRevision || existing.WorktreePath != manifest.WorktreePath || existing.Requirements != manifest.Requirements {
-			return StartResult{}, fmt.Errorf("task inputs conflict with the existing task")
+			return StartResult{}, &store.Error{Kind: store.KindConflict, Message: "task inputs conflict with the existing task"}
 		}
 		return StartResult{Manifest: existing}, nil
 	}
@@ -147,7 +147,7 @@ func (m *Manager) CreateRecord(request CreateRequest) (StartResult, error) {
 // changing the registered checkout.
 func (m *Manager) UpdateRepositoryRecord(name, path, policy, worktreeRoot string) (store.Repository, error) {
 	if name == "" || (path == "" && policy == "" && worktreeRoot == "") {
-		return store.Repository{}, fmt.Errorf("repository name and an update are required")
+		return store.Repository{}, validationError("repository name and an update are required")
 	}
 	absolutePath := ""
 	var err error
@@ -163,7 +163,7 @@ func (m *Manager) UpdateRepositoryRecord(name, path, policy, worktreeRoot string
 		}
 		if policy != "" {
 			if policy != "worktree" && policy != "direct" {
-				return fmt.Errorf("repository policy must be worktree or direct")
+				return validationError("repository policy must be worktree or direct")
 			}
 			repository.Policy = policy
 		}
@@ -184,14 +184,14 @@ func (m *Manager) UpdateRepositoryRecord(name, path, policy, worktreeRoot string
 // resolving a repository registration or touching a worktree.
 func (m *Manager) CreateResourceRecord(taskID string, request ResourceRequest) (store.Resource, bool, error) {
 	if taskID == "" || request.ID == "" || request.Repository == "" {
-		return store.Resource{}, false, fmt.Errorf("task ID, resource ID, and repository are required")
+		return store.Resource{}, false, validationError("task ID, resource ID, and repository are required")
 	}
 	manifest, err := m.Inspect(taskID)
 	if err != nil {
 		return store.Resource{}, false, err
 	}
 	if manifest.Lifecycle == "stopped" || manifest.Lifecycle == "finished" {
-		return store.Resource{}, false, fmt.Errorf("cannot add a resource to a %s task", manifest.Lifecycle)
+		return store.Resource{}, false, validationError(fmt.Sprintf("cannot add a resource to a %s task", manifest.Lifecycle))
 	}
 	resource := store.Resource{
 		ID: request.ID, TaskID: taskID, Repository: request.Repository, Branch: request.Branch,
@@ -221,7 +221,7 @@ func (m *Manager) CreateResourceRecord(taskID string, request ResourceRequest) (
 // host interaction surface.
 func (m *Manager) PublishRecord(id, condition, reason, activity string) (store.Manifest, error) {
 	if !validCondition(condition) {
-		return store.Manifest{}, fmt.Errorf("condition must be active, waiting, blocked, failed, or none")
+		return store.Manifest{}, validationError("condition must be active, waiting, blocked, failed, or none")
 	}
 	manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
 		manifest.Condition, manifest.Reason, manifest.Activity, manifest.HeartbeatAt = condition, reason, activity, m.now()
@@ -240,7 +240,7 @@ func (m *Manager) PublishRecord(id, condition, reason, activity string) (store.M
 // Git state.
 func (m *Manager) FinishRecord(id, outcome, result string) (store.Manifest, error) {
 	if outcome != "succeeded" && outcome != "failed" {
-		return store.Manifest{}, fmt.Errorf("finish outcome must be succeeded or failed")
+		return store.Manifest{}, validationError("finish outcome must be succeeded or failed")
 	}
 	changed := false
 	manifest, err := m.Store.UpdateManifest(id, func(manifest *store.Manifest) error {
@@ -291,7 +291,7 @@ func (m *Manager) ReconcileRecordExecutions(taskID string) ([]store.Execution, e
 // PublishExecutionRecord updates execution state without publishing to tmux.
 func (m *Manager) PublishExecutionRecord(taskID, executionID, condition, reason, activity string) (store.Execution, error) {
 	if !validCondition(condition) {
-		return store.Execution{}, fmt.Errorf("condition must be active, waiting, blocked, failed, or none")
+		return store.Execution{}, validationError("condition must be active, waiting, blocked, failed, or none")
 	}
 	execution, err := m.Store.UpdateExecution(taskID, executionID, func(execution *store.Execution) error {
 		execution.Condition, execution.Reason, execution.Activity, execution.HeartbeatAt = condition, reason, activity, m.now()
@@ -330,7 +330,7 @@ func (m *Manager) archiveTaskRecord(taskID string) (store.Manifest, error) {
 		}
 	}
 	if manifest.Lifecycle != "stopped" && manifest.Lifecycle != "finished" {
-		return store.Manifest{}, fmt.Errorf("task must be stopped or finished before archiving")
+		return store.Manifest{}, validationError("task must be stopped or finished before archiving")
 	}
 	manifest.ArchiveState = archivePending
 	if err := m.Store.WriteManifest(taskID, manifest); err != nil {
@@ -391,7 +391,7 @@ func (m *Manager) archiveResourceRecord(taskID, resourceID string) (store.Resour
 		return store.Resource{}, err
 	}
 	if task.Lifecycle != "stopped" && task.Lifecycle != "finished" {
-		return store.Resource{}, fmt.Errorf("task must be stopped or finished before archiving a resource")
+		return store.Resource{}, validationError("task must be stopped or finished before archiving a resource")
 	}
 	resource.ArchiveState = archivePending
 	if err := m.Store.WriteResource(taskID, resource); err != nil {
@@ -434,7 +434,7 @@ func (m *Manager) archiveExecutionRecord(taskID, executionID string) (store.Exec
 		}
 	}
 	if execution.Lifecycle != "stopped" && execution.Lifecycle != "finished" {
-		return store.Execution{}, fmt.Errorf("execution must be stopped or finished before archiving")
+		return store.Execution{}, validationError("execution must be stopped or finished before archiving")
 	}
 	execution.ArchiveState = archivePending
 	if err := m.Store.WriteExecution(taskID, execution); err != nil {

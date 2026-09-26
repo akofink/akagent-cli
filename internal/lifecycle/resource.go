@@ -53,7 +53,7 @@ func (m *Manager) InspectResource(taskID, resourceID string) (store.Resource, er
 	}
 	if resourceID == "" {
 		if len(resources) != 1 {
-			return store.Resource{}, fmt.Errorf("resource ID is required when a task has multiple resources")
+			return store.Resource{}, validationError("resource ID is required when a task has multiple resources")
 		}
 		return resources[0], nil
 	}
@@ -67,7 +67,7 @@ func (m *Manager) InspectResource(taskID, resourceID string) (store.Resource, er
 
 func (m *Manager) UpdateResource(taskID, resourceID string, request ResourceUpdateRequest) (store.Resource, error) {
 	if resourceID == "" {
-		return store.Resource{}, fmt.Errorf("resource ID is required")
+		return store.Resource{}, validationError("resource ID is required")
 	}
 	changed := false
 	resource, err := m.Store.UpdateResource(taskID, resourceID, func(resource *store.Resource) error {

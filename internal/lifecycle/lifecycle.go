@@ -192,7 +192,7 @@ func (m *Manager) Archive(id string) (store.Manifest, error) {
 	}
 	manifest, ok := archived.(store.Manifest)
 	if !ok {
-		return store.Manifest{}, fmt.Errorf("task archive returned an invalid record")
+		return store.Manifest{}, validationError("task archive returned an invalid record")
 	}
 	return manifest, nil
 }
@@ -211,7 +211,7 @@ func (m *Manager) ArchiveResource(taskID, resourceID string) (store.Resource, er
 	}
 	resource, ok := archived.(store.Resource)
 	if !ok {
-		return store.Resource{}, fmt.Errorf("resource archive returned an invalid record")
+		return store.Resource{}, validationError("resource archive returned an invalid record")
 	}
 	return resource, nil
 }
@@ -225,7 +225,7 @@ func (m *Manager) now() time.Time {
 
 func (m *Manager) Inspect(id string) (store.Manifest, error) {
 	if id == "" {
-		return store.Manifest{}, fmt.Errorf("task ID is required")
+		return store.Manifest{}, validationError("task ID is required")
 	}
 	envelope, err := m.Store.ReadManifest(id)
 	if err != nil {
@@ -256,7 +256,7 @@ func (m *Manager) List() ([]store.Manifest, error) {
 
 func (m *Manager) RecordRepository(name, path, policy, worktreeRoot string) (store.Repository, error) {
 	if name == "" || path == "" {
-		return store.Repository{}, fmt.Errorf("repository name and path are required")
+		return store.Repository{}, validationError("repository name and path are required")
 	}
 	absolutePath, err := filepath.Abs(path)
 	if err != nil {
@@ -266,7 +266,7 @@ func (m *Manager) RecordRepository(name, path, policy, worktreeRoot string) (sto
 		policy = "worktree"
 	}
 	if policy != "worktree" && policy != "direct" {
-		return store.Repository{}, fmt.Errorf("repository policy must be worktree or direct")
+		return store.Repository{}, validationError("repository policy must be worktree or direct")
 	}
 	if worktreeRoot != "" {
 		worktreeRoot, err = filepath.Abs(worktreeRoot)
