@@ -38,6 +38,7 @@ func TestLifecycleErrorClassification(t *testing.T) {
 }
 
 func TestRecordCreateConflictErrorContract(t *testing.T) {
+	setupTaskCommandTest(t)
 	args := []string{"task", "create", "--task-id", "classification-contract", "--title", "Original"}
 	if result := runCommand(t, args); result.code != 0 {
 		t.Fatalf("first create = %+v", result)
