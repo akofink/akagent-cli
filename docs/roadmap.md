@@ -17,6 +17,12 @@ There is no separately versioned binary release channel.
 - Worker protocol version `2` with declarative `registry`, `checkpoint`, `observation`, and `handoff` capabilities.
 - Structured pre-store refusal for removed orchestration and credential command families.
 - Offline subprocess canaries for retained command paths.
+- Check CI runs race tests, vet, `staticcheck`, `errcheck`, and `govulncheck`, with Go 1.25 and commit-pinned Actions; branch protection requires the Check workflow.
+- A merged-coverage workflow reports package and total coverage and enforces 73.8% overall and 72.2% for `internal/store`, backed by additional archive, recovery, and external-record durability tests.
+- Fuzz targets exercise TOON encoding and task, execution, and resource ID validation.
+- Focused files separate task command handlers and external-record store operations along existing boundaries.
+- External-record rollback failures are reported as partial outcomes, and lifecycle errors use typed categories instead of message matching.
+- `akagent update` subprocesses have a five-minute timeout, and `worker inspect` reports the build revision.
 
 ## Current boundary
 
