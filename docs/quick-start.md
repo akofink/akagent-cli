@@ -91,11 +91,11 @@ akagent task execution session add review-build review-attempt \
   --tool example-tool --session-id session-123 \
   --reference-path /path/to/session-record
 akagent task resource update review-build app-resource \
-  --metadata delivery=published \
   --external-url https://forge.example/pull/78
 ```
 
 The core validates non-secret reference shape and local path metadata only.
+Run `akagent task check review-build` for live PR and check state instead of recording delivery metadata.
 It never opens or parses provider session files.
 
 ## Checkpoints and completion

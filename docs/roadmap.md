@@ -24,6 +24,7 @@ There is no separately versioned binary release channel.
 - External-record rollback failures are reported as partial outcomes, and lifecycle errors use typed categories instead of message matching.
 - `akagent update` subprocesses have a five-minute timeout, and `worker inspect` reports the build revision.
 - A read-only `task check` command with Git and GitHub adapters and offline record-consistency rules reports current, stale, missing, and unknown state per task or across the store, as designed in [Derived state](derived-state.md).
+- Views omit unobserved resource Git flags, and guidance no longer asks agents to hand-record delivery state.
 
 ## Current boundary
 
@@ -44,7 +45,7 @@ Human output is an explicit terminal presentation, not a parsing interface.
 
 Prioritized from the current direct coding-agent workflow:
 
-1. Continue the derived-state rollout in [Derived state](derived-state.md): safe trims, then terminal, host identity, provider session, and notes-backed import phases.
+1. Continue the derived-state rollout in [Derived state](derived-state.md): terminal, host identity, provider session, and notes-backed import phases.
 2. Verify integrated CLI, skills, and active-agent compatibility on `main` before changing the installed binary.
 3. Keep managed versus caller-owned external provenance distinct in agent workflows so `--target external` on a managed execution is not treated as `task external`.
 4. Add later session-evidence adapter phases only where a real workflow needs native discovery beyond metadata-only references.

@@ -42,18 +42,18 @@ akagent task execution publish <task-id> <execution-id> \
 Publication is record-only.
 Keep activity and reasons concise and never put credentials, sensitive prompt content, or private logs in them.
 
-Record non-secret provider session provenance and delivery metadata through the generic commands:
+Record non-secret provider session provenance and the delivery URL through the generic commands:
 
 ```bash
 akagent task execution session add <task-id> <execution-id> \
   --tool example-tool --session-id <session-id> \
   --reference-path /path/to/session-record
 akagent task resource update <task-id> <resource-id> \
-  --metadata delivery=pull-request-opened \
   --external-url https://forge.example/pull/123
 ```
 
 The core stores references but never parses provider files or operates a forge.
+Record the PR URL as a hint only; `task check` derives PR and check state, so do not record delivery state as metadata.
 External tools own process, Git, worktree, credential, provider, and delivery side effects.
 
 ## Recover and finish

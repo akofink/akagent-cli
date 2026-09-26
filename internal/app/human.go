@@ -108,9 +108,12 @@ func appendResourceFields(output *strings.Builder, indent string, resource resou
 	appendTextField(output, indent, "base_revision", resource.BaseRevision)
 	appendTextField(output, indent, "worktree_path", resource.WorktreePath)
 	appendTextField(output, indent, "head", resource.Head)
-	appendBoolField(output, indent, "committed", resource.Committed)
-	appendBoolField(output, indent, "dirty", resource.Dirty)
-	appendBoolField(output, indent, "untracked", resource.Untracked)
+	// Resource Git flags are legacy facts with no v2 setter; `task check` derives live state.
+	if resource.Committed || resource.Dirty || resource.Untracked {
+		appendBoolField(output, indent, "committed", resource.Committed)
+		appendBoolField(output, indent, "dirty", resource.Dirty)
+		appendBoolField(output, indent, "untracked", resource.Untracked)
+	}
 	appendTextField(output, indent, "recovery_debt", resource.RecoveryDebt)
 	appendTextField(output, indent, "archive_state", resource.ArchiveState)
 	appendTextField(output, indent, "cleanup_state", resource.CleanupState)
