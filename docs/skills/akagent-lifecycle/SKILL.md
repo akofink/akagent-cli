@@ -74,11 +74,11 @@ akagent task execution session add <task-id> <execution-id> \
 ```
 
 The core stores the reference but never opens or parses provider-owned state.
-Record delivery URLs and metadata after using external forge tooling:
+Record the delivery URL after using external forge tooling.
+The URL is only a hint: `task check` derives PR and check state, so do not record delivery state as metadata.
 
 ```bash
 akagent task resource update <task-id> <resource-id> \
-  --metadata delivery=pull-request-opened \
   --external-url https://forge.example/pull/123
 ```
 

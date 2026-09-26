@@ -81,11 +81,11 @@ akagent task execution session add <task-id> <execution-id> \
   --tool example-tool --session-id <session-id> \
   --reference-path /path/to/session-record
 akagent task resource update <task-id> <resource-id> \
-  --metadata delivery=pull-request-opened \
   --external-url https://forge.example/pull/123
 ```
 
 The core stores references but never opens provider files or operates a forge.
+Record the PR URL as a hint only; `task check` derives PR and check state, so do not record delivery state as metadata.
 Use external forge tooling for delivery.
 
 ### 5. Recover safely

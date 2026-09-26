@@ -70,9 +70,9 @@ type resourceView struct {
 	BaseRevision           string            `json:"base_revision,omitempty"`
 	WorktreePath           string            `json:"worktree_path,omitempty"`
 	Head                   string            `json:"head,omitempty"`
-	Committed              bool              `json:"committed"`
-	Dirty                  bool              `json:"dirty"`
-	Untracked              bool              `json:"untracked"`
+	Committed              bool              `json:"committed,omitempty"`
+	Dirty                  bool              `json:"dirty,omitempty"`
+	Untracked              bool              `json:"untracked,omitempty"`
 	RecoveryDebt           string            `json:"recovery_debt,omitempty"`
 	ArchiveState           string            `json:"archive_state,omitempty"`
 	CleanupState           string            `json:"cleanup_state,omitempty"`
@@ -93,9 +93,9 @@ type resourceListItem struct {
 	BaseRevision           string            `json:"base_revision,omitempty"`
 	WorktreePath           string            `json:"worktree_path,omitempty"`
 	Head                   string            `json:"head,omitempty"`
-	Committed              bool              `json:"committed"`
-	Dirty                  bool              `json:"dirty"`
-	Untracked              bool              `json:"untracked"`
+	Committed              bool              `json:"committed,omitempty"`
+	Dirty                  bool              `json:"dirty,omitempty"`
+	Untracked              bool              `json:"untracked,omitempty"`
 	RecoveryDebt           string            `json:"recovery_debt,omitempty"`
 	ArchiveState           string            `json:"archive_state,omitempty"`
 	CleanupState           string            `json:"cleanup_state,omitempty"`

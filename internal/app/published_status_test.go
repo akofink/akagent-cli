@@ -70,3 +70,32 @@ func TestPublishedActiveConditionIsReportedAsActiveStatus(t *testing.T) {
 		t.Fatalf("waiting list = %q, want waiting status", waiting.stdout)
 	}
 }
+
+func TestResourceViewsOmitUnobservedGitFlags(t *testing.T) {
+	setupTaskCommandTest(t)
+	for _, args := range [][]string{
+		{"task", "create", "--title", "flags", "--task-id", "flags"},
+		{"task", "resource", "create", "flags", "--resource-id", "source", "--repository", "demo", "--branch", "agent/flags", "--worktree", "/offline/flags"},
+	} {
+		if result := runCommand(t, args); result.code != 0 {
+			t.Fatalf("%v = (%d, %q)", args, result.code, result.stdout)
+		}
+	}
+	for _, args := range [][]string{
+		{"task", "inspect", "flags", "--format", "json"},
+		{"task", "inspect", "flags", "--format", "human"},
+		{"task", "inspect", "flags"},
+		{"task", "resource", "list", "flags"},
+		{"task", "resource", "inspect", "flags", "source"},
+	} {
+		result := runCommand(t, args)
+		if result.code != 0 || !strings.Contains(result.stdout, "agent/flags") {
+			t.Fatalf("%v = (%d, %q)", args, result.code, result.stdout)
+		}
+		for _, field := range []string{"committed", "dirty", "untracked"} {
+			if strings.Contains(result.stdout, field) {
+				t.Fatalf("%v shows unobserved %q: %q", args, field, result.stdout)
+			}
+		}
+	}
+}
