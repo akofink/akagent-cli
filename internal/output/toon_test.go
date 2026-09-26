@@ -166,7 +166,7 @@ func TestEncodingQuotesAndEmptyArrays(t *testing.T) {
 		{"empty root array", []string{}, "[]"},
 		{"root array overflows to inline", []int{1, 2, 3}, "[3]: 1,2,3"},
 		{"quoted key", map[string]any{"full name": "Ada"}, `"full name": Ada`},
-		{"numeric negative zero", map[string]any{"v": -0.0}, "v: 0"},
+		{"numeric negative zero", map[string]any{"v": math.Copysign(0, -1)}, "v: 0"},
 		{"nan to null", map[string]any{"v": math.NaN()}, "v: null"},
 	}
 	for _, tc := range tests {

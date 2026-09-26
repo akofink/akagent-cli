@@ -228,7 +228,7 @@ func (s *Store) removeRepositoryLocked(name string) error {
 	if err != nil {
 		return err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	if err := unix.Unlinkat(int(directory.Fd()), name+".json", 0); err != nil {
 		if errors.Is(err, unix.ENOENT) {
 			return newError(KindNotFound, fmt.Sprintf("No repository registered as %s", name), "Register it with `akagent repository register`")
@@ -247,7 +247,7 @@ func (s *Store) RepositoryNames() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer directory.Close()
+	defer func() { _ = directory.Close() }()
 	entries, err := directory.ReadDir(-1)
 	if err != nil {
 		return nil, internalError("list repository registrations", "Check the repository state and retry")

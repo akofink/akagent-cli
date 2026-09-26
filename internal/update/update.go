@@ -77,7 +77,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 			Recovery:  "Wait for the active update, then retry `akagent update`",
 		}
 	}
-	defer updateLock.Unlock()
+	defer func() { _ = updateLock.Unlock() }()
 
 	status, commandErr := runner(sourceDir, nil, "git", "status", "--porcelain")
 	if commandErr != nil {
@@ -141,13 +141,13 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 		_ = os.Remove(temporaryPath)
 		return Result{}, internalError("Prepare the updated binary", "Retry `akagent update`")
 	}
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }()
 
 	worktreeParent, err := os.MkdirTemp("", "akagent-update-source-*")
 	if err != nil {
 		return Result{}, internalError("Create an isolated source directory", "Retry `akagent update`")
 	}
-	defer os.RemoveAll(worktreeParent)
+	defer func() { _ = os.RemoveAll(worktreeParent) }()
 	worktreeDir := filepath.Join(worktreeParent, "checkout")
 	if _, commandErr := runner(sourceDir, nil, "git", "worktree", "add", "--detach", worktreeDir, after); commandErr != nil {
 		return Result{}, internalError("Create an isolated source checkout", fmt.Sprintf("Run `git -C %q worktree prune`, then retry `akagent update`", sourceDir))
@@ -163,7 +163,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 		}
 		return removeErr
 	}
-	defer removeWorktree()
+	defer func() { _ = removeWorktree() }()
 
 	if _, commandErr := runner(worktreeDir, sanitizedGoEnvironment(), "go", "build", "-o", temporaryPath, "./cmd/akagent"); commandErr != nil {
 		return Result{}, &Error{

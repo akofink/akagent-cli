@@ -194,7 +194,7 @@ func (s *Store) ResourceIDs(taskID string) ([]string, error) {
 		}
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	entries, err := file.ReadDir(-1)
 	if err != nil {
 		return nil, internalError(fmt.Sprintf("list resources for task %s", taskID), "Check the task state and retry")
@@ -264,7 +264,7 @@ func (s *Store) ReadResourceEvents(taskID, resourceID string) ([]EventRecord, er
 		}
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	entries, err := file.ReadDir(-1)
 	if err != nil {
 		return nil, internalError("list resource events", "Check the resource state and retry")

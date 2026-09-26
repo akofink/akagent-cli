@@ -129,8 +129,3 @@ func (m *Manager) RecordExecutionSessionReference(taskID, executionID string, re
 func (m *Manager) PublishExecution(taskID, executionID, condition, reason, activity string) (store.Execution, error) {
 	return m.PublishExecutionRecord(taskID, executionID, condition, reason, activity)
 }
-
-func (m *Manager) ensureLegacyExecution(taskID string) error {
-	_, err := m.Inspect(taskID)
-	return err
-}

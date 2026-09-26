@@ -774,7 +774,7 @@ func formatFloat(f float64) string {
 func canonicalNumber(token string) string {
 	neg := strings.HasPrefix(token, "-")
 	t := strings.TrimPrefix(token, "-")
-	if strings.IndexAny(t, ".eE") < 0 {
+	if !strings.ContainsAny(t, ".eE") {
 		t = strings.TrimLeft(t, "0")
 		if t == "" {
 			t = "0"

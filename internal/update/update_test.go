@@ -170,7 +170,7 @@ func TestRunRefusesConcurrentUpdate(t *testing.T) {
 	if err := updateLock.Lock(); err != nil {
 		t.Fatal(err)
 	}
-	defer updateLock.Unlock()
+	defer func() { _ = updateLock.Unlock() }()
 
 	_, updateErr := run(sourceDir, executable, func(_ string, _ []string, _ string, _ ...string) ([]byte, error) {
 		t.Fatal("runner called while update lock held")
