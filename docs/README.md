@@ -40,6 +40,7 @@ Tmux may make active work visible, but it is not durable state and the core does
 ## Documents
 
 - [`architecture.md`](architecture.md) defines current components, ownership, persistence, recovery, and explicit non-goals.
+- [`derived-state.md`](derived-state.md) defines derived resource state, the adapter contract, and the `task check` command.
 - [`charter.md`](charter.md) defines the shipped durable registry boundary and compatibility rules.
 - [`protocol.md`](protocol.md) defines worker and task resources, state, lifecycle, TOON output, errors, compatibility, and reconciliation.
 - [`record-only-lifecycle.md`](record-only-lifecycle.md) defines managed and explicit external record contracts.

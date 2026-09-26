@@ -42,13 +42,14 @@ Human output is an explicit terminal presentation, not a parsing interface.
 
 Prioritized from the current direct coding-agent workflow:
 
-1. Verify integrated CLI, skills, and active-agent compatibility on `main` before changing the installed binary.
-2. Keep managed versus caller-owned external provenance distinct in agent workflows so `--target external` on a managed execution is not treated as `task external`.
-3. Add later session-evidence adapter phases only where a real workflow needs native discovery beyond metadata-only references.
-4. Improve archive and checkpoint backup procedures without expanding the local store into a daemon or central service.
-5. Treat additional machine-readable presentation formats as optional follow-ups.
+1. Roll out derived resource state in the phases defined by [Derived state](derived-state.md), so agents stop hand-recording Git, forge, terminal, and provider facts.
+2. Verify integrated CLI, skills, and active-agent compatibility on `main` before changing the installed binary.
+3. Keep managed versus caller-owned external provenance distinct in agent workflows so `--target external` on a managed execution is not treated as `task external`.
+4. Add later session-evidence adapter phases only where a real workflow needs native discovery beyond metadata-only references.
+5. Improve archive and checkpoint backup procedures without expanding the local store into a daemon or central service.
+6. Treat additional machine-readable presentation formats as optional follow-ups.
    Do not replace TOON as the protocol boundary or human output as the terminal view.
-6. Add protocol-version migration guidance when a future breaking lifecycle change is proposed.
+7. Add protocol-version migration guidance when a future breaking lifecycle change is proposed.
 
 ## Non-goals
 
