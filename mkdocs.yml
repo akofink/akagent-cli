@@ -19,6 +19,7 @@ nav:
       - Architecture: architecture.md
       - Charter: charter.md
       - Protocol: protocol.md
+      - Derived state: derived-state.md
       - Work inventory: work-inventory.md
       - Credentials: credentials.md
       - Storage: storage.md
