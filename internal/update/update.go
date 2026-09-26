@@ -1,12 +1,14 @@
 package update
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/gofrs/flock"
 )
@@ -26,6 +28,10 @@ type Error struct {
 	Retryable bool
 	Recovery  string
 }
+
+const commandTimeout = 5 * time.Minute
+
+const buildRevisionFlag = "-X=github.com/akofink/akagent-cli/internal/app.buildRevision="
 
 type commandRunner func(dir string, env []string, name string, args ...string) ([]byte, error)
 
@@ -165,7 +171,7 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 	}
 	defer func() { _ = removeWorktree() }()
 
-	if _, commandErr := runner(worktreeDir, sanitizedGoEnvironment(), "go", "build", "-o", temporaryPath, "./cmd/akagent"); commandErr != nil {
+	if _, commandErr := runner(worktreeDir, sanitizedGoEnvironment(), "go", "build", "-ldflags", buildRevisionFlag+after, "-o", temporaryPath, "./cmd/akagent"); commandErr != nil {
 		return Result{}, &Error{
 			Category: "internal",
 			Message:  "Failed to build the updated akagent binary",
@@ -201,7 +207,13 @@ func run(sourceDir, executable string, runner commandRunner) (Result, *Error) {
 }
 
 func execute(dir string, env []string, name string, args ...string) ([]byte, error) {
-	command := exec.Command(name, args...)
+	return executeWithTimeout(commandTimeout, dir, env, name, args...)
+}
+
+func executeWithTimeout(timeout time.Duration, dir string, env []string, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, name, args...)
 	command.Dir = dir
 	if env != nil {
 		command.Env = env

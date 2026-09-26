@@ -5,10 +5,23 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofrs/flock"
 )
+
+func TestExecuteWithTimeoutStopsHungCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell timeout test is Unix-specific")
+	}
+	_, err := executeWithTimeout(20*time.Millisecond, t.TempDir(), nil, "sleep", "5")
+	if err == nil || !strings.Contains(err.Error(), "signal: killed") {
+		t.Fatalf("executeWithTimeout() error = %v, want killed process", err)
+	}
+}
 
 func TestSanitizedGoEnvironmentRemovesAmbientToolchainSettings(t *testing.T) {
 	t.Setenv("GOROOT", "/wrong/go")
@@ -95,11 +108,14 @@ func successfulUpdateRunner(t *testing.T) commandRunner {
 			return nil, os.MkdirAll(command[4], 0o700)
 		case len(command) == 5 && reflect.DeepEqual(command[:4], []string{"git", "worktree", "remove", "--force"}):
 			return nil, nil
-		case len(command) == 5 && reflect.DeepEqual(command[:3], []string{"go", "build", "-o"}):
+		case len(command) == 7 && reflect.DeepEqual(command[:3], []string{"go", "build", "-ldflags"}):
 			if !hasEnvironment(env, "GOENV=off") || !hasEnvironment(env, "GOTOOLCHAIN=local") || hasEnvironmentKey(env, "GOROOT") || hasEnvironmentKey(env, "GOTOOLDIR") {
 				t.Fatalf("go build environment = %q", env)
 			}
-			return nil, os.WriteFile(command[3], []byte("new"), 0o600)
+			if command[3] != buildRevisionFlag+"after" || command[4] != "-o" {
+				t.Fatalf("go build args = %q", command)
+			}
+			return nil, os.WriteFile(command[5], []byte("new"), 0o600)
 		default:
 			return nil, errors.New("unexpected command")
 		}

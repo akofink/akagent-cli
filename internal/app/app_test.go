@@ -27,7 +27,7 @@ func TestWorkerInspect(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"worker:", "id: local", "protocol_version: 2", "features[4]: registry,checkpoint,observation,handoff", "operating_system:"} {
+	for _, expected := range []string{"worker:", "id: local", "protocol_version: 2", "features[4]: registry,checkpoint,observation,handoff", "operating_system:", "build_revision: unknown"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
