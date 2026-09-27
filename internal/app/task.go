@@ -12,9 +12,18 @@ import (
 	"github.com/google/uuid"
 )
 
+var taskSubcommands = []string{
+	"begin", "deliver", "repair", "create", "external", "checkpoint", "resource", "execution",
+	"disposition", "list", "inspect", "check", "publish", "finish", "archive", "reconcile",
+}
+
+func taskCommandUsage() string {
+	return "task <" + strings.Join(taskSubcommands, "|") + ">"
+}
+
 func taskCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <begin|deliver|repair|create|external|checkpoint|resource|execution|disposition|list|inspect|check|publish|finish|archive|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent "+taskCommandUsage(), false, "Run `akagent task list`")
 	}
 	switch args[0] {
 	case "record":
@@ -513,7 +522,7 @@ func parsePublish(args []string) (condition, reason, activity string, ok bool) {
 	return condition, reason, activity, condition != ""
 }
 func taskUsage(stdout io.Writer) int {
-	return writeError(stdout, "usage", "Usage: akagent task <create|external|checkpoint|resource|execution|disposition|list|inspect|publish|finish|archive|reconcile>", false, "Run `akagent task list`")
+	return writeError(stdout, "usage", "Usage: akagent "+taskCommandUsage(), false, "Run `akagent task list`")
 }
 
 func taskListUsage(stdout io.Writer) int {
