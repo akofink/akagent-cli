@@ -234,17 +234,31 @@ It refuses delivery while another execution remains open.
 The caller must verify the task-kind delivery contract before invoking it; missing panes and green checks alone never authorize it.
 The old create, publish, finish, and archive commands remain available through guidance migration.
 
-`task repair terminal-executions [--task-id <id>] [--apply]` selects only open managed executions beneath explicitly terminal tasks.
+`task repair terminal-executions [--task-id <id>] [--execution-id <id>]` selects only open managed executions beneath explicitly terminal tasks.
 The default is a deterministic dry-run with IDs, revisions, and proposed actions; it performs no writes.
-`--apply` requires a named closure contract and caller attestation that each attempt ended, takes guarded revisions, and records a non-success result such as `unverified` rather than inferring delivery from a missing pane.
-Externally owned executions require their original owner and stay outside the bulk repair path.
-Recheck after apply, and report conflicts individually rather than silently skipping changed records.
+`--apply --task-id <id> --execution-id <id> --expected-revision <revision> --contract <name> --verified-ended` requires independent attestation for exactly one attempt and records result `unverified` rather than inferring delivery from a missing pane.
+A changed revision or ineligible candidate is a conflict.
+Externally owned executions require their original owner and stay outside this repair path.
+Recheck after each apply; never batch-apply closure to an unverified historical inventory.
 
 ### Provider sessions (designed, not shipped)
 
 The provider adapter checks that a session reference path still exists and is a regular file owned by the current user.
 It never opens, parses, or indexes session content, and it reports no modification times, because age thresholds are not deterministic.
 An absent session file is `missing` `session_record_missing`, which is evidence for the operator, not completion.
+
+## What agents still write
+
+Agents still name task and execution identities, intent and resource bindings at creation because no adapter can decide which work belongs to an agent.
+Use `task begin` once to create or adopt both identities and mark them active, rather than separate publishes or activity strings.
+A caller still records a provider session reference only when resumption needs it, and a checkpoint or disposition only when a decision or handoff cannot be derived from a host.
+After independently verifying the named delivery contract, use `task deliver --verified` to explicitly close the execution and task; failure and waiting work require a stated reason and next action rather than implied completion.
+For historical terminal tasks, use the dry-run repair preview and individually attest ended attempts before `--apply`; an absent pane alone is never sufficient.
+
+`task check` derives checkout, branch, PR, checks, and local tmux pane status at read time.
+Agents do not manually publish routine execution activity, heartbeat, process observations, Git dirty flags, PR delivery metadata, or claims of current terminal state where adapters can read their source.
+Remote hosts, unavailable tmux servers, and ambiguous shared windows remain `unknown`, never successes.
+Legacy commands stay supported until all agent guidance has migrated.
 
 ## Durability
 
