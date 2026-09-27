@@ -38,7 +38,7 @@ Operators then reconciled records by hand against Git, GitHub, and terminal pane
 | Pull request identity, state, and head | Forge | GitHub adapter |
 | Check runs and commit statuses on the PR head | Forge | GitHub adapter |
 | Execution identity, lineage, command label, session references | Agent declaration | Kept (cache) |
-| Whether an execution's agent is still running, idle, or done | Terminal host | Terminal adapter (designed below, not shipped) |
+| Whether an execution's agent is still running, idle, or done | tmux on the execution's host | Terminal adapter (phase 2) |
 | Whether a provider session record still exists | Provider | Provider adapter (designed below, not shipped) |
 | Consistency between kept records | akagent store | Record-consistency rules (offline) |
 
@@ -206,21 +206,36 @@ A recorded PR URL only chooses among several PRs on the branch; a single PR on t
 It then reads check runs and combined commit status for the PR head commit.
 A PR head that differs from the local branch head makes the checks `stale`, because checks on another commit say nothing about local work.
 
-### Terminal (designed, not shipped)
+### Terminal: tmux phase 2
 
-The terminal adapter reports whether an open execution's agent is still present.
-Its binding is the execution's session references, matched exactly against what the terminal host reports.
+At execution creation, capture the hostname and `$TMUX_PANE` as immutable, optional binding fields.
+Explicit creation flags support external dispatch and historical adoption; a mismatch on retry is a conflict, not a silent rebind.
+The pane identifier is not a session reference or proof of liveness.
+If no pane was bound, report `unknown` `pane_unbound`; if the host differs, report `unknown` `remote_host` without contacting another host.
+If tmux cannot be contacted or its output is invalid, report `unknown` `tmux_unavailable`.
+Only an exact pane ID on a reachable local host is a match.
+For an open execution, `tmux list-panes -a -F` reads pane IDs and the pane-scoped `@agent_state` option without sending keys or reading scrollback.
+A bound pane absent from a successful listing is `missing` `no_live_pane`, never completion.
+A present pane with `@agent_state=working` or `blocked` is `current` `live`, with `idle` is `current` `idle`, and with `done` is `stale` `agent_done` pending independent verification.
+An absent or unrecognized option is `unknown` `state_unavailable`, not an invented status.
+Offline checks do not contact tmux; terminal executions retain the offline consistency rules.
+Closed executions remain `current` `closed`, and terminal tasks retain `stale` `task_terminal` for open executions regardless of pane state.
+No adapter ever closes a record.
 
-- Herdr: `herdr agent list` returns each agent's session identifier and status.
-  A session reference whose ID or reference path equals an agent's session value maps `working` and `blocked` to `current` `live`, `idle` to `current` `idle`, and `done` to `stale` `agent_done`, which prompts verification and a guarded finish.
-- tmux: the provider hooks being added to the tmux workflow publish the agent session and state as pane user options.
-  The adapter reads them with `tmux list-panes -a -F` and applies the same mapping.
-- No matching pane on a reachable local host is `missing` `no_live_session`; it is never completion.
-- A session owned by another host is `unknown` `remote_host` until executions record a host identity and the operator configures a read-only transport such as a saved Herdr machine.
-  The adapter never substitutes this machine's panes for another host's.
+### Lifecycle shortcuts and explicit repair
 
-The adapter reads state only.
-It never sends keys, prompts, or commands to a pane.
+`task begin <task-id> --title <title> --execution-id <id> --command <label>` creates or adopts a managed task and execution, sets both conditions active, and captures tmux binding at execution creation.
+It is idempotent for matching identities and inputs, refuses conflicting titles, bindings, external-provenance records, and terminal tasks, and can resume after a partial write by inspecting and reconciling the task.
+It does not launch an agent or infer activity from a pane.
+`task deliver <task-id> <execution-id> --contract <name> --result <result> --summary <text>` is an explicit verified-delivery declaration: it closes the owned execution with a guarded revision, finishes the task with the named result, and archives it, supporting retries after partial writes.
+The caller must verify the task-kind delivery contract before invoking it; missing panes and green checks alone never authorize it.
+The old create, publish, finish, and archive commands remain available through guidance migration.
+
+`task repair terminal-executions [--task-id <id>] [--apply]` selects only open managed executions beneath explicitly terminal tasks.
+The default is a deterministic dry-run with IDs, revisions, and proposed actions; it performs no writes.
+`--apply` requires a named closure contract and caller attestation that each attempt ended, takes guarded revisions, and records a non-success result such as `unverified` rather than inferring delivery from a missing pane.
+Externally owned executions require their original owner and stay outside the bulk repair path.
+Recheck after apply, and report conflicts individually rather than silently skipping changed records.
 
 ### Provider sessions (designed, not shipped)
 
@@ -325,18 +340,21 @@ The repository's own instructions currently forbid worktrees and branches, so ad
 - Whether the lock should move from the sync script into a small shared helper so akagent does not depend on its path.
 - Whether a merge commit is preferable to a rebase when a task branch carries many commits.
 
-## Rollout
+## Rollout and phase 2 PR sequence
 
-1. This design, the Git and GitHub adapters, the record-consistency rules, and `task check`.
-2. The safe trims above.
-3. The terminal adapter for Herdr and tmux on the local host, after the tmux provider hooks ship.
-4. Execution host identity and a read-only remote transport.
-5. The provider session adapter.
-6. The notes-backed importer, then the versioned migration that removes legacy fields.
-7. Managed notes worktrees, only after an explicit operator decision; design only today.
+Phase 1 shipped the design, Git and GitHub adapters, record-consistency checks, and safe trims.
+Phase 2 lands as separate small PRs in this order, each based on the preceding merged main:
 
-Phases 1 through 6 are opt-in and read-only, so no feature flag is needed; existing commands and storage keep working.
-Phase 7 mutates Git and is gated by the opt-in `managed` repository policy.
+1. Design-only PR: specify the tmux binding and codes, lifecycle and repair contracts, and the remaining write boundary (this document).
+2. Tmux PR: add optional immutable execution host and pane fields, creation-time capture, and a read-only tmux adapter with fixture tests for live, done, missing, remote, unavailable, and offline cases.
+3. Lifecycle PR: add idempotent begin and deliver shortcuts with verified-delivery input and partial-write recovery, retaining every old command.
+4. Repair PR: add dry-run-by-default terminal-execution repair with explicit attestation, guarded closure, tests, and the final agent write/derived-state guidance in this document.
+
+Do not install an intermediate binary.
+After green CI and the final merge, update the installed binary and demonstrate the before and after `task check --all` counts using only the explicit repair path.
+Later work may add a provider session adapter, notes-backed importer, and versioned legacy-field migration.
+Managed notes worktrees remain design only, gated by a separate opt-in decision.
+The adapter is read-only; lifecycle shortcuts and repair write only the local record store and never control a process.
 
 ## Non-goals
 
