@@ -229,7 +229,8 @@ No adapter ever closes a record.
 `task begin <task-id> --title <title> --execution-id <id> --command <label>` creates or adopts a managed task and execution, sets both conditions active, and captures tmux binding at execution creation.
 It is idempotent for matching identities and inputs, refuses conflicting titles, bindings, external-provenance records, and terminal tasks, and can resume after a partial write by inspecting and reconciling the task.
 It does not launch an agent or infer activity from a pane.
-`task deliver <task-id> <execution-id> --contract <name> --result <result> --summary <text>` is an explicit verified-delivery declaration: it closes the owned execution with a guarded revision, finishes the task with the named result, and archives it, supporting retries after partial writes.
+`task deliver <task-id> <execution-id> --contract <name> --result <succeeded|failed> --summary <text> --verified` is an explicit verified-delivery declaration: it closes the selected managed execution with its current guarded revision, finishes the task with the named result, and archives it, supporting retries after partial writes.
+It refuses delivery while another execution remains open.
 The caller must verify the task-kind delivery contract before invoking it; missing panes and green checks alone never authorize it.
 The old create, publish, finish, and archive commands remain available through guidance migration.
 
