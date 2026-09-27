@@ -2,6 +2,7 @@ package app
 
 import (
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -116,6 +117,15 @@ func taskExternalExecutionCommand(args []string, stdout io.Writer, manager *life
 		request, ok := parseExternalExecutionCreate(args[2:])
 		if !ok {
 			return writeError(stdout, "usage", "Usage: akagent task external execution create <task-id> --execution-id <id> --resource <resource-id> --caller-id <id> --operation-id <id> [--predecessor <execution-id>] [--tool <tool> --session-id <id> [--reference-path <absolute-path>] ]", false, "Provide the owning external resource and stable caller operation identity")
+		}
+		if request.Host == "" {
+			request.Host, _ = os.Hostname()
+		}
+		if request.TmuxPane == "" {
+			request.TmuxPane = os.Getenv("TMUX_PANE")
+		}
+		if !validExecutionBinding(request.Host, request.TmuxPane) {
+			return writeError(stdout, "usage", "Invalid execution host or tmux pane binding", false, "Provide a hostname and a pane ID such as %1")
 		}
 		execution, err := manager.RecordExecution(args[1], request)
 		if err != nil {
@@ -240,6 +250,10 @@ func parseExternalExecutionCreate(args []string) (store.ExternalExecutionRequest
 			request.OperationID = value
 		case "--predecessor":
 			request.PredecessorID = value
+		case "--host":
+			request.Host = value
+		case "--tmux-pane":
+			request.TmuxPane = value
 		case "--tool":
 			tool = value
 		case "--session-id":

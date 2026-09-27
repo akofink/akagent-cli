@@ -274,7 +274,7 @@ func TestRecordConsistency(t *testing.T) {
 		{ID: "z", Lifecycle: "created", Condition: "active", SessionReferences: []store.SessionReference{{Tool: "pi"}, {Tool: "claude"}, {Tool: "pi"}}},
 		{ID: "a", Lifecycle: "finished"},
 	}
-	report := Check(snapshot, runner, Options{})
+	report := Check(snapshot, runner, Options{Offline: true})
 	expect(t, report.Executions[0], StateCurrent, "closed")
 	expect(t, report.Executions[1], StateUnknown, "adapter_unavailable")
 	if report.Executions[0].Surface != "execution:a" || report.Executions[1].Detail != "claude,pi" {

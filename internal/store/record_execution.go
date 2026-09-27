@@ -13,6 +13,9 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 	if err := validateExternalExecutionRequest(request); err != nil {
 		return Execution{}, err
 	}
+	if err := validateExecutionBinding(request.Host, request.TmuxPane); err != nil {
+		return Execution{}, err
+	}
 	var result Execution
 	fingerprint := operationFingerprint(request)
 	err := s.WithLock(taskID, func() error {
@@ -73,7 +76,7 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 			if current.ArchiveState == "complete" || current.Lifecycle == "finished" {
 				return terminalMutationConflict("execution", request.ID)
 			}
-			if current.CallerID != request.CallerID || current.ResourceID != request.ResourceID || current.PredecessorID != request.PredecessorID || !sameSessionReferences(current.SessionReferences, request.SessionReferences) {
+			if current.CallerID != request.CallerID || current.ResourceID != request.ResourceID || current.PredecessorID != request.PredecessorID || current.Host != request.Host || current.TmuxPane != request.TmuxPane || !sameSessionReferences(current.SessionReferences, request.SessionReferences) {
 				return newError(KindConflict, fmt.Sprintf("external execution %s inputs conflict with its existing record", request.ID), "Inspect the execution and retry with its original immutable inputs")
 			}
 			current.Receipts = appendReceipt(current.Receipts, request.OperationID, fingerprint, current.Revision)
@@ -101,6 +104,7 @@ func (s *Store) RecordExternalExecution(taskID string, request ExternalExecution
 		execution := Execution{
 			ID: request.ID, TaskID: taskID, Provenance: ProvenanceExternal, CallerID: request.CallerID, Revision: 1,
 			PredecessorID: request.PredecessorID, Label: "external", Target: "external", ResourceID: request.ResourceID,
+			Host: request.Host, TmuxPane: request.TmuxPane,
 			SessionReferences: append([]SessionReference(nil), request.SessionReferences...), Lifecycle: "created", Condition: "none",
 			Receipts: []RecordReceipt{{OperationID: request.OperationID, Fingerprint: fingerprint, Revision: 1}},
 		}

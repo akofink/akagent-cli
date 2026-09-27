@@ -54,6 +54,8 @@ type Execution struct {
 	HeartbeatAt          time.Time             `json:"heartbeat_at,omitempty"`
 	Result               string                `json:"result,omitempty"`
 	TmuxWindow           string                `json:"tmux_window,omitempty"`
+	Host                 string                `json:"host,omitempty"`
+	TmuxPane             string                `json:"tmux_pane,omitempty"`
 	ProcessPID           int                   `json:"process_pid,omitempty"`
 	ProcessStartTime     uint64                `json:"process_start_time,omitempty"`
 	ObservedPID          int                   `json:"observed_pid,omitempty"`
@@ -138,7 +140,22 @@ func validateExecution(execution Execution) error {
 	if err := validateExecutionID(execution.ID); err != nil {
 		return err
 	}
+	if err := validateExecutionBinding(execution.Host, execution.TmuxPane); err != nil {
+		return err
+	}
 	return validateExecutionReferences(execution, true)
+}
+
+func validateExecutionBinding(host, pane string) error {
+	if len(host) > 253 || strings.ContainsAny(host, " \r\n\t\x00") || pane != "" && (host == "" || len(pane) < 2 || pane[0] != '%') {
+		return newError(KindUsage, "Invalid execution host or pane binding", "Provide a hostname and a tmux pane ID")
+	}
+	for _, digit := range strings.TrimPrefix(pane, "%") {
+		if digit < '0' || digit > '9' {
+			return newError(KindUsage, "Invalid tmux pane ID", "Provide a tmux pane ID such as %1")
+		}
+	}
+	return nil
 }
 
 func validateStoredExecution(execution Execution) error {
@@ -173,6 +190,9 @@ func validateStoredExecution(execution Execution) error {
 				return err
 			}
 		}
+	}
+	if err := validateExecutionBinding(execution.Host, execution.TmuxPane); err != nil {
+		return err
 	}
 	return validateExecutionReferences(execution, false)
 }
@@ -484,7 +504,7 @@ func (s *Store) ensureExecutionDir(taskID, executionID string) error {
 }
 
 func sameExecutionInputs(a, b Execution) bool {
-	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.Requirements == b.Requirements && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory && slices.Equal(a.SessionReferences, b.SessionReferences)
+	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.Requirements == b.Requirements && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory && a.Host == b.Host && a.TmuxPane == b.TmuxPane && slices.Equal(a.SessionReferences, b.SessionReferences)
 }
 
 func executionManifestEnvelope(taskID, executionID string, execution Execution) (Envelope, error) {
