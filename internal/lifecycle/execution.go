@@ -37,7 +37,8 @@ func (m *Manager) CreateExecution(taskID string, request ExecutionRequest) (stor
 		ID: request.ID, TaskID: taskID, Label: request.Label, Target: request.Target,
 		Command: request.Command, Arguments: append([]string(nil), request.Arguments...),
 		Requirements: strings.Join(unique(request.Requirements), ","), ResourceID: request.ResourceID,
-		WorkingDirectory: request.WorkingDirectory, Lifecycle: "created", Condition: "none", HeartbeatAt: m.now(),
+		WorkingDirectory: request.WorkingDirectory, Host: request.Host, TmuxPane: request.TmuxPane,
+		Lifecycle: "created", Condition: "none", HeartbeatAt: m.now(),
 	}
 	created, existing, err := m.Store.CreateExecution(taskID, execution)
 	if err != nil {

@@ -149,7 +149,13 @@ func Check(snapshot Snapshot, runner Runner, options Options) Report {
 		if !ExecutionClosed(execution) {
 			open++
 		}
-		report.Executions = append(report.Executions, checkExecution(execution, terminal))
+		result := checkExecution(execution, terminal)
+		if !terminal && !ExecutionClosed(execution) && !options.Offline {
+			ctx, cancel := context.WithTimeout(context.Background(), resourceTimeout)
+			result = checkTmux(ctx, runner, execution)
+			cancel()
+		}
+		report.Executions = append(report.Executions, result)
 	}
 	if !terminal && snapshot.Task.Condition == "active" && len(executions) > 0 && open == 0 {
 		report.Task = append(report.Task, finding("task", StateStale, "no_open_execution", "Resume with a new execution or finish the task against its contract"))

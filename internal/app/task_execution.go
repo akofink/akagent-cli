@@ -2,8 +2,11 @@ package app
 
 import (
 	"io"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/akofink/akagent-cli/internal/lifecycle"
@@ -72,6 +75,15 @@ func taskExecutionCommand(args []string, stdout io.Writer) int {
 		request, ok := parseExecutionCreate(args[2:])
 		if !ok {
 			return writeError(stdout, "usage", "Usage: akagent task execution create <task-id> --target <target> [--execution-id <id>] [--label <label>] [--command <command>] [--require <credential>] [--resource <resource-id>] [--worktree <path>]", false, "Provide a target and immutable execution inputs")
+		}
+		if request.Host == "" {
+			request.Host, _ = os.Hostname()
+		}
+		if request.TmuxPane == "" {
+			request.TmuxPane = os.Getenv("TMUX_PANE")
+		}
+		if !validExecutionBinding(request.Host, request.TmuxPane) {
+			return writeError(stdout, "usage", "Invalid execution host or tmux pane binding", false, "Provide a hostname and a pane ID such as %1")
 		}
 		execution, _, err := manager.CreateExecution(args[1], request)
 		if err != nil {
@@ -355,6 +367,12 @@ func parseSessionReference(args []string) (store.SessionReference, bool) {
 	return reference, reference.Tool != "" && reference.SessionID != ""
 }
 
+var paneIDPattern = regexp.MustCompile(`^%[0-9]+$`)
+
+func validExecutionBinding(host, pane string) bool {
+	return host != "" && len(host) <= 253 && !strings.ContainsAny(host, " \r\n\t\x00") && (pane == "" || paneIDPattern.MatchString(pane))
+}
+
 func parseExecutionCreate(args []string) (lifecycle.ExecutionRequest, bool) {
 	var request lifecycle.ExecutionRequest
 	for len(args) > 0 {
@@ -378,6 +396,10 @@ func parseExecutionCreate(args []string) (lifecycle.ExecutionRequest, bool) {
 			request.ResourceID = value
 		case "--worktree":
 			request.WorkingDirectory = value
+		case "--host":
+			request.Host = value
+		case "--tmux-pane":
+			request.TmuxPane = value
 		default:
 			return request, false
 		}

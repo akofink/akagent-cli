@@ -20,6 +20,7 @@ func (r unavailableRunner) Run(context.Context, string, ...string) ([]byte, erro
 func setupCheckTest(t *testing.T) *int {
 	t.Helper()
 	setupTaskCommandTest(t)
+	t.Setenv("TMUX_PANE", "")
 	calls := 0
 	previous := checkRunner
 	checkRunner = unavailableRunner{calls: &calls}
@@ -53,7 +54,7 @@ func TestTaskCheckSingleTask(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.stdout), &report); err != nil {
 		t.Fatalf("json: %v %s", err, result.stdout)
 	}
-	if report.TaskID != "check-task" || len(report.Resources) != 1 || report.Resources[0].Findings[0].Code != "repository_unavailable" || report.Executions[0].Code != "adapter_unavailable" {
+	if report.TaskID != "check-task" || len(report.Resources) != 1 || report.Resources[0].Findings[0].Code != "repository_unavailable" || report.Executions[0].Code != "pane_unbound" {
 		t.Fatalf("report: %+v", report)
 	}
 	if *calls == 0 {

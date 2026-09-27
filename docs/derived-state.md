@@ -214,10 +214,12 @@ The pane identifier is not a session reference or proof of liveness.
 If no pane was bound, report `unknown` `pane_unbound`; if the host differs, report `unknown` `remote_host` without contacting another host.
 If tmux cannot be contacted or its output is invalid, report `unknown` `tmux_unavailable`.
 Only an exact pane ID on a reachable local host is a match.
-For an open execution, `tmux list-panes -a -F` reads pane IDs and the pane-scoped `@agent_state` option without sending keys or reading scrollback.
+For an open execution, `tmux list-panes -a -F` reads pane and window IDs and the window-scoped `@agent_state` option without sending keys or reading scrollback.
+If several panes share the window, its option cannot be attributed to this execution and the finding is `unknown` `shared_window`.
 A bound pane absent from a successful listing is `missing` `no_live_pane`, never completion.
-A present pane with `@agent_state=working` or `blocked` is `current` `live`, with `idle` is `current` `idle`, and with `done` is `stale` `agent_done` pending independent verification.
-An absent or unrecognized option is `unknown` `state_unavailable`, not an invented status.
+The hooks clear the window-scoped option for `working` and `idle`, so a present pane with no option is `current` `live` without claiming which of those states applies.
+A present pane with `@agent_state=blocked` or `waiting` is `current` `live`, and with `done` is `stale` `agent_done` pending independent verification.
+An unrecognized option is `unknown` `state_unavailable`, not an invented status.
 Offline checks do not contact tmux; terminal executions retain the offline consistency rules.
 Closed executions remain `current` `closed`, and terminal tasks retain `stale` `task_terminal` for open executions regardless of pane state.
 No adapter ever closes a record.

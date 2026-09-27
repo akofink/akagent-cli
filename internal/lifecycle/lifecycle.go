@@ -126,6 +126,8 @@ type ExecutionRequest struct {
 	Requirements     []string
 	ResourceID       string
 	WorkingDirectory string
+	Host             string
+	TmuxPane         string
 	PredecessorID    string
 	PromptReference  string
 	WorkingContext   string
