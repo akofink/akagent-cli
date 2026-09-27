@@ -61,7 +61,7 @@ func Run(args []string, stdout io.Writer) int {
 				"repository register <name> <path> [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository update <name> [--path <path>] [--policy <worktree|direct>] [--worktree-root <absolute-path>]",
 				"repository <list|inspect|unregister>",
-				"task <create|external|checkpoint|resource|execution|list|inspect|publish|finish|archive|reconcile>",
+				taskCommandUsage(),
 				"task check <task-id|keyword|--all> [--offline] [--format <toon|json>]",
 				"task checkpoint <write|inspect> <task-id> ...",
 				"task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]",

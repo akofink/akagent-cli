@@ -62,10 +62,32 @@ func TestHelp(t *testing.T) {
 		t.Fatalf("Run() exit code = %d, want 0", exitCode)
 	}
 
-	for _, expected := range []string{"usage: akagent <command>", "repository register <name> <path>", "task <create|external|checkpoint|resource|execution|list|inspect|publish|finish|archive|reconcile>", "task disposition <task-id> <in-flight|deferred|terminal>", "task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>]"} {
+	for _, expected := range []string{"usage: akagent <command>", "repository register <name> <path>", taskCommandUsage(), "task disposition <task-id> <in-flight|deferred|terminal>", "task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>]"} {
 		if !strings.Contains(stdout.String(), expected) {
 			t.Errorf("Run() output = %q, want to contain %q", stdout.String(), expected)
 		}
+	}
+}
+
+func TestUnknownTaskSubcommandUsageMatchesHelp(t *testing.T) {
+	var usage bytes.Buffer
+	if exitCode := Run([]string{"task", "unknown"}, &usage); exitCode != 2 {
+		t.Fatalf("Run(task unknown) exit code = %d, want 2", exitCode)
+	}
+	want := "Usage: akagent task <begin|deliver|repair|create|external|checkpoint|resource|execution|disposition|list|inspect|check|publish|finish|archive|reconcile>"
+	if !strings.Contains(usage.String(), want) {
+		t.Fatalf("unknown task usage = %q, want %q", usage.String(), want)
+	}
+
+	var help bytes.Buffer
+	if exitCode := Run([]string{"--help"}, &help); exitCode != 0 {
+		t.Fatalf("Run(--help) exit code = %d, want 0", exitCode)
+	}
+	if !strings.Contains(help.String(), taskCommandUsage()) {
+		t.Fatalf("help = %q, want task command list %q", help.String(), taskCommandUsage())
+	}
+	if got := taskCommandUsage(); got != strings.TrimPrefix(want, "Usage: akagent ") {
+		t.Fatalf("task command usage = %q, want %q", got, want)
 	}
 }
 
