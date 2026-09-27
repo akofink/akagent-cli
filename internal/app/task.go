@@ -14,7 +14,7 @@ import (
 
 func taskCommand(args []string, stdout io.Writer) int {
 	if len(args) == 0 {
-		return writeError(stdout, "usage", "Usage: akagent task <begin|deliver|create|external|checkpoint|resource|execution|disposition|list|inspect|check|publish|finish|archive|reconcile>", false, "Run `akagent task list`")
+		return writeError(stdout, "usage", "Usage: akagent task <begin|deliver|repair|create|external|checkpoint|resource|execution|disposition|list|inspect|check|publish|finish|archive|reconcile>", false, "Run `akagent task list`")
 	}
 	switch args[0] {
 	case "record":
@@ -38,6 +38,8 @@ func taskCommand(args []string, stdout io.Writer) int {
 	switch args[0] {
 	case "check":
 		return taskCheckCommand(args[1:], stdout, state, manager)
+	case "repair":
+		return taskRepair(args[1:], stdout, state, manager)
 	case "begin":
 		return taskBegin(args[1:], stdout, manager)
 	case "deliver":

@@ -19,7 +19,7 @@ func shortcutOptions(args []string, allowed map[string]bool) (map[string]string,
 		if !allowed[flag] || values[flag] != "" {
 			return nil, false
 		}
-		if flag == "--verified" {
+		if flag == "--verified" || flag == "--apply" || flag == "--verified-ended" {
 			values[flag] = "true"
 			args = args[1:]
 			continue
