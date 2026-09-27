@@ -144,7 +144,7 @@ func Check(snapshot Snapshot, runner Runner, options Options) Report {
 	}
 	executions := append([]store.Execution(nil), snapshot.Executions...)
 	sort.Slice(executions, func(i, j int) bool { return executions[i].ID < executions[j].ID })
-	open := 0
+	open, live := 0, 0
 	for _, execution := range executions {
 		if !ExecutionClosed(execution) {
 			open++
@@ -155,7 +155,13 @@ func Check(snapshot Snapshot, runner Runner, options Options) Report {
 			result = checkTmux(ctx, runner, execution)
 			cancel()
 		}
+		if !terminal && !ExecutionClosed(execution) && result.Code == "live" {
+			live++
+		}
 		report.Executions = append(report.Executions, result)
+	}
+	if live > 1 {
+		report.Task = append(report.Task, finding("task", StateStale, "multiple_live_executions", "Inspect bindings and close only independently verified ended attempts"))
 	}
 	if !terminal && snapshot.Task.Condition == "active" && len(executions) > 0 && open == 0 {
 		report.Task = append(report.Task, finding("task", StateStale, "no_open_execution", "Resume with a new execution or finish the task against its contract"))
