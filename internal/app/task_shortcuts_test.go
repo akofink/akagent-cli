@@ -16,8 +16,13 @@ func TestBeginAndDeliverWithResourceAndRetry(t *testing.T) {
 	if !strings.Contains(before.stdout, `"tmux_pane":"%13"`) || !strings.Contains(before.stdout, `"condition":"active"`) {
 		t.Fatalf("begin: %s", before.stdout)
 	}
+	mustRun(t, []string{"task", "publish", "lean-task", "--condition", "blocked", "--reason", "waiting on review"})
 	deliver := []string{"task", "deliver", "lean-task", "attempt", "--contract", "implementation", "--result", "succeeded", "--summary", "PR merged and verified", "--verified"}
 	mustRun(t, deliver)
+	inspection := runCommand(t, []string{"task", "inspect", "lean-task", "--format", "json"})
+	if inspection.code != 0 || strings.Contains(inspection.stdout, `"reason":"waiting on review"`) || !strings.Contains(inspection.stdout, `"condition":"succeeded"`) {
+		t.Fatalf("delivered task retained blocked reason: %+v", inspection)
+	}
 	mustRun(t, deliver)
 	result := runCommand(t, []string{"task", "check", "lean-task", "--offline"})
 	if result.code != 0 || strings.Contains(result.stdout, "task_terminal") || !strings.Contains(result.stdout, `"execution:attempt",current,closed`) {

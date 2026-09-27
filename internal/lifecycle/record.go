@@ -250,6 +250,9 @@ func (m *Manager) FinishRecord(id, outcome, result string) (store.Manifest, erro
 			}
 			return terminalFinishConflict(id)
 		}
+		if manifest.Condition == "waiting" || manifest.Condition == "blocked" {
+			manifest.Reason = ""
+		}
 		manifest.Lifecycle, manifest.Condition, manifest.Result = "finished", outcomeToCondition(outcome), result
 		manifest.Disposition = string(DispositionTerminal)
 		manifest.Observation, manifest.ObservationAt = ObservationMissing, m.now()
