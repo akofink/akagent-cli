@@ -6,7 +6,7 @@ The record lifecycle never invokes Git, tmux, a provider, a credential resolver,
 The opt-in `task check` command invokes read-only Git and GitHub adapters outside the record lifecycle and never writes to the store.
 
 Protocol data and structured errors are written to stdout as TOON by default.
-`task list` and `task inspect` also accept `--format json` for compact JSON of the same typed views and `--format human` for deterministic terminal reading.
+`task list` and `task inspect` also accept `--format json` for compact JSON of the same typed views and `--format human` for deterministic terminal reading. `task events` is a read-only metadata projection of a task's existing event sequence, operation, and observation timestamp; it omits event payload details.
 JSON is an explicit interchange option and does not change the default protocol.
 Structured errors remain TOON even when JSON is requested.
 Exit code `0` means success or an idempotent no-op.
@@ -25,6 +25,7 @@ akagent task checkpoint <write|inspect> <task-id> ...
 akagent task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]
 akagent task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--repository <name>] [--worktree <path>] [--format <toon|human|json>]
 akagent task inspect <task-id|keyword> [--format <toon|human|json>]
+akagent task events <task-id>
 akagent task check <task-id|keyword|--all> [--offline] [--format <toon|json>]
 akagent task publish <task-id> --condition <condition> [--reason <reason>] [--activity <activity>]
 akagent task finish <task-id> <succeeded|failed> <result>

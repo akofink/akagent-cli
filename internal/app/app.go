@@ -66,6 +66,7 @@ func Run(args []string, stdout io.Writer) int {
 				"task checkpoint <write|inspect> <task-id> ...",
 				"task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]",
 				"task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--format <toon|human|json>]",
+				"task events <task-id>",
 				"task external create <task-id> --title <title> --caller-id <id> --operation-id <id>",
 				"task external finish <task-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>",
 				"task external resource create <task-id> --resource-id <id> --repository <name> --branch <branch> --base <revision> --head <revision> --worktree <absolute-path> --caller-id <id> --operation-id <id>",

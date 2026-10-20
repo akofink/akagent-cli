@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/store"
@@ -14,7 +15,18 @@ import (
 
 var taskSubcommands = []string{
 	"begin", "deliver", "repair", "create", "external", "checkpoint", "resource", "execution",
-	"disposition", "list", "inspect", "check", "publish", "finish", "archive", "reconcile",
+	"disposition", "list", "inspect", "events", "check", "publish", "finish", "archive", "reconcile",
+}
+
+type taskEventsView struct {
+	TaskID string          `json:"task_id"`
+	Events []taskEventView `json:"events"`
+}
+
+type taskEventView struct {
+	Sequence   int    `json:"sequence"`
+	ObservedAt string `json:"observed_at"`
+	Operation  string `json:"operation"`
 }
 
 func taskCommandUsage() string {
@@ -166,6 +178,23 @@ func taskCommand(args []string, stdout io.Writer) int {
 		default:
 			return write(stdout, result)
 		}
+	case "events":
+		if len(args) != 2 {
+			return writeError(stdout, "usage", "Usage: akagent task events <task-id>", false, "Run `akagent task inspect <task-id>` to verify the task ID")
+		}
+		events, err := state.ReadEvents(args[1])
+		if err != nil {
+			return lifecycleError(stdout, err)
+		}
+		result := taskEventsView{TaskID: args[1], Events: make([]taskEventView, 0, len(events))}
+		for _, event := range events {
+			result.Events = append(result.Events, taskEventView{
+				Sequence:   event.Sequence,
+				ObservedAt: event.ObservedAt.UTC().Format(time.RFC3339Nano),
+				Operation:  event.Event.Operation,
+			})
+		}
+		return write(stdout, result)
 	case "inspect":
 		argument, format, ok := parseTaskInspect(args[1:])
 		if !ok {
