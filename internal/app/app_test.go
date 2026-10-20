@@ -74,7 +74,7 @@ func TestUnknownTaskSubcommandUsageMatchesHelp(t *testing.T) {
 	if exitCode := Run([]string{"task", "unknown"}, &usage); exitCode != 2 {
 		t.Fatalf("Run(task unknown) exit code = %d, want 2", exitCode)
 	}
-	want := "Usage: akagent task <begin|deliver|repair|create|external|checkpoint|resource|execution|disposition|list|inspect|check|publish|finish|archive|reconcile>"
+	want := "Usage: akagent task <begin|deliver|repair|create|external|checkpoint|resource|execution|disposition|list|inspect|events|check|publish|finish|archive|reconcile>"
 	if !strings.Contains(usage.String(), want) {
 		t.Fatalf("unknown task usage = %q, want %q", usage.String(), want)
 	}
