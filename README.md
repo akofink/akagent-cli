@@ -27,15 +27,16 @@ akagent task <create|external|checkpoint|resource|execution|disposition|list|ins
 akagent task external <create|finish|resource|execution|archive>
 akagent task resource <create|list|inspect|update|archive>
 akagent task execution <create|observe|finish|list|inspect|session|evidence|publish|archive|reconcile>
+akagent message <send|listen|read|ack>
 akagent update [--source <path>]
 akagent worker inspect
 ```
 
 Removed orchestration, credential, and integration command families return structured usage errors with exit code `2` before store access.
-Worker inspection reports protocol version `2` and declarative registry, checkpoint, observation, and handoff capabilities.
+Worker inspection reports protocol version `2` and declarative registry, checkpoint, observation, handoff, and messaging capabilities.
 
 Stdout carries TOON protocol data and structured errors by default.
-Use `akagent task list --format json` or `akagent task inspect <task-id> --format json` for compact JSON of the same typed views.
+Use `akagent task list --format json`, `akagent task inspect <task-id> --format json`, or message commands with `--format json` for compact JSON views.
 Use `--format human` for deterministic terminal-oriented views.
 JSON does not change the default protocol, and structured errors remain TOON.
 The TOON output contract is pinned to specification version 4.1 with a validated encoder and official conformance fixtures.
@@ -59,6 +60,18 @@ akagent task reconcile <task-id>
 
 No parent orchestrator, launch adapter, or daemon is required for the current direct workflow.
 The shipped core does not make any of those components a prerequisite.
+
+Agents can exchange durable, explicitly addressed communication without typing into another agent's live prompt:
+
+```bash
+akagent message send --to "task:<recipient>" --from "task:<sender>" \
+  --id "<stable-message-id>" --text "Please review the change"
+akagent message listen --inbox "task:<recipient>" --limit 20 --wait 30s
+akagent message read "<message-id>" --inbox "task:<recipient>"
+akagent message ack "<message-id>" --inbox "task:<recipient>" --by "task:<reader>"
+```
+
+Message IDs make send retries idempotent. Listening and reading do not acknowledge or consume; acknowledgement is explicit. Replies use `--reply-to <message-id>`. Messages are bounded local communication data, not authority or task events. Do not send credentials, provider prompts, or transcripts. The finite listen wait is optional, capped at five minutes, and the default listen is immediate.
 
 Repository registration records a repository identity and policy without checking or changing the path.
 External tools own checkout validation, branches, and worktrees.

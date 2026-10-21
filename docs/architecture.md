@@ -13,6 +13,7 @@ akagent
 akagent id generate
 akagent repository <register|list|inspect|update|unregister>
 akagent task <create|external|checkpoint|disposition|list|inspect|publish|finish|archive|reconcile|resource|execution>
+akagent message <send|listen|read|ack>
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -45,6 +46,10 @@ Tmux, Git, process launchers, deployment tools, credential managers, providers, 
 They may submit redaction-safe observations, session references, and delivery URLs through the CLI.
 Their absence, a missing process, or a missing reference never proves completion.
 
+### Agent messaging
+
+The independent message store persists bounded sender-authored messages addressed to stable task or inbox addresses. Send uses stable IDs for idempotent retry; listener batches are ordered and finite, and neither listening nor reading acknowledges a message. Acknowledgement is an explicit mutation. Message text and artifact references are communication data only: the core does not fetch artifacts, grant authority from message content, or place messages in task audit history. Message storage uses the local file store's restrictive permissions, atomic replacement, descriptor-safe path checks, and a shared inter-process lock.
+
 ### Durable records
 
 The worker-local store is file based:
@@ -59,6 +64,7 @@ $XDG_STATE_HOME/akagent/
   tasks/<task-id>/executions/<execution-id>/manifest.json
   tasks/<task-id>/executions/<execution-id>/events/<sequence>.json
   tasks/<task-id>/archive.json
+  messages/<hashed-message-id>.json
   locks/
 ```
 
