@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"io"
 	"strconv"
 	"strings"
@@ -87,12 +88,12 @@ func messageSend(args []string, stdout io.Writer) int {
 	}
 	state, err := openMessageStore()
 	if err != nil {
-		return lifecycleError(stdout, err)
+		return messageError(stdout, err)
 	}
 	message := store.Message{ID: values["--id"], To: values["--to"], From: values["--from"], Text: values["--text"], ReplyTo: values["--reply-to"], Artifact: values["--artifact"], CreatedAt: time.Now().UTC()}
 	created, result, err := state.CreateMessage(message)
 	if err != nil {
-		return lifecycleError(stdout, err)
+		return messageError(stdout, err)
 	}
 	return writeMessageFormat(stdout, messageSendResult{Message: presentMessage(result), Created: created}, format)
 }
@@ -124,7 +125,7 @@ func messageListen(args []string, stdout io.Writer) int {
 	}
 	state, err := openMessageStore()
 	if err != nil {
-		return lifecycleError(stdout, err)
+		return messageError(stdout, err)
 	}
 	deadline := time.Now().Add(wait)
 	var messages []store.Message
@@ -132,7 +133,7 @@ func messageListen(args []string, stdout io.Writer) int {
 	for {
 		messages, totalPending, err = state.PendingMessageBatch(values["--inbox"], limit)
 		if err != nil {
-			return lifecycleError(stdout, err)
+			return messageError(stdout, err)
 		}
 		if len(messages) != 0 || !hasWait || !time.Now().Before(deadline) {
 			break
@@ -143,7 +144,7 @@ func messageListen(args []string, stdout io.Writer) int {
 	for _, message := range messages {
 		views = append(views, presentMessage(message))
 	}
-	return writeMessageFormat(stdout, messageListenResult{Inbox: values["--inbox"], Messages: views, Count: len(views), TotalPending: totalPending, HasMore: totalPending > len(views), Empty: len(views) == 0, TimedOut: hasWait && len(views) == 0}, format)
+	return writeMessageFormat(stdout, messageListenResult{Inbox: values["--inbox"], Messages: views, Count: len(views), TotalPending: totalPending, HasMore: totalPending > len(views), Empty: len(views) == 0, TimedOut: hasWait && wait > 0 && len(views) == 0}, format)
 }
 
 func messageRead(args []string, stdout io.Writer) int {
@@ -157,11 +158,11 @@ func messageRead(args []string, stdout io.Writer) int {
 	}
 	state, err := openMessageStore()
 	if err != nil {
-		return lifecycleError(stdout, err)
+		return messageError(stdout, err)
 	}
 	message, err := state.ReadMessage(values["--inbox"], id)
 	if err != nil {
-		return lifecycleError(stdout, err)
+		return messageError(stdout, err)
 	}
 	return writeMessageFormat(stdout, messageDetailResult{Message: presentMessage(message)}, format)
 }
@@ -177,11 +178,11 @@ func messageAck(args []string, stdout io.Writer) int {
 	}
 	state, err := openMessageStore()
 	if err != nil {
-		return lifecycleError(stdout, err)
+		return messageError(stdout, err)
 	}
 	message, changed, err := state.AcknowledgeMessage(values["--inbox"], id, values["--by"], time.Now().UTC())
 	if err != nil {
-		return lifecycleError(stdout, err)
+		return messageError(stdout, err)
 	}
 	return writeMessageFormat(stdout, messageAckResult{Message: presentMessage(message), Changed: changed}, format)
 }
@@ -231,6 +232,27 @@ func presentMessage(message store.Message) messageView {
 
 func openMessageStore() (*store.Store, error) {
 	return store.Open()
+}
+
+func messageError(stdout io.Writer, err error) int {
+	var storeErr *store.Error
+	if !errors.As(err, &storeErr) {
+		return writeError(stdout, "internal", err.Error(), false, "Retry the akagent message operation")
+	}
+	category := string(storeErr.Kind)
+	retryable := storeErr.Retryable
+	switch storeErr.Kind {
+	case store.KindLocked:
+		category = "retryable"
+		retryable = true
+	case store.KindPreservation:
+		category = "preservation_required"
+	}
+	recovery := storeErr.Recovery
+	if recovery == "" {
+		recovery = "Inspect the message store and retry"
+	}
+	return writeError(stdout, category, err.Error(), retryable, recovery)
 }
 
 func writeMessageFormat(stdout io.Writer, value any, format string) int {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,10 @@ func TestMessageDefaultOutputAndHelp(t *testing.T) {
 
 func TestMessageListenFiniteTimeout(t *testing.T) {
 	setupTaskCommandTest(t)
+	immediate := runCommand(t, []string{"message", "listen", "--inbox", "task:quiet", "--wait", "0", "--format", "json"})
+	if immediate.code != 0 || !strings.Contains(immediate.stdout, `"timed_out":false`) {
+		t.Fatalf("immediate poll = (%d, %q), want timed_out=false", immediate.code, immediate.stdout)
+	}
 	result := runCommand(t, []string{"message", "listen", "--inbox", "task:quiet", "--wait", "20ms", "--format", "json"})
 	if result.code != 0 || !strings.Contains(result.stdout, `"empty":true`) || !strings.Contains(result.stdout, `"timed_out":true`) {
 		t.Fatalf("finite empty listen = (%d, %q)", result.code, result.stdout)
@@ -78,6 +83,65 @@ func TestMessageRejectsInvalidInputs(t *testing.T) {
 	}
 	if _, err := os.Stat(root + "/state/akagent"); !os.IsNotExist(err) {
 		t.Fatalf("invalid commands opened store, stat error = %v", err)
+	}
+}
+
+func TestMessageStoreErrorsRetainCategoryAndRecovery(t *testing.T) {
+	for _, test := range []struct {
+		name, category, recovery string
+		mutate                   func(t *testing.T, path, root string)
+	}{
+		{
+			name: "malformed record", category: "malformed", recovery: "Inspect and repair the message store",
+			mutate: func(t *testing.T, path, _ string) {
+				if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "unsafe permissions", category: "unsafe_permissions", recovery: "chmod 0600",
+			mutate: func(t *testing.T, path, _ string) {
+				if err := os.Chmod(path, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "symlink record", category: "unsafe_path", recovery: "Repair",
+			mutate: func(t *testing.T, path, root string) {
+				target := filepath.Join(root, "outside.json")
+				if err := os.WriteFile(target, []byte(`{"safe":true}`), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, path); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			t.Setenv("XDG_STATE_HOME", filepath.Join(root, "state"))
+			t.Setenv("HOME", filepath.Join(root, "home"))
+			if sent := runCommand(t, []string{"message", "send", "--to", "inbox:errors", "--from", "sender:test", "--text", "error fixture", "--id", "error-fixture"}); sent.code != 0 {
+				t.Fatalf("send fixture = (%d, %q)", sent.code, sent.stdout)
+			}
+			messageDir := filepath.Join(root, "state", "akagent", "messages")
+			entries, err := os.ReadDir(messageDir)
+			if err != nil || len(entries) != 1 {
+				t.Fatalf("message entries = (%v, %v)", entries, err)
+			}
+			path := filepath.Join(messageDir, entries[0].Name())
+			test.mutate(t, path, root)
+			result := runCommand(t, []string{"message", "listen", "--inbox", "inbox:errors", "--format", "json"})
+			if result.code != 1 || !strings.Contains(result.stdout, "category: "+test.category) || !strings.Contains(result.stdout, test.recovery) {
+				t.Fatalf("message store error = (%d, %q), want category %s and recovery containing %q", result.code, result.stdout, test.category, test.recovery)
+			}
+		})
 	}
 }
 
