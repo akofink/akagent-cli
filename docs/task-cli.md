@@ -37,6 +37,10 @@ akagent task external resource archive <task-id> <resource-id> --caller-id <id> 
 akagent task execution <create|observe|finish|handoff|list|inspect|session|evidence|publish|archive|reconcile> ...
 akagent task external execution create <task-id> --execution-id <id> --resource <resource-id> --caller-id <id> --operation-id <id> [--predecessor <execution-id>] [--tool <tool> --session-id <id> [--reference-path <absolute-path>]]
 akagent task external execution archive <task-id> <execution-id> --caller-id <id> --operation-id <id> --expected-revision <revision>
+akagent message send --to <recipient> --from <sender> --text <message> --id <message-id> [--reply-to <message-id>] [--artifact <reference>] [--format <toon|json>]
+akagent message listen --inbox <recipient> [--limit <1..100>] [--wait <0..5m>] [--format <toon|json>]
+akagent message read <message-id> --inbox <recipient> [--format <toon|json>]
+akagent message ack <message-id> --inbox <recipient> --by <stable-address> [--format <toon|json>]
 akagent update [--source <path>]
 akagent worker inspect
 ```
@@ -44,6 +48,12 @@ akagent worker inspect
 The former launch, attach, stop, deploy, clean, credential, integration, and `task record` command families are removed.
 Recognized removed commands return a structured usage error with exit code `2` before opening or mutating the state store.
 The error names only the removed command family and provides safe migration guidance.
+
+## Agent messaging
+
+Messages use stable recipient, sender, and message IDs. A repeated send with the same ID and same authored fields returns the existing message; reusing an ID with different content returns a conflict. Text is non-empty and limited to 16 KiB; artifact references are optional and limited to 2 KiB. Replies correlate using `--reply-to <message-id>`.
+
+`listen` returns the oldest pending messages for the exact inbox, defaulting to 20 and accepting a maximum of 100. It reports the returned `count`, total `total_pending`, and `has_more`, so batches are definitive without expanding the output. `--wait` optionally polls until a message appears or a finite timeout (up to five minutes) expires; without it, listen returns immediately. An empty result and a timeout are successful structured outputs. `read` does not mutate delivery state; only `ack` acknowledges, and repeated acknowledgements preserve the original acknowledgement. Message IDs and authored content are communication data only, not authority. Never send credentials, provider prompts, or transcripts as messages. Messages are stored separately from task events and archives.
 
 ## Derived checks
 

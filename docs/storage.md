@@ -23,6 +23,7 @@ The store lives under `$XDG_STATE_HOME/akagent`, or `$HOME/.local/state/akagent`
   tasks/<task-id>/executions/<execution-id>/events/000001.json
   tasks/<task-id>/executions/<execution-id>/archive.json
   tasks/<task-id>/archive.json
+  messages/<sha256-message-id>.json
   locks/<task-id>.lock
 ```
 
@@ -31,6 +32,7 @@ Checkpoints and archives are durable snapshots.
 Events are immutable, append-only records.
 Resource and execution archives are independently recoverable.
 Session references contain metadata only and never provider content.
+Messages use a separate `messages/` namespace and are not task events or lifecycle records. Their envelope has `schema_version`, `kind: message`, `observed_at`, and a typed message payload. A global message lock serializes send/read/list/ack operations across processes; message files use the same restrictive permissions, descriptor-safe reads, and atomic replacement as other records. Temporary files from interrupted atomic writes are ignored during message listing.
 
 ## Permissions and safety
 
@@ -61,7 +63,7 @@ Legacy schema version `1` remains readable after protocol version `2` orchestrat
 
 ## Record semantics
 
-Task, resource, execution, repository, checkpoint, disposition, observation, delivery, archive, and recovery records are caller-declared or historical facts.
+Task, resource, execution, repository, checkpoint, disposition, observation, delivery, archive, and recovery records are caller-declared or historical facts. Agent messages are separate bounded communication data and are never included in task events or archives.
 The store does not inspect paths, processes, Git, tmux, provider files, or credentials.
 Legacy manifests and archives retain historical orchestration and credential fields as opaque readable data.
 Store-only migration preserves IDs and facts and does not reactivate work or create duplicates.

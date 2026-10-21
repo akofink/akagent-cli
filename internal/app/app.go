@@ -67,6 +67,10 @@ func Run(args []string, stdout io.Writer) int {
 				"task disposition <task-id> <in-flight|deferred|terminal> --reason <reason> [--expected-revision <revision>]",
 				"task list [keyword] [--view <in-flight|attention|maintenance|deferred|history>] [--all] [--format <toon|human|json>]",
 				"task events <task-id>",
+				"message send --to <recipient> --from <sender> --text <message> --id <message-id> [--reply-to <message-id>] [--artifact <reference>] [--format <toon|json>]",
+				"message listen --inbox <recipient> [--limit <1..100>] [--wait <0..5m>] [--format <toon|json>]",
+				"message read <message-id> --inbox <recipient> [--format <toon|json>]",
+				"message ack <message-id> --inbox <recipient> --by <stable-address> [--format <toon|json>]",
 				"task external create <task-id> --title <title> --caller-id <id> --operation-id <id>",
 				"task external finish <task-id> --caller-id <id> --operation-id <id> --expected-revision <revision> --contract <name> --result <result>",
 				"task external resource create <task-id> --resource-id <id> --repository <name> --branch <branch> --base <revision> --head <revision> --worktree <absolute-path> --caller-id <id> --operation-id <id>",
@@ -102,6 +106,8 @@ func Run(args []string, stdout io.Writer) int {
 		return repositoryCommand(args[1:], stdout)
 	case "task":
 		return taskCommand(args[1:], stdout)
+	case "message":
+		return messageCommand(args[1:], stdout)
 	case "worker":
 		if len(args) > 1 && (args[1] == "launch" || args[1] == "launch-pi" || args[1] == "deploy") {
 			return removedCommandError(stdout, "worker "+args[1], "Create a record-only execution and use an external tool for process or deployment work")
@@ -152,7 +158,7 @@ func inspectWorker() worker {
 		Architecture:    runtime.GOARCH,
 		OperatingSystem: runtime.GOOS,
 		BuildRevision:   buildRevision,
-		Features:        []string{"registry", "checkpoint", "observation", "handoff"},
+		Features:        []string{"registry", "checkpoint", "observation", "handoff", "messaging"},
 	}
 }
 
@@ -175,6 +181,7 @@ func home() homeView {
 			"Run `akagent id generate` to create a task ID",
 			"Run `akagent update` to update from the local source checkout",
 			"Run `akagent worker inspect` to inspect the local worker",
+			"Use `akagent message send` and `akagent message listen` for durable agent inboxes",
 		},
 	}
 }

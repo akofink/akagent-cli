@@ -14,12 +14,12 @@ worker:
   protocol_version: 2
   architecture: arm64
   operating_system: linux
-  features[4]: registry,checkpoint,observation,handoff
+  features[5]: registry,checkpoint,observation,handoff,messaging
 ```
 
 Worker inspection is declarative.
 It does not scan for Git, tmux, providers, credentials, worktrees, or executables.
-Capabilities describe retained record operations, not host-side orchestration.
+Capabilities describe retained record operations, including local messaging, not host-side orchestration.
 
 ## Records
 
@@ -90,12 +90,14 @@ akagent task archive ...
 akagent task reconcile ...
 akagent task resource <create|list|inspect|update|archive> ...
 akagent task execution <create|observe|finish|handoff|list|inspect|session|evidence|publish|archive|reconcile> ...
+akagent message <send|listen|read|ack> ...
 akagent update [--source <path>]
 akagent worker inspect
 ```
 
 These commands record durable facts only.
 They never invoke Git, tmux, a provider, a credential resolver, a deployment executable, or a terminal reader.
+The independent `message` family sends bounded caller-authored messages to stable inbox addresses, reads or listens in finite batches, and records explicit acknowledgements. Message send retries are idempotent by stable message ID; listen/read never imply acknowledgement. Message content is communication data, not authority or task lifecycle history.
 Create operations are idempotent for equivalent inputs and return a conflict for different immutable inputs.
 The explicit external creation family validates caller ownership and immutable inputs before mutation.
 Managed creation commands retain managed provenance, including a normal execution created with `--target external`.
