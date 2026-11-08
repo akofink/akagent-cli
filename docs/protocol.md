@@ -50,6 +50,10 @@ Derived `status` reports `active` for record-only work whose lifecycle is `creat
 Task and resource `committed`, `dirty`, and `untracked` are legacy facts with no v2 setter and are omitted from views unless set.
 A resource `head` is the caller-supplied creation-time value, not the live head; `task check` derives live Git and forge state.
 
+`task check` can verify an exact resource worktree in another clone of the registered repository when its top level, matching origin identity, common directory and Git worktree registration are directly proven. Missing or unverifiable bindings remain findings; the checker never recreates resources.
+
+Explicit resource metadata `delivery_contract=local_only` makes PR/check surfaces inapplicable, not delivered. `delivery_contract=local_publication` instead checks committed-head ancestry against the owning clone's cached `refs/remotes/origin/main` (or an exact `publication_ref=refs/remotes/...`). It never fetches or claims current remote truth. An unpublished active branch is not lost work; unpublished terminal work remains stale. A recorded PR link conflicts with a non-PR contract. Absent or unrecognized contracts retain legacy forge checks. No existing records are automatically relabeled.
+
 Agent conditions are:
 
 ```text

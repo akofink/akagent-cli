@@ -133,6 +133,11 @@ func Check(snapshot Snapshot, runner Runner, options Options) Report {
 		ctx, cancel := context.WithTimeout(context.Background(), resourceTimeout)
 		git := checkGit(ctx, runner, resource, path, terminal)
 		github := checkGitHub(ctx, runner, resource, git)
+		if terminal && github.PR.Code == "unpublished" {
+			github.PR.State = StateStale
+			github.PR.Code = "unpublished_after_finish"
+			github.PR.Action = "Verify publication and delivery before cleanup"
+		}
 		cancel()
 		if github.PR.Code == "merged" {
 			merged++
