@@ -16,6 +16,7 @@ type gitResult struct {
 	Branch   Finding
 	Head     string
 	Remote   string
+	Path     string
 }
 
 func checkGit(ctx context.Context, runner Runner, resource store.Resource, registeredPath string, taskTerminal bool) gitResult {
@@ -36,6 +37,22 @@ func checkGit(ctx context.Context, runner Runner, resource store.Resource, regis
 	if remote, err := runner.Run(ctx, "git", "-C", path, "config", "--get", "remote.origin.url"); err == nil {
 		result.Remote = trimmed(remote)
 	}
+	// A resource may belong to another clone of the registered repository.
+	// Accept only its exact top level, matching origin identity and direct Git
+	// registration evidence; never substitute an arbitrary nearby checkout.
+	owner := resource.WorktreePath
+	if owner != "" && !sameGitPath(owner, path) && result.Remote != "" {
+		top, topErr := runner.Run(ctx, "git", "-C", owner, "rev-parse", "--show-toplevel")
+		remote, remoteErr := runner.Run(ctx, "git", "-C", owner, "config", "--get", "remote.origin.url")
+		if topErr == nil && remoteErr == nil && sameGitPath(trimmed(top), owner) && sameOrigin(result.Remote, trimmed(remote)) {
+			common, commonErr := runner.Run(ctx, "git", "-C", owner, "rev-parse", "--path-format=absolute", "--git-common-dir")
+			listed, listErr := runner.Run(ctx, "git", "-C", owner, "worktree", "list", "--porcelain")
+			if commonErr == nil && filepath.IsAbs(trimmed(common)) && listErr == nil && listedWorktree(string(listed), owner) {
+				path = owner
+			}
+		}
+	}
+	result.Path = path
 	result.Worktree = checkWorktree(ctx, runner, resource, path, taskTerminal)
 	if resource.Branch == "" {
 		result.Branch = finding("branch", StateUnknown, "binding_missing", "Record the intended branch")
@@ -55,6 +72,25 @@ func checkGit(ctx context.Context, runner Runner, resource store.Resource, regis
 	result.Branch = finding("branch", StateCurrent, "local_ref", "No branch action needed")
 	result.Branch.Detail = result.Head
 	return result
+}
+
+func sameGitPath(a, b string) bool {
+	if resolved, err := filepath.EvalSymlinks(a); err == nil {
+		a = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(b); err == nil {
+		b = resolved
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+func sameOrigin(a, b string) bool {
+	ownerA, repoA, okA := githubRemote(a)
+	ownerB, repoB, okB := githubRemote(b)
+	if okA && okB {
+		return ownerA == ownerB && repoA == repoB
+	}
+	return a != "" && a == b
 }
 
 func checkWorktree(ctx context.Context, runner Runner, resource store.Resource, path string, taskTerminal bool) Finding {

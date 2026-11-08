@@ -3,7 +3,9 @@ package derived
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/url"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +29,38 @@ type pull struct {
 	} `json:"head"`
 }
 
+// checkPublication uses only the owning clone's cached tracking ref. It never
+// fetches, claims current remote truth, or treats ancestry as whole-task delivery.
+func checkPublication(ctx context.Context, runner Runner, resource store.Resource, git gitResult) Finding {
+	result := finding("publication", StateUnknown, "publication_unverified", "Verify publication from the owning clone and current remote evidence")
+	if git.Path == "" || git.Head == "" {
+		return result
+	}
+	base := resource.Metadata["publication_ref"]
+	if base == "" {
+		base = "refs/remotes/origin/main"
+	}
+	if !strings.HasPrefix(base, "refs/remotes/") || strings.ContainsAny(base, " ~^:?*[\\") {
+		result.Code = "publication_ref_invalid"
+		return result
+	}
+	ref, err := runner.Run(ctx, "git", "-C", git.Path, "show-ref", "--verify", "--hash", base)
+	if err != nil || !commitID(trimmed(ref)) {
+		return result
+	}
+	_, err = runner.Run(ctx, "git", "-C", git.Path, "merge-base", "--is-ancestor", git.Head, trimmed(ref))
+	if err == nil {
+		result = finding("publication", StateCurrent, "published_cached", "Committed head is in the owning clone's cached publication ref; verify remote freshness before delivery")
+		result.Detail = base
+		return result
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
+		return finding("publication", StateCurrent, "unpublished", "Committed head is not in the cached publication ref; publish when ready, not a lost resource")
+	}
+	return result
+}
+
 type checkRuns struct {
 	TotalCount int `json:"total_count"`
 	CheckRuns  []struct {
@@ -46,6 +80,21 @@ type combinedStatus struct {
 
 func checkGitHub(ctx context.Context, runner Runner, resource store.Resource, git gitResult) githubResult {
 	result := githubResult{PR: finding("pull_request", StateUnknown, "github_unavailable", "Verify the pull request through the forge"), Checks: finding("checks", StateUnknown, "pr_unverified", "Verify the PR head and checks")}
+	contract := resource.Metadata["delivery_contract"]
+	if contract == "local_only" || contract == "local_publication" {
+		for _, link := range resource.ExternalURLs {
+			if strings.Contains(link, "/pull/") {
+				result.PR = finding("pull_request", StateStale, "contract_conflict", "Verify the explicit non-PR contract against the recorded PR link")
+				return result
+			}
+		}
+		result.PR = finding("pull_request", StateCurrent, "not_applicable", "Explicit non-PR contract; this is not delivery proof")
+		result.Checks = finding("checks", StateCurrent, "not_applicable", "No PR checks required by this resource contract")
+		if contract == "local_publication" {
+			result.PR = checkPublication(ctx, runner, resource, git)
+		}
+		return result
+	}
 	owner, repo, ok := githubRemote(git.Remote)
 	if !ok {
 		result.PR.Code = "unsupported_remote"
