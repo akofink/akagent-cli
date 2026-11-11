@@ -66,3 +66,45 @@ func TestManagedExecutionFinishOnArchivedTaskIsIdempotent(t *testing.T) {
 		t.Fatalf("inspect = (%d, %q)", inspected.code, inspected.stdout)
 	}
 }
+
+func TestExecutionObserveRevisionContract(t *testing.T) {
+	setupTaskCommandTest(t)
+	observe := func(taskID, executionID, op, revision string) commandResult {
+		return runCommand(t, []string{"task", "execution", "observe", taskID, executionID, "--caller-id", "caller", "--operation-id", op, "--expected-revision", revision, "--source", "worker", "--observed-at", "2026-09-26T00:00:00Z", "--host-id", "host", "--boot-id", "boot", "--detail", op})
+	}
+	if result := runCommand(t, []string{"task", "create", "--task-id", "observe-zero", "--title", "Observe revision zero"}); result.code != 0 {
+		t.Fatalf("task create = (%d, %q)", result.code, result.stdout)
+	}
+	if result := runCommand(t, []string{"task", "execution", "create", "observe-zero", "--execution-id", "managed", "--target", "external"}); result.code != 0 || !strings.Contains(result.stdout, "revision: 0") {
+		t.Fatalf("execution create = (%d, %q)", result.code, result.stdout)
+	}
+	// Revision 0 is well-formed: a managed record reports ownership, not a usage error.
+	if result := observe("observe-zero", "managed", "zero", "0"); result.code != 1 || !strings.Contains(result.stdout, "not an externally declared record") {
+		t.Fatalf("managed observe at 0 = (%d, %q)", result.code, result.stdout)
+	}
+	for _, malformed := range []string{"-1", "abc", "", "1.5"} {
+		if result := observe("observe-zero", "managed", "bad", malformed); result.code != 2 {
+			t.Fatalf("observe with revision %q = (%d, %q), want usage", malformed, result.code, result.stdout)
+		}
+	}
+	missing := runCommand(t, []string{"task", "execution", "observe", "observe-zero", "managed", "--caller-id", "caller", "--operation-id", "norev", "--source", "worker", "--observed-at", "2026-09-26T00:00:00Z", "--host-id", "host", "--boot-id", "boot"})
+	if missing.code != 2 {
+		t.Fatalf("observe without revision = (%d, %q), want usage", missing.code, missing.stdout)
+	}
+
+	execution := createExternalExecutionForCLI(t, "observe-external")
+	// External executions start at revision 1, so 0 is stale, never accepted.
+	stale := observe("observe-external", execution.ID, "stale-zero", "0")
+	if stale.code != 1 || !strings.Contains(stale.stdout, "revision conflict (current revision 1)") {
+		t.Fatalf("stale observe at 0 = (%d, %q)", stale.code, stale.stdout)
+	}
+	if ok := observe("observe-external", execution.ID, "ok-one", "1"); ok.code != 0 || !strings.Contains(ok.stdout, "revision: 2") {
+		t.Fatalf("observe at 1 = (%d, %q)", ok.code, ok.stdout)
+	}
+	if ok := observe("observe-external", execution.ID, "ok-two", "2"); ok.code != 0 || !strings.Contains(ok.stdout, "revision: 3") {
+		t.Fatalf("observe at 2 = (%d, %q)", ok.code, ok.stdout)
+	}
+	if again := observe("observe-external", execution.ID, "stale-one", "1"); again.code != 1 || !strings.Contains(again.stdout, "revision conflict") {
+		t.Fatalf("stale observe at 1 = (%d, %q)", again.code, again.stdout)
+	}
+}

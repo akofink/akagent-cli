@@ -283,6 +283,7 @@ func parseExternalCompletion(args []string) (callerID, operationID, contract, re
 func parseExternalObservation(args []string) (string, string, uint64, store.ExternalObservation, bool) {
 	var callerID, operationID string
 	var expectedRevision uint64
+	revisionSet := false
 	observation := store.ExternalObservation{}
 	seen := map[string]bool{}
 	for len(args) > 0 {
@@ -306,6 +307,7 @@ func parseExternalObservation(args []string) (string, string, uint64, store.Exte
 			if !ok {
 				return "", "", 0, observation, false
 			}
+			revisionSet = true
 		case "--source":
 			observation.Source = value
 		case "--observed-at":
@@ -328,7 +330,7 @@ func parseExternalObservation(args []string) (string, string, uint64, store.Exte
 			return "", "", 0, observation, false
 		}
 	}
-	return callerID, operationID, expectedRevision, observation, callerID != "" && operationID != "" && expectedRevision > 0 && observation.Source != "" && !observation.ObservedAt.IsZero() && observation.HostID != "" && observation.BootID != ""
+	return callerID, operationID, expectedRevision, observation, callerID != "" && operationID != "" && revisionSet && observation.Source != "" && !observation.ObservedAt.IsZero() && observation.HostID != "" && observation.BootID != ""
 }
 
 func parseRevision(value string) (uint64, bool) {

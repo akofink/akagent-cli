@@ -163,6 +163,8 @@ Human `task inspect` output includes the same revision.
 An execution can select one resource while coordinating other resources through the task ID.
 External callers can append typed provenance with `task execution observe`.
 Observation writes require `--caller-id`, `--operation-id`, and the current `--expected-revision`, plus source, timestamp, host, and boot provenance.
+Observation applies only to external executions, which start at revision `1`; `--expected-revision 0` is accepted syntactically and is rejected as a managed-record or stale-revision conflict, never as malformed input.
+A managed execution, whose revision starts at `0`, is closed with `task execution finish` and cannot receive observations.
 Observations remain historical and do not change execution lifecycle state.
 External callers can finish an attempt with `task execution finish` by naming the completion contract and supplying the current revision.
 The same command closes a managed execution, including one whose revision is `0`, before or after the parent task is terminal.
