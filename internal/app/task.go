@@ -571,11 +571,13 @@ func lifecycleError(stdout io.Writer, err error) int {
 	message := err.Error()
 	category, retryable, recovery := "internal", false, "Inspect the task state and retry"
 	var storeErr *store.Error
-	if errors.As(err, &storeErr) && (storeErr.Kind == store.KindConflict || storeErr.Kind == store.KindPartial || storeErr.Kind == store.KindPreservation) {
+	if errors.As(err, &storeErr) {
 		if storeErr.Recovery != "" {
 			recovery = storeErr.Recovery
 		}
-		retryable = storeErr.Retryable
+		if storeErr.Kind == store.KindConflict || storeErr.Kind == store.KindPartial || storeErr.Kind == store.KindPreservation {
+			retryable = storeErr.Retryable
+		}
 	}
 	switch {
 	case store.IsKind(err, store.KindNotFound):
