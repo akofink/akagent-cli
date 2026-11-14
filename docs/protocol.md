@@ -75,6 +75,8 @@ It requires a distinct active managed successor on the same nonterminal task, th
 The core records the successor ID and `handed_off` result without changing provenance or claiming process success.
 The core cannot verify the external attestations or inspect tmux.
 Repeated equivalent operations are idempotent, while stale revisions, changed operation inputs, and terminal mutations are conflicts.
+A refused handoff names every failed precondition and its recovery in one conflict.
+Terminal records are never reopened; a terminal-mutation conflict says so instead of naming a reopen operation.
 
 ## Record-only commands
 
@@ -105,6 +107,7 @@ The independent `message` family sends bounded caller-authored messages to stabl
 Create operations are idempotent for equivalent inputs and return a conflict for different immutable inputs.
 The explicit external creation family validates caller ownership and immutable inputs before mutation.
 Managed creation commands retain managed provenance, including a normal execution created with `--target external`.
+Execution views always include `provenance` (`managed` or `external`); stored records are unchanged, and an absent stored provenance reads as `managed`.
 Finishing that execution after the parent task is terminal does not relabel it.
 
 The former launch, attach, stop, deploy, clean, credential, integration, provider orchestration, and transitional `task record` commands are removed.

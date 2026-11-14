@@ -47,7 +47,7 @@ Prioritized from the current direct coding-agent workflow:
 
 1. Continue the derived-state rollout in [Derived state](derived-state.md): terminal, host identity, provider session, and notes-backed import phases.
 2. Verify integrated CLI, skills, and active-agent compatibility on `main` before changing the installed binary.
-3. Keep managed versus caller-owned external provenance distinct in agent workflows so `--target external` on a managed execution is not treated as `task external`.
+3. Keep managed versus caller-owned external provenance distinct in agent workflows so `--target external` on a managed execution is not treated as `task external`; execution views now name `provenance` explicitly.
 4. Add later session-evidence adapter phases only where a real workflow needs native discovery beyond metadata-only references.
 5. Improve archive and checkpoint backup procedures without expanding the local store into a daemon or central service.
 6. Treat additional machine-readable presentation formats as optional follow-ups.

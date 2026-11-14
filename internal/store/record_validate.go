@@ -170,7 +170,7 @@ func externalCallerConflict(kind, id string) error {
 }
 
 func terminalMutationConflict(kind, id string) error {
-	return newError(KindConflict, fmt.Sprintf("external %s %s is terminal and immutable", kind, id), "Use an explicit future reopen operation before changing a terminal record")
+	return newError(KindConflict, fmt.Sprintf("%s %s is terminal and immutable", kind, id), fmt.Sprintf("Terminal records are never reopened: inspect the %s, retry only its original operation unchanged, or record new work under a new ID", kind))
 }
 
 func expectedRevisionCheck(expected, current uint64, kind, id string) error {

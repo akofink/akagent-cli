@@ -45,7 +45,7 @@ akagent task execution create <task-id> \
   --command /path/to/tool --resource source
 ```
 
-`--target external` on this managed command does not create a caller-owned external execution.
+`--target external` on this managed command does not create a caller-owned external execution; its views show `provenance: managed`.
 Use `task external` only when the caller needs owned provenance and revision-checked completion.
 External tools own process launch, attachment, stop, and cleanup.
 Do not use removed `launch`, `attach`, `stop`, `deploy`, or `clean` commands.

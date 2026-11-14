@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -100,8 +101,13 @@ func taskDeliver(args []string, stdout io.Writer, manager *lifecycle.Manager) in
 	if err != nil {
 		return lifecycleError(stdout, err)
 	}
-	if manifest.Provenance == store.ProvenanceExternal || manifest.Lifecycle == "stopped" || manifest.ExternalCompletion != nil {
-		return writeError(stdout, "conflict", "Task is not a managed delivery candidate", false, "Inspect the task and use its owning completion command")
+	switch {
+	case manifest.Provenance == store.ProvenanceExternal:
+		return writeError(stdout, "conflict", "Task "+id+" has external provenance and is not a managed delivery candidate", false, "Complete it through its owning caller with `akagent task external finish`")
+	case manifest.Lifecycle == "stopped":
+		return writeError(stdout, "conflict", "Task "+id+" is a stopped legacy task and is not a managed delivery candidate", false, "Inspect the task; record any new work as a new task")
+	case manifest.ExternalCompletion != nil:
+		return writeError(stdout, "conflict", "Task "+id+" already has an external completion and is not a managed delivery candidate", false, "Inspect the existing completion with `akagent task inspect "+id+"`")
 	}
 	executions, err := manager.ListExecutions(id)
 	if err != nil {
@@ -112,11 +118,20 @@ func taskDeliver(args []string, stdout io.Writer, manager *lifecycle.Manager) in
 		if executions[i].ID == executionID {
 			selected = &executions[i]
 		} else if !derived.ExecutionClosed(executions[i]) {
-			return writeError(stdout, "conflict", "Another execution is still open", false, "Verify and close each execution before delivery")
+			other := executions[i]
+			return writeError(stdout, "conflict", fmt.Sprintf("Another execution %s of task %s is still open (condition %s)", other.ID, id, conditionLabel(other.Condition)), false,
+				fmt.Sprintf("Deliver only after every other attempt is closed: independently verify %s ended, then close it with `akagent task execution finish %s %s --caller-id <id> --operation-id <id> --expected-revision %d --contract <name> --result <result>`, or with `akagent task execution handoff` when it handed off to this attempt", other.ID, id, other.ID, other.Revision))
 		}
 	}
-	if selected == nil || selected.Provenance == store.ProvenanceExternal {
-		return writeError(stdout, "conflict", "Managed execution not found", false, "Inspect the owning task and execution")
+	if selected == nil {
+		return writeError(stdout, "conflict", fmt.Sprintf("Execution %s is not an execution of task %s", executionID, id), false, "List the task's executions with `akagent task execution list "+id+"` and deliver the attempt you own")
+	}
+	if selected.Provenance == store.ProvenanceExternal {
+		return writeError(stdout, "conflict", fmt.Sprintf("Execution %s has external provenance; deliver completes only a managed attempt", executionID), false, "Close it through its owning caller with `akagent task execution finish`")
+	}
+	if derived.ExecutionClosed(*selected) && !priorDeliverCompletion(*selected, values["--contract"], values["--result"]) {
+		return writeError(stdout, "conflict", fmt.Sprintf("Execution %s is already closed (%s); deliver completes only an open attempt", executionID, store.ClosedExecutionDetail(*selected)), false,
+			fmt.Sprintf("When every attempt of task %s is closed, independently verify the outcome, record it with `akagent task finish %s <succeeded|failed> <summary>`, then run `akagent task archive %s`", id, id, id))
 	}
 	if manifest.Lifecycle == "finished" && (manifest.Result != values["--summary"] || manifest.Condition != values["--result"] && manifest.Condition != "none") {
 		return writeError(stdout, "conflict", "Task result differs from delivery", false, "Inspect the existing completion")
@@ -139,4 +154,19 @@ func taskDeliver(args []string, stdout io.Writer, manager *lifecycle.Manager) in
 		return lifecycleError(stdout, err)
 	}
 	return write(stdout, detail)
+}
+
+// priorDeliverCompletion reports whether a closed execution carries the same
+// completion an earlier deliver would have declared, so a retry stays
+// idempotent instead of being refused as closed.
+func priorDeliverCompletion(execution store.Execution, contract, result string) bool {
+	completion := execution.ExternalCompletion
+	return execution.HandoffDisposition == nil && completion != nil && completion.CallerID == "agent" && completion.Contract == contract && completion.Result == result
+}
+
+func conditionLabel(condition string) string {
+	if condition == "" {
+		return "unset"
+	}
+	return condition
 }

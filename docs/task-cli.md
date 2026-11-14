@@ -69,6 +69,7 @@ Resource findings cover `worktree`, `branch`, `pull_request`, and `checks` in th
 Record-consistency findings, such as an open execution under a terminal task, need only the store.
 `--offline` skips Git and GitHub and reports those surfaces as `unknown` `offline`.
 `--all` checks every task, including archived tasks, runs live adapters only for tasks that are not terminal, and lists only tasks and findings that need action under `checked`, `summary`, and `tasks`.
+For terminal tasks it adds only a local `worktree` finding for each recorded worktree path that still exists, so retained or dirty task worktrees surface for cleanup while a primary checkout reports `current` `primary_checkout`.
 A finding needs action when its state is `stale` or `missing`.
 Exit code `0` means the check ran even when findings need action; gate on `summary.needs_action`.
 A missing task returns exit code `1`, and invalid arguments return exit code `2`.
@@ -156,6 +157,7 @@ akagent task execution reconcile <task-id>
 
 Execution creation records an optional tool-neutral attempt without starting a process.
 The command and target are durable metadata, not instructions to execute a program.
+Every execution view names its `provenance`: `managed` for executions from `task begin` or `task execution create`, even with `--target external`, and `external` only for the `task external` family.
 Use `task inspect`, `task execution inspect`, or `task execution list` to read an execution's current `revision` before guarded observation or completion.
 Those reads include revision `0`.
 Human `task inspect` output includes the same revision.
@@ -183,6 +185,9 @@ The record-only core does not inspect tmux or prove those external facts, so do 
 The operation preserves managed provenance, records the successor execution ID, increments the predecessor revision, and terminalizes its record with result `handed_off`.
 It does not claim that the predecessor process exited successfully.
 Operation IDs provide idempotent retries, and stale revisions, inactive successors, incomplete attestations, external executions, and changed terminal mutations are rejected.
+A refusal is one `conflict` that names every failed precondition, numbered when there are several, with a matching numbered recovery.
+It distinguishes a successor recorded on another task (naming that task), an unknown successor, an inactive or closed successor, a predecessor not published `waiting` / `handed off` (showing its current condition and activity), an already closed predecessor, a terminal task, and a stale revision (showing the current one).
+A successor begun as a child on another task can never take a handoff; close the predecessor with an operator-directed `task execution finish` after independent verification instead.
 Managed executions may have revision `0`; supply the current value returned by inspection.
 
 A provider or external tool may record non-secret session provenance.
