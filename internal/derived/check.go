@@ -3,6 +3,7 @@ package derived
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -186,6 +187,7 @@ func Check(snapshot Snapshot, runner Runner, options Options) Report {
 }
 
 // CheckStore runs record-consistency rules for every snapshot and live adapters only for open tasks.
+// Terminal tasks get only a local Git worktree check for recorded paths that still exist.
 // It keeps only tasks and findings that need action; the summary still counts every finding.
 func CheckStore(snapshots []Snapshot, runner Runner, options Options) StoreReport {
 	ordered := append([]Snapshot(nil), snapshots...)
@@ -193,17 +195,51 @@ func CheckStore(snapshots []Snapshot, runner Runner, options Options) StoreRepor
 	result := StoreReport{Checked: len(ordered)}
 	for _, snapshot := range ordered {
 		taskOptions := options
-		if TaskTerminal(snapshot.Task) {
+		var retained []store.Resource
+		if TaskTerminal(snapshot.Task) && !snapshot.Unreadable {
 			taskOptions.Offline = true
+			retained = retainedWorktrees(snapshot.Resources)
 			snapshot.Resources = nil
 		}
 		report := Check(snapshot, runner, taskOptions)
+		if !options.Offline {
+			for _, resource := range retained {
+				f := checkRetainedWorktree(runner, resource)
+				report.Resources = append(report.Resources, Resource{ID: resource.ID, Findings: []Finding{f}})
+				report.Summary.add(f)
+			}
+		}
 		result.Summary.merge(report.Summary)
 		if filtered, ok := actionable(report); ok {
 			result.Tasks = append(result.Tasks, filtered)
 		}
 	}
 	return result
+}
+
+// retainedWorktrees returns a terminal task's resources whose recorded
+// worktree path still exists, sorted by ID. A path probe is the only read, so
+// the store-wide check skips removed worktrees without running Git.
+func retainedWorktrees(resources []store.Resource) []store.Resource {
+	var retained []store.Resource
+	for _, resource := range resources {
+		if resource.WorktreePath == "" {
+			continue
+		}
+		if _, err := os.Lstat(resource.WorktreePath); err == nil {
+			retained = append(retained, resource)
+		}
+	}
+	sort.Slice(retained, func(i, j int) bool { return retained[i].ID < retained[j].ID })
+	return retained
+}
+
+// checkRetainedWorktree reads only local Git state for a terminal task's
+// still-present worktree; it never calls the forge or inspects branches.
+func checkRetainedWorktree(runner Runner, resource store.Resource) Finding {
+	ctx, cancel := context.WithTimeout(context.Background(), resourceTimeout)
+	defer cancel()
+	return checkWorktree(ctx, runner, resource, resource.WorktreePath, true)
 }
 
 func actionable(report Report) (Report, bool) {

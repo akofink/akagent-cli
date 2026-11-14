@@ -13,9 +13,13 @@ import (
 
 type fixtureRunner struct {
 	path, branch, sha, origin, status string
-	pulls, runs, statuses             string
-	unavailable                       string
-	calls                             *int
+	// primary is the repository's main worktree, listed first. When empty,
+	// path itself is the main worktree.
+	primary               string
+	pulls, runs, statuses string
+	unavailable           string
+	calls                 *int
+	seen                  *[]string
 }
 
 func (f fixtureRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
@@ -23,6 +27,9 @@ func (f fixtureRunner) Run(_ context.Context, name string, args ...string) ([]by
 		*f.calls++
 	}
 	key := name + " " + strings.Join(args, " ")
+	if f.seen != nil {
+		*f.seen = append(*f.seen, key)
+	}
 	if f.unavailable != "" && strings.Contains(key, f.unavailable) {
 		return nil, errors.New("private command failure")
 	}
@@ -44,7 +51,11 @@ func (f fixtureRunner) Run(_ context.Context, name string, args ...string) ([]by
 	case strings.HasSuffix(key, "config --get remote.origin.url"):
 		return []byte(f.origin), nil
 	case strings.HasSuffix(key, "worktree list --porcelain"):
-		return []byte("worktree " + f.path + "\nHEAD " + f.sha + "\nbranch refs/heads/" + f.branch + "\n"), nil
+		listing := ""
+		if f.primary != "" {
+			listing = "worktree " + f.primary + "\nHEAD " + f.sha + "\nbranch refs/heads/main\n\n"
+		}
+		return []byte(listing + "worktree " + f.path + "\nHEAD " + f.sha + "\nbranch refs/heads/" + f.branch + "\n"), nil
 	case strings.HasSuffix(key, "branch --show-current"):
 		return []byte(f.branch + "\n"), nil
 	case strings.Contains(key, "rev-parse --verify --quiet refs/heads/"):
@@ -73,7 +84,7 @@ func fixture(t *testing.T) (Snapshot, fixtureRunner) {
 	dir := t.TempDir()
 	resource := store.Resource{ID: "source", Repository: "demo", Branch: "agent/feature", WorktreePath: dir}
 	runner := fixtureRunner{
-		path: dir, branch: resource.Branch, sha: headSHA, origin: "https://github.com/akofink/demo.git",
+		path: dir, primary: dir + "-primary", branch: resource.Branch, sha: headSHA, origin: "https://github.com/akofink/demo.git",
 		pulls:    "[" + pullJSON(7, "open", "", resource.Branch, headSHA) + "]",
 		runs:     `{"total_count":1,"check_runs":[{"name":"test","status":"completed","conclusion":"success"}]}`,
 		statuses: `{"state":"pending","statuses":[]}`,
@@ -148,6 +159,16 @@ func TestCheckWorktree(t *testing.T) {
 	finished := snapshot
 	finished.Task.Lifecycle = "finished"
 	expect(t, resourceFindings(t, finished, runner)[0], StateStale, "retained_after_finish")
+
+	// A finished task bound to the repository's primary checkout does not own
+	// it, so an automatic sweep must not be told to clean it up.
+	primary := runner
+	primary.primary = ""
+	primary.status = " M shared.go\x00"
+	expect(t, resourceFindings(t, finished, primary)[0], StateCurrent, "primary_checkout")
+	expect(t, resourceFindings(t, snapshot, primary)[0], StateStale, "dirty")
+	primary.status = ""
+	expect(t, resourceFindings(t, snapshot, primary)[0], StateCurrent, "registered")
 
 	runner.unavailable = "status --porcelain"
 	got = resourceFindings(t, snapshot, runner)[0]
@@ -352,6 +373,8 @@ func TestCheckStoreFiltersAndSkipsTerminalAdapters(t *testing.T) {
 	done.Executions = []store.Execution{{ID: "leftover", Lifecycle: "created", Condition: "active"}}
 	clean := done
 	clean.TaskID = "clean"
+	clean.Resources = []store.Resource{open.Resources[0]}
+	clean.Resources[0].WorktreePath = filepath.Join(runner.path, "removed")
 	clean.Executions = []store.Execution{{ID: "closed", Lifecycle: "finished"}}
 	broken := Snapshot{TaskID: "broken", Unreadable: true}
 
@@ -365,15 +388,56 @@ func TestCheckStoreFiltersAndSkipsTerminalAdapters(t *testing.T) {
 		t.Fatalf("order: %+v", report.Tasks)
 	}
 	expect(t, report.Tasks[0].Task[0], StateStale, "record_unreadable")
-	if len(report.Tasks[1].Resources) != 0 || len(report.Tasks[1].Executions) != 1 {
+	if len(report.Tasks[1].Resources) != 1 || len(report.Tasks[1].Resources[0].Findings) != 1 || len(report.Tasks[1].Executions) != 1 {
 		t.Fatalf("terminal task findings: %+v", report.Tasks[1])
 	}
+	expect(t, report.Tasks[1].Resources[0].Findings[0], StateStale, "retained_after_finish")
 	expect(t, report.Tasks[1].Executions[0], StateStale, "task_terminal")
-	if report.Summary.NeedsAction != 2 || report.Summary.Current != 5 || report.Summary.Unknown != 1 {
+	if report.Summary.NeedsAction != 3 || report.Summary.Current != 5 || report.Summary.Unknown != 1 {
 		t.Fatalf("summary: %+v", report.Summary)
 	}
 	if calls == 0 {
 		t.Fatalf("open task skipped live adapters")
+	}
+}
+
+func TestCheckStoreTerminalTasksReadOnlyLocalRetainedWorktrees(t *testing.T) {
+	retained, runner := fixture(t)
+	retained.TaskID = "retained"
+	retained.Task = store.Manifest{Lifecycle: "finished", Condition: "none", ArchiveState: "complete"}
+	removed := retained
+	removed.TaskID = "removed"
+	removed.Resources = []store.Resource{retained.Resources[0]}
+	removed.Resources[0].WorktreePath = filepath.Join(runner.path, "removed")
+
+	var seen []string
+	runner.seen = &seen
+	report := CheckStore([]Snapshot{retained, removed}, runner, Options{})
+	if len(report.Tasks) != 1 || report.Tasks[0].TaskID != "retained" {
+		t.Fatalf("tasks: %+v", report.Tasks)
+	}
+	expect(t, report.Tasks[0].Resources[0].Findings[0], StateStale, "retained_after_finish")
+	for _, call := range seen {
+		if strings.HasPrefix(call, "gh ") || strings.Contains(call, "refs/heads/") || strings.Contains(call, "removed") {
+			t.Fatalf("terminal check made a forge, branch or removed-path call: %q", call)
+		}
+	}
+
+	runner.status = " M kept.go\x00"
+	dirty := CheckStore([]Snapshot{retained}, runner, Options{})
+	expect(t, dirty.Tasks[0].Resources[0].Findings[0], StateStale, "dirty")
+
+	runner.status = ""
+	runner.primary = ""
+	primary := CheckStore([]Snapshot{retained}, runner, Options{})
+	if len(primary.Tasks) != 0 || primary.Summary.Current != 1 {
+		t.Fatalf("primary checkout reported as cleanup debt: %+v", primary)
+	}
+
+	seen = nil
+	offline := CheckStore([]Snapshot{retained, removed}, runner, Options{Offline: true})
+	if len(seen) != 0 || len(offline.Tasks) != 0 {
+		t.Fatalf("offline terminal check made calls %v or findings %+v", seen, offline.Tasks)
 	}
 }
 

@@ -340,8 +340,20 @@ func viewExecution(execution store.Execution, manager *lifecycle.Manager) execut
 	for _, reference := range execution.SessionReferences {
 		sessionReferences = append(sessionReferences, sessionReferenceView{Tool: reference.Tool, SessionID: reference.SessionID, ReferencePath: reference.ReferencePath})
 	}
-	return executionView{ID: execution.ID, Provenance: execution.Provenance, CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: viewExternalObservations(execution.ExternalObservations), ExternalCompletion: viewExternalCompletion(execution.ExternalCompletion), HandoffDisposition: execution.HandoffDisposition, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, Host: execution.Host, TmuxPane: execution.TmuxPane, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: sessionReferences}
+	return executionView{ID: execution.ID, Provenance: executionProvenance(execution.Provenance), CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: viewExternalObservations(execution.ExternalObservations), ExternalCompletion: viewExternalCompletion(execution.ExternalCompletion), HandoffDisposition: execution.HandoffDisposition, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, Host: execution.Host, TmuxPane: execution.TmuxPane, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: sessionReferences}
 }
+
+// executionProvenance names managed provenance explicitly. A managed
+// execution's `target` or `label` may read `external` (as `task begin`
+// records), which is metadata and not caller-owned external provenance.
+func executionProvenance(provenance string) string {
+	if provenance == store.ProvenanceExternal {
+		return store.ProvenanceExternal
+	}
+	return provenanceManaged
+}
+
+const provenanceManaged = "managed"
 
 func executionDetail(execution store.Execution, manager *lifecycle.Manager) executionDetailView {
 	references := make([]sessionReferenceView, 0, len(execution.SessionReferences))

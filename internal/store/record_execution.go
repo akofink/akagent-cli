@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -344,42 +345,58 @@ func (s *Store) DisposeManagedExecutionHandoff(taskID, executionID string, reque
 		if err != nil {
 			return err
 		}
-		if manifest.Lifecycle == "finished" || manifest.ArchiveState == "complete" {
-			return terminalMutationConflict("task", taskID)
-		}
 		predecessor, err := s.ReadExecution(taskID, executionID)
 		if err != nil {
 			return err
 		}
-		if predecessor.Provenance == ProvenanceExternal {
-			return externalOwnershipConflict("execution", executionID)
+		// Preconditions that also gate an idempotent replay are evaluated
+		// before the receipt lookup, matching the original refusal order.
+		var refusals handoffRefusals
+		if manifest.Lifecycle == "finished" || manifest.ArchiveState == "complete" {
+			refusals.add(fmt.Sprintf("task %s is terminal (%s)", taskID, terminalTaskDetail(manifest)), "A handoff applies only to a nonterminal task; inspect the task and record new work as a new task")
 		}
-		if _, found, receiptErr := findReceipt(predecessor.Receipts, request.OperationID, fingerprint); receiptErr != nil {
-			return receiptErr
-		} else if found {
-			if err := s.ensureExecutionRecordEventLocked(taskID, executionID, request.OperationID, fingerprint, predecessor.Revision); err != nil {
+		if predecessor.Provenance == ProvenanceExternal {
+			refusals.add(fmt.Sprintf("predecessor execution %s has external provenance", executionID), "Close an external execution with its owning caller through `task execution finish`")
+		}
+		if refusals.empty() {
+			if _, found, receiptErr := findReceipt(predecessor.Receipts, request.OperationID, fingerprint); receiptErr != nil {
+				return receiptErr
+			} else if found {
+				if err := s.ensureExecutionRecordEventLocked(taskID, executionID, request.OperationID, fingerprint, predecessor.Revision); err != nil {
+					return err
+				}
+				result = predecessor
+				return nil
+			}
+			if err := s.ensureExecutionReceiptHistoryLocked(taskID, executionID, predecessor.Receipts); err != nil {
 				return err
 			}
-			result = predecessor
-			return nil
 		}
-		if err := s.ensureExecutionReceiptHistoryLocked(taskID, executionID, predecessor.Receipts); err != nil {
-			return err
-		}
-		successor, err := s.ReadExecution(taskID, request.SuccessorExecutionID)
+		successorOnTask, err := s.checkHandoffSuccessorLocked(taskID, request.SuccessorExecutionID, &refusals)
 		if err != nil {
 			return err
 		}
-		if successor.Provenance == ProvenanceExternal || successor.Lifecycle == "finished" || successor.Condition != "active" {
-			return newError(KindConflict, "Successor execution is not an active managed execution", "Verify the successor takeover and inspect its active execution record")
+		if detail := ClosedExecutionDetail(predecessor); detail != "" {
+			refusals.add(fmt.Sprintf("predecessor execution %s is already closed (%s)", executionID, detail), fmt.Sprintf("No handoff is needed; inspect it with `akagent task execution inspect %s %s`", taskID, executionID))
+		} else {
+			if predecessor.Condition != "waiting" || predecessor.Activity != "handed off" {
+				ended := "an operator-directed `akagent task execution finish`"
+				if successorOnTask {
+					ended = fmt.Sprintf("`akagent task repair superseded-execution --task-id %s --execution-id %s --successor-id %s` (preview, then apply) or %s", taskID, executionID, request.SuccessorExecutionID, ended)
+				}
+				refusals.add(
+					fmt.Sprintf("predecessor execution %s is not published as handed off (condition %s, activity %s; requires condition waiting, activity \"handed off\")", executionID, displayValue(predecessor.Condition), strconv.Quote(predecessor.Activity)),
+					fmt.Sprintf("The live predecessor publishes `akagent task execution publish %s %s --condition waiting --activity 'handed off'` before yielding; if it already ended without publishing, independently verify that and close it with %s", taskID, executionID, ended),
+				)
+			}
+			if request.ExpectedRevision != predecessor.Revision {
+				refusals.add(
+					fmt.Sprintf("predecessor execution %s revision conflict (current revision %d, expected %d)", executionID, predecessor.Revision, request.ExpectedRevision),
+					fmt.Sprintf("Inspect the predecessor and retry with --expected-revision %d", predecessor.Revision),
+				)
+			}
 		}
-		if predecessor.HandoffDisposition != nil || predecessor.ExternalCompletion != nil || predecessor.Lifecycle == "finished" || predecessor.ArchiveState == "complete" {
-			return terminalMutationConflict("execution", executionID)
-		}
-		if predecessor.Condition != "waiting" || predecessor.Activity != "handed off" {
-			return newError(KindConflict, "Predecessor execution is not published as handed off", "Require the predecessor condition waiting and activity handed off")
-		}
-		if err := expectedRevisionCheck(request.ExpectedRevision, predecessor.Revision, "execution", executionID); err != nil {
+		if err := refusals.err(executionID); err != nil {
 			return err
 		}
 		now := time.Now().UTC()

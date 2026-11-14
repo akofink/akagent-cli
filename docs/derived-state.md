@@ -132,6 +132,7 @@ A task is terminal when it is finished or stopped, externally completed, or arch
 | `worktree` | Registered but has tracked or untracked changes | `stale` `dirty` |
 | `worktree` | Registered but on another branch | `stale` `branch_mismatch` |
 | `worktree` | Still registered after the task is terminal | `stale` `retained_after_finish` |
+| `worktree` | The repository's main worktree (primary checkout) after the task is terminal | `current` `primary_checkout` |
 | `worktree` | Not in `git worktree list` or absent from disk while the task is open | `missing` `not_registered` or `path_missing` |
 | `worktree` | Not in `git worktree list` after the task is terminal | `current` `removed_after_finish` |
 | `branch` | Local ref exists | `current` `local_ref`, detail is the live head |
@@ -161,8 +162,11 @@ akagent task check --all [--offline] [--format <toon|json>]
 Single-task mode reports every finding for the task, including `current` ones.
 `--all` checks every task in the store, including archived ones.
 It runs live adapters only for tasks that are not terminal, runs record-consistency rules for all of them, and prints only tasks and findings that need action.
+For a terminal task it reads only local Git, and only for a resource whose recorded worktree path still exists: it reports that resource's `worktree` finding (for example `retained_after_finish` or `dirty`) and never calls the forge or checks the branch.
+A removed worktree path costs one path probe and no Git call.
+A terminal task bound to the repository's primary checkout reports `current` `primary_checkout`, because the task never owned that checkout, so an automatic cleanup sweep must not remove it.
 Its summary counts every finding it evaluated.
-`--offline` skips live adapters and reports their surfaces as `unknown` `offline` in single-task mode.
+`--offline` skips live adapters and reports their surfaces as `unknown` `offline` in single-task mode; with `--all` it also skips the terminal-task worktree reads.
 
 Exit code `0` means the check ran, even when findings need action.
 Exit code `1` means the store could not be read or the task does not exist.
@@ -229,8 +233,12 @@ No adapter ever closes a record.
 `task begin <task-id> --title <title> --execution-id <id> --command <label>` creates or adopts a managed task and execution, sets both conditions active, and captures tmux binding at execution creation.
 It is idempotent for matching identities and inputs, refuses conflicting titles, bindings, external-provenance records, and terminal tasks, and can resume after a partial write by inspecting and reconciling the task.
 It does not launch an agent or infer activity from a pane.
+Its execution records `target` `external` as metadata only; views show `provenance: managed`, and only the `task external` family creates `provenance: external`.
 `task deliver <task-id> <execution-id> --contract <name> --result <succeeded|failed> --summary <text> --verified` is an explicit verified-delivery declaration: it closes the selected managed execution with its current guarded revision, finishes the task with the named result, and archives it, supporting retries after partial writes.
-It refuses delivery while another execution remains open.
+It refuses delivery while another execution remains open, naming that execution and how to close it.
+It also refuses an attempt that is already closed by another path, such as `task execution finish` or a handoff, naming how it was closed; terminal records are never reopened.
+When every attempt is closed, record the independently verified outcome with `task finish <task-id> <succeeded|failed> <summary>` and then `task archive <task-id>`.
+A retry whose attempt already carries deliver's own completion remains idempotent.
 The caller must verify the task-kind delivery contract before invoking it; missing panes and green checks alone never authorize it.
 The old create, publish, finish, and archive commands remain available through guidance migration.
 

@@ -110,6 +110,11 @@ func checkWorktree(ctx context.Context, runner Runner, resource store.Resource, 
 	if _, err := os.Stat(resource.WorktreePath); err != nil {
 		return finding("worktree", StateMissing, "path_missing", "Inspect the worktree on the owning host")
 	}
+	// A finished task bound to the repository's primary checkout never owned
+	// that checkout, so it is not cleanup debt for the task.
+	if taskTerminal && mainWorktree(string(listed), resource.WorktreePath) {
+		return finding("worktree", StateCurrent, "primary_checkout", "No cleanup: the primary checkout is not task-owned")
+	}
 	branch, err := runner.Run(ctx, "git", "-C", resource.WorktreePath, "branch", "--show-current")
 	if err != nil {
 		return finding("worktree", StateUnknown, "git_unavailable", "Retry the worktree check")
@@ -146,6 +151,17 @@ func statusEntries(status []byte) int {
 		}
 	}
 	return count
+}
+
+// mainWorktree reports whether target is the first worktree that
+// `git worktree list --porcelain` lists, which Git defines as the main one.
+func mainWorktree(porcelain, target string) bool {
+	for _, line := range strings.Split(porcelain, "\n") {
+		if listed, ok := strings.CutPrefix(line, "worktree "); ok {
+			return sameGitPath(listed, target)
+		}
+	}
+	return false
 }
 
 func listedWorktree(porcelain, target string) bool {
