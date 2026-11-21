@@ -56,6 +56,7 @@ type Execution struct {
 	TmuxWindow           string                `json:"tmux_window,omitempty"`
 	Host                 string                `json:"host,omitempty"`
 	TmuxPane             string                `json:"tmux_pane,omitempty"`
+	TmuxServer           string                `json:"tmux_server,omitempty"`
 	ProcessPID           int                   `json:"process_pid,omitempty"`
 	ProcessStartTime     uint64                `json:"process_start_time,omitempty"`
 	ObservedPID          int                   `json:"observed_pid,omitempty"`
@@ -143,7 +144,19 @@ func validateExecution(execution Execution) error {
 	if err := validateExecutionBinding(execution.Host, execution.TmuxPane); err != nil {
 		return err
 	}
+	if err := validateTmuxServer(execution.TmuxServer); err != nil {
+		return err
+	}
 	return validateExecutionReferences(execution, true)
+}
+
+// validateTmuxServer accepts the empty legacy value or a short printable token
+// such as "1234:1700000000" naming one tmux server process.
+func validateTmuxServer(server string) error {
+	if len(server) > 64 || strings.ContainsAny(server, " \r\n\t\x00|") {
+		return newError(KindUsage, "Invalid tmux server identity", "Provide a server identity such as 1234:1700000000")
+	}
+	return nil
 }
 
 func validateExecutionBinding(host, pane string) error {
@@ -504,7 +517,7 @@ func (s *Store) ensureExecutionDir(taskID, executionID string) error {
 }
 
 func sameExecutionInputs(a, b Execution) bool {
-	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.Requirements == b.Requirements && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory && a.Host == b.Host && a.TmuxPane == b.TmuxPane && slices.Equal(a.SessionReferences, b.SessionReferences)
+	return a.ID == b.ID && a.TaskID == b.TaskID && a.Label == b.Label && a.Target == b.Target && a.Command == b.Command && strings.Join(a.Arguments, "\x00") == strings.Join(b.Arguments, "\x00") && a.Requirements == b.Requirements && a.ResourceID == b.ResourceID && a.WorkingDirectory == b.WorkingDirectory && a.Host == b.Host && a.TmuxPane == b.TmuxPane && (a.TmuxServer == "" || b.TmuxServer == "" || a.TmuxServer == b.TmuxServer) && slices.Equal(a.SessionReferences, b.SessionReferences)
 }
 
 func executionManifestEnvelope(taskID, executionID string, execution Execution) (Envelope, error) {

@@ -60,7 +60,7 @@ func taskBegin(args []string, stdout io.Writer, manager *lifecycle.Manager) int 
 	if derived.TaskTerminal(manifest.Manifest) {
 		return writeError(stdout, "conflict", "Cannot begin a terminal task", false, "Inspect the task and create a new task for new work")
 	}
-	execution, _, err := manager.CreateExecution(id, lifecycle.ExecutionRequest{ID: values["--execution-id"], Target: "external", Command: values["--command"], Host: host, TmuxPane: pane})
+	execution, _, err := manager.CreateExecution(id, lifecycle.ExecutionRequest{ID: values["--execution-id"], Target: "external", Command: values["--command"], Host: host, TmuxPane: pane, TmuxServer: bindTmuxServer(host, pane)})
 	if err != nil {
 		return lifecycleError(stdout, err)
 	}

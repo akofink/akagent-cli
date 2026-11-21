@@ -144,6 +144,7 @@ type executionView struct {
 	TmuxWindow           string                    `json:"tmux_window,omitempty"`
 	Host                 string                    `json:"host,omitempty"`
 	TmuxPane             string                    `json:"tmux_pane,omitempty"`
+	TmuxServer           string                    `json:"tmux_server,omitempty"`
 	ProcessPID           int                       `json:"process_pid,omitempty"`
 	Observation          string                    `json:"observation,omitempty"`
 	RecoveryDebt         string                    `json:"recovery_debt,omitempty"`
@@ -340,7 +341,7 @@ func viewExecution(execution store.Execution, manager *lifecycle.Manager) execut
 	for _, reference := range execution.SessionReferences {
 		sessionReferences = append(sessionReferences, sessionReferenceView{Tool: reference.Tool, SessionID: reference.SessionID, ReferencePath: reference.ReferencePath})
 	}
-	return executionView{ID: execution.ID, Provenance: executionProvenance(execution.Provenance), CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: viewExternalObservations(execution.ExternalObservations), ExternalCompletion: viewExternalCompletion(execution.ExternalCompletion), HandoffDisposition: execution.HandoffDisposition, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, Host: execution.Host, TmuxPane: execution.TmuxPane, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: sessionReferences}
+	return executionView{ID: execution.ID, Provenance: executionProvenance(execution.Provenance), CallerID: execution.CallerID, Revision: execution.Revision, PredecessorID: execution.PredecessorID, ExternalObservations: viewExternalObservations(execution.ExternalObservations), ExternalCompletion: viewExternalCompletion(execution.ExternalCompletion), HandoffDisposition: execution.HandoffDisposition, TaskID: execution.TaskID, Label: execution.Label, Target: execution.Target, Command: execution.Command, Requirements: execution.Requirements, ResourceID: execution.ResourceID, WorkingDirectory: execution.WorkingDirectory, Status: executionStatus, Condition: execution.Condition, Reason: execution.Reason, Activity: execution.Activity, Result: execution.Result, TmuxWindow: execution.TmuxWindow, Host: execution.Host, TmuxPane: execution.TmuxPane, TmuxServer: execution.TmuxServer, ProcessPID: execution.ProcessPID, Observation: execution.Observation, RecoveryDebt: execution.RecoveryDebt, ArchiveState: taskState(execution.ArchiveState), SessionReferences: sessionReferences}
 }
 
 // executionProvenance names managed provenance explicitly. A managed

@@ -20,19 +20,19 @@ func checkTmux(ctx context.Context, runner Runner, execution store.Execution) Fi
 	if execution.Host != host {
 		return finding(surface, StateUnknown, "remote_host", "Check the execution on its owning host")
 	}
-	output, err := runner.Run(ctx, "tmux", "list-panes", "-a", "-F", "#{pane_id}|#{window_id}|#{@agent_state}")
+	output, err := runner.Run(ctx, "tmux", "list-panes", "-a", "-F", "#{pane_id}|#{window_id}|#{pid}:#{start_time}|#{@agent_state}")
 	if err != nil || ctx.Err() != nil {
 		return finding(surface, StateUnknown, "tmux_unavailable", "Check tmux on the owning host")
 	}
 	seen := false
-	state, window := "", ""
+	state, window, server := "", "", ""
 	windows := map[string]int{}
 	for _, line := range strings.Split(strings.TrimSuffix(string(output), "\n"), "\n") {
 		if line == "" && len(output) == 0 {
 			break
 		}
 		parts := strings.Split(line, "|")
-		if len(parts) != 3 || !paneID(parts[0]) || len(parts[1]) < 2 || parts[1][0] != '@' || strings.ContainsAny(parts[1]+parts[2], "\r\n\x00") {
+		if len(parts) != 4 || !paneID(parts[0]) || len(parts[1]) < 2 || parts[1][0] != '@' || ParseTmuxServer(parts[2]) != parts[2] || strings.ContainsAny(parts[1]+parts[3], "\r\n\x00") {
 			return finding(surface, StateUnknown, "tmux_unavailable", "Check tmux on the owning host")
 		}
 		windows[parts[1]]++
@@ -40,11 +40,15 @@ func checkTmux(ctx context.Context, runner Runner, execution store.Execution) Fi
 			if seen {
 				return finding(surface, StateUnknown, "tmux_unavailable", "Check tmux on the owning host")
 			}
-			seen, window, state = true, parts[1], parts[2]
+			seen, window, server, state = true, parts[1], parts[2], parts[3]
 		}
 	}
 	if !seen {
 		return finding(surface, StateMissing, "no_live_pane", "Verify the attempt independently before closing its record")
+	}
+	if execution.TmuxServer != "" && execution.TmuxServer != server {
+		// Same pane ID on a different tmux server process: the bound process is gone.
+		return finding(surface, StateMissing, "pane_reused", "The pane ID now belongs to a different tmux server; verify the attempt independently before closing its record")
 	}
 	if windows[window] != 1 {
 		return finding(surface, StateUnknown, "shared_window", "Verify the agent state on its pane independently")
@@ -57,6 +61,32 @@ func checkTmux(ctx context.Context, runner Runner, execution store.Execution) Fi
 	default:
 		return finding(surface, StateUnknown, "state_unavailable", "Verify the agent state on the owning pane")
 	}
+}
+
+// TmuxServerFormat prints the tmux server identity: server PID and start time.
+const TmuxServerFormat = "#{pid}:#{start_time}"
+
+// ParseTmuxServer returns a validated "pid:start_time" identity, or "" when the
+// output is not one.
+func ParseTmuxServer(output string) string {
+	value := strings.TrimSpace(output)
+	pid, start, ok := strings.Cut(value, ":")
+	if !ok || !digits(pid) || !digits(start) || len(value) > 64 {
+		return ""
+	}
+	return value
+}
+
+func digits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, c := range value {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func paneID(value string) bool {
