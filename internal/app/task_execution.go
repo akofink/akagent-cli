@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/akofink/akagent-cli/internal/derived"
 	"github.com/akofink/akagent-cli/internal/lifecycle"
 	"github.com/akofink/akagent-cli/internal/store"
 )
@@ -370,6 +372,25 @@ func parseSessionReference(args []string) (store.SessionReference, bool) {
 }
 
 var paneIDPattern = regexp.MustCompile(`^%[0-9]+$`)
+
+// bindTmuxServer (used only by `task begin`, which runs in the owning pane) records which tmux server owns a locally bound pane so a pane
+// ID reused after a server restart is distinguishable. Any failure leaves the
+// identity empty, which keeps the previous pane-only behavior.
+func bindTmuxServer(host, pane string) string {
+	if pane == "" {
+		return ""
+	}
+	if local, err := os.Hostname(); err != nil || local != host {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := checkRunner.Run(ctx, "tmux", "display-message", "-p", "-t", pane, derived.TmuxServerFormat)
+	if err != nil {
+		return ""
+	}
+	return derived.ParseTmuxServer(string(output))
+}
 
 func validExecutionBinding(host, pane string) bool {
 	return host != "" && len(host) <= 253 && !strings.ContainsAny(host, " \r\n\t\x00") && (pane == "" || paneIDPattern.MatchString(pane))

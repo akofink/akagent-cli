@@ -2,14 +2,22 @@ package app
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 )
 
-type panesRunner struct{ panes string }
+// panesRunner answers tmux list-panes with panes and display-message with server.
+type panesRunner struct{ panes, server string }
 
-func (r panesRunner) Run(_ context.Context, name string, _ ...string) ([]byte, error) {
+func (r panesRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
+	if name == "tmux" && len(args) > 0 && args[0] == "display-message" {
+		if r.server == "" {
+			return nil, errors.New("no server")
+		}
+		return []byte(r.server + "\n"), nil
+	}
 	if name == "tmux" {
 		return []byte(r.panes), nil
 	}
@@ -21,7 +29,7 @@ func TestRepairSupersededRequiresLiveSuccessorAndAttestation(t *testing.T) {
 	t.Setenv("TMUX_PANE", "")
 	host, _ := os.Hostname()
 	previous := checkRunner
-	checkRunner = panesRunner{panes: "%22|@11|\n"}
+	checkRunner = panesRunner{panes: "%22|@11|10:20|\n"}
 	t.Cleanup(func() { checkRunner = previous })
 	mustRun(t, []string{"task", "create", "--title", "takeover", "--task-id", "takeover-task"},
 		[]string{"task", "execution", "create", "takeover-task", "--execution-id", "old", "--target", "external", "--host", host, "--tmux-pane", "%21"},
@@ -33,14 +41,14 @@ func TestRepairSupersededRequiresLiveSuccessorAndAttestation(t *testing.T) {
 	if result := runCommand(t, append(append([]string{}, base...), "--apply", "--expected-revision", "0", "--contract", "takeover")); result.code == 0 {
 		t.Fatalf("accepted missing attestation: %+v", result)
 	}
-	checkRunner = panesRunner{panes: "%21|@10|\n%22|@11|\n"}
+	checkRunner = panesRunner{panes: "%21|@10|10:20|\n%22|@11|10:20|\n"}
 	if check := runCommand(t, []string{"task", "check", "takeover-task"}); !strings.Contains(check.stdout, "multiple_live_executions") {
 		t.Fatalf("missing duplicate-live finding: %+v", check)
 	}
 	if result := runCommand(t, base); result.code == 0 {
 		t.Fatalf("accepted live predecessor: %+v", result)
 	}
-	checkRunner = panesRunner{panes: "%22|@11|\n"}
+	checkRunner = panesRunner{panes: "%22|@11|10:20|\n"}
 	apply := append(append([]string{}, base...), "--apply", "--expected-revision", "0", "--contract", "takeover", "--verified-ended")
 	mustRun(t, apply)
 	if result := runCommand(t, []string{"task", "inspect", "takeover-task"}); !strings.Contains(result.stdout, "result: unverified") {
@@ -91,5 +99,41 @@ func TestRepairDoesNotSelectOpenOrExternallyOwnedTasks(t *testing.T) {
 	preview := runCommand(t, []string{"task", "repair", "terminal-executions"})
 	if preview.code != 0 || !strings.Contains(preview.stdout, "total: 0") {
 		t.Fatalf("selected open task: %+v", preview)
+	}
+}
+
+func TestRepairSupersededAfterTmuxServerRestartReusesPaneID(t *testing.T) {
+	setupTaskCommandTest(t)
+	t.Setenv("TMUX_PANE", "")
+	host, _ := os.Hostname()
+	previous := checkRunner
+	t.Cleanup(func() { checkRunner = previous })
+	// The predecessor was bound to %7 under the first tmux server.
+	checkRunner = panesRunner{server: "100:1000"}
+	mustRun(t, []string{"task", "create", "--title", "takeover", "--task-id", "reuse-task"},
+		[]string{"task", "begin", "reuse-task", "--title", "takeover", "--execution-id", "old", "--command", "pi", "--host", host, "--tmux-pane", "%7"})
+	// The tmux server restarts and hands %7 to the successor.
+	checkRunner = panesRunner{server: "200:2000", panes: "%7|@1|200:2000|\n"}
+	mustRun(t, []string{"task", "begin", "reuse-task", "--title", "takeover", "--execution-id", "new", "--command", "pi", "--host", host, "--tmux-pane", "%7"})
+	check := runCommand(t, []string{"task", "check", "reuse-task"})
+	if !strings.Contains(check.stdout, "pane_reused") || !strings.Contains(check.stdout, "live") {
+		t.Fatalf("predecessor and successor not distinguished: %s", check.stdout)
+	}
+	base := []string{"task", "repair", "superseded-execution", "--task-id", "reuse-task", "--execution-id", "old", "--successor-id", "new"}
+	if result := runCommand(t, base); result.code != 0 || !strings.Contains(result.stdout, "old,0,") {
+		t.Fatalf("preview: %+v", result)
+	}
+}
+
+func TestLegacyExecutionWithoutServerIdentityKeepsPaneOnlyBehavior(t *testing.T) {
+	setupTaskCommandTest(t)
+	t.Setenv("TMUX_PANE", "")
+	host, _ := os.Hostname()
+	previous := checkRunner
+	t.Cleanup(func() { checkRunner = previous })
+	checkRunner = panesRunner{panes: "%7|@1|200:2000|\n"} // identity lookup fails: nothing recorded
+	mustRun(t, []string{"task", "begin", "legacy-task", "--title", "legacy", "--execution-id", "old", "--command", "pi", "--host", host, "--tmux-pane", "%7"})
+	if check := runCommand(t, []string{"task", "check", "legacy-task"}); !strings.Contains(check.stdout, "live") || strings.Contains(check.stdout, "pane_reused") {
+		t.Fatalf("legacy binding: %s", check.stdout)
 	}
 }

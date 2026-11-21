@@ -128,6 +128,7 @@ type ExecutionRequest struct {
 	WorkingDirectory string
 	Host             string
 	TmuxPane         string
+	TmuxServer       string
 	PredecessorID    string
 	PromptReference  string
 	WorkingContext   string

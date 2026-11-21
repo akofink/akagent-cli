@@ -44,6 +44,7 @@ type ExternalExecutionRequest struct {
 	PredecessorID     string
 	Host              string
 	TmuxPane          string
+	TmuxServer        string
 	SessionReferences []SessionReference
 }
 

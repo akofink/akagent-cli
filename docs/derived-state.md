@@ -221,6 +221,9 @@ Only an exact pane ID on a reachable local host is a match.
 For an open execution, `tmux list-panes -a -F` reads pane and window IDs and the window-scoped `@agent_state` option without sending keys or reading scrollback.
 If several panes share the window, its option cannot be attributed to this execution and the finding is `unknown` `shared_window`.
 A bound pane absent from a successful listing is `missing` `no_live_pane`, never completion.
+`task begin` also records the tmux server identity (`#{pid}:#{start_time}`) read from the owning pane as `tmux_server`; it is best effort and omitted when tmux cannot be read.
+When a record has that identity and the listed pane ID belongs to a server with a different identity, a restart reused the ID: the finding is `missing` `pane_reused`, so a predecessor and a successor on the same pane ID are distinguishable.
+Older records without `tmux_server` keep the pane-ID-only behavior.
 The hooks clear the window-scoped option for `working` and `idle`, so a present pane with no option is `current` `live` without claiming which of those states applies.
 A present pane with `@agent_state=blocked` or `waiting` is `current` `live`, and with `done` is `stale` `agent_done` pending independent verification.
 An unrecognized option is `unknown` `state_unavailable`, not an invented status.
