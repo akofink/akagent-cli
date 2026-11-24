@@ -22,7 +22,7 @@ It does not prove what an agent did between two CLI calls, what happened in a pr
 
 Tmux scrollback and process state can help while a window exists, but they are not durable history.
 
-The design covers Claude Code, Codex CLI, Pi, and OpenCode, plus optional shell and terminal sources.
+The design covers Claude Code, Codex CLI, and Pi, plus optional shell and terminal sources.
 
 It does not add a daemon, remote execution, a central store, mandatory provider dependencies, credential collection, or silent upload.
 
@@ -65,7 +65,6 @@ The provider session ID is the stable join key; a filename or database row is on
 | Claude Code | A UUID session ID is used by the resume flow and is commonly represented by a JSONL transcript below `~/.claude/projects/` for the encoded workspace. | `claude --resume <session-id>` or `--continue`. | Record the session ID, workspace mapping, artifact reference, provider version, and last readable cursor. Do not assume every JSONL line is public or stable. |
 | Codex CLI | A UUID session ID is used by `codex resume`; local rollout JSONL artifacts are commonly stored below `$CODEX_HOME/sessions/` in date-partitioned paths. | `codex resume <session-id>` or `--last`. | Prefer the CLI's session identity and export or inspection behavior over SQLite or rollout filename parsing. Record whether the session was interactive or non-interactive when exposed. |
 | Pi | A project-scoped session ID is present in the session filename and can be selected with `--session`, `--resume`, or `--continue`; default sessions are JSONL below the Pi session directory. | `pi --session <path-or-id>` or `pi --resume`. | Record the exact session ID and project/workspace mapping, while treating JSONL event shapes as Pi-owned. A fork creates a new session that links to its parent when that relationship is available. |
-| OpenCode | A `ses_...` session ID is used by the session commands and `-s/--session`; local session data is stored under the platform data directory and may be split across provider-owned records. | `opencode --session <session-id>` and `opencode export <session-id>`. | Use the OpenCode CLI for export or inspection where possible. Do not couple the core store to the current storage directory layout or its internal message and part records. |
 
 These artifact locations and formats can change with provider versions, custom home directories, platform conventions, and cleanup settings.
 
@@ -85,7 +84,7 @@ A future capture record associated with an execution should contain only non-sec
 capture_id
 execution_id
 source_kind              native_reference | adapter_summary | shell_audit | terminal_capture
-provider                 claude | codex | pi | opencode | zsh | terminal | other
+provider                 claude | codex | pi | zsh | terminal | other
 provider_session_id
 parent_session_id        optional fork or resume relationship
 workspace_identity       repository and worktree identity, not prompt text
@@ -262,7 +261,7 @@ Read-only inspection of existing session references reports available, unknown, 
 
 ### Phase 1: native reference adapters
 
-Implement opt-in local discovery adapters for Claude Code, Codex CLI, Pi, and OpenCode.
+Implement opt-in local discovery adapters for Claude Code, Codex CLI, and Pi.
 
 Record provider versions, session IDs, workspace identity, artifact references, cursors, and lifecycle checkpoints.
 
@@ -293,7 +292,7 @@ Document operator consent, retention review, artifact deletion, and recovery pro
 ## Acceptance criteria
 
 1. The public contract represents native references, optional derived evidence, provenance, coverage, redaction, retention, cursors, and unavailable history without provider-specific fields in the core execution record.
-2. Claude Code, Codex CLI, Pi, and OpenCode each have a documented stable session-ID discovery and resume or export path with versioned adapter behavior.
+2. Claude Code, Codex CLI, and Pi each have a documented stable session-ID discovery and resume or export path with versioned adapter behavior.
 3. A provider or tmux disconnect leaves task, execution, capture metadata, and last checkpoint inspectable without requiring the provider or a live terminal.
 4. A fork, resume, missing artifact, parse gap, and expired artifact are represented without overwriting earlier evidence or inventing events.
 5. Raw transcripts, terminal output, credentials, environment values, and secret command arguments are absent from default `akagent` records, archives, TOON output, diagnostics, and process arguments.
@@ -307,7 +306,6 @@ Document operator consent, retention review, artifact deletion, and recovery pro
 - [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code)
 - [Codex repository and CLI](https://github.com/openai/codex)
 - [Pi repository and documentation](https://github.com/badlogic/pi-mono)
-- [OpenCode CLI documentation](https://opencode.ai/docs/cli/)
 - [`akagent` protocol](protocol.md)
 - [Worker-local state store](storage.md)
 - [Task CLI contract](task-cli.md)
