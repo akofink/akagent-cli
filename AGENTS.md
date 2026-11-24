@@ -13,6 +13,6 @@
 - Run `go test ./...`, `go test -race ./...`, and `go vet ./...` before committing.
 - Use the record-only `akagent` lifecycle directly for durable task, resource, execution, checkpoint, disposition, publication, completion, archive, and recovery facts.
 - If a command may have mutated durable state and fails, inspect the affected task and reconcile before retrying; never launch a replacement or infer completion from a missing process.
-- For explicitly requested issue delivery, this repository authorizes issue creation, branch pushes, pull-request creation, and merge after required CI passes without another approval step. Higher-level safety rules still apply.
+- For explicitly requested issue delivery, this repository authorizes issue creation, branch pushes, and merging the issue branch to `main` without a pull request, after `go test ./...`, `go test -race ./...`, and `go vet ./...` pass locally. Fast-forward when possible; stop on divergence or conflict. Do not open a pull request unless asked. Higher-level safety rules still apply.
 - Use one signed Conventional Commit and include `Fixes #<issue>` when delivering a GitHub issue.
 - Do not install the binary until integrated CLI, lifecycle skill, and active-agent compatibility are verified on `main`.

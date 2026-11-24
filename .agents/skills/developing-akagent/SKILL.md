@@ -44,5 +44,5 @@ Show verification evidence rather than only stating that checks pass.
 1. Keep one signed Conventional Commit for the issue.
 2. Include `Fixes #N` in the commit message and pull-request body.
 3. Rebase on current `origin/main` before publishing when the base changed.
-4. Push the issue branch and open a pull request only when requested.
+4. Push the issue branch and merge it to `main` without a pull request, as `AGENTS.md` authorizes; open a pull request only when requested.
 5. Do not merge or mutate another agent's issue, worktree, branch, or pull request.
