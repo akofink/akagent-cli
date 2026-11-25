@@ -16,3 +16,12 @@
 - For explicitly requested issue delivery, this repository authorizes issue creation, branch pushes, and merging the issue branch to `main` without a pull request, after `go test ./...`, `go test -race ./...`, and `go vet ./...` pass locally. Fast-forward when possible; stop on divergence or conflict. Do not open a pull request unless asked. Higher-level safety rules still apply.
 - Use one signed Conventional Commit and include `Fixes #<issue>` when delivering a GitHub issue.
 - Do not install the binary until integrated CLI, lifecycle skill, and active-agent compatibility are verified on `main`.
+
+## Cloud session start
+
+In a cloud session (`CLAUDE_CODE_REMOTE=true` or `CODEX_ENVIRONMENT_ID` set), before other work bring the attached checkouts up to date and run the cloud setup, then read `agents/global-personal.md` in the notes checkout. This block is self-contained on purpose so a stale checkout can bootstrap itself; keep it stable.
+
+```sh
+for r in /workspace/*/ /home/user/*/; do [ -e "$r/.git" ] && [ -z "$(git -C "$r" status --porcelain)" ] && git -C "$r" fetch -q origin main && git -C "$r" merge -q --ff-only origin/main; done
+bash "$(ls -d /workspace/dots /home/user/dots 2>/dev/null | head -1)/bin/cloud-session-setup.sh"
+```
